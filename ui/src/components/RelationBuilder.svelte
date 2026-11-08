@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
 
   import Modal from "./Modal.svelte";
+  import Suggestions, { type SuggestionItem } from "./Suggestions.svelte";
   import TagPicker from "./TagPicker.svelte";
   import {
     api,
@@ -28,7 +29,6 @@
     interpret,
     popLast,
     stageOf,
-    summary,
     type LabelChoice,
     type Staged,
     type VerbChoice,
@@ -41,10 +41,7 @@
   }
   let { entry, guide, onsaved }: Props = $props();
 
-  interface Suggestion {
-    key: string;
-    text: string;
-    detail?: string;
+  interface Suggestion extends SuggestionItem {
     apply: () => void | Promise<void>;
   }
 
@@ -72,12 +69,16 @@
   const stage = $derived(stageOf(staged));
   const placeholder = $derived(
     {
-      verb: "Relation: verb, e.g. DROPS",
-      target: "Target entry",
+      verb: "verb, e.g. DROPS",
+      target: "target entry",
       ready: "+ qualifier, or Enter to save",
-      qualifier_label: "Qualifier label",
-      qualifier_value: `Value for "${staged.pendingLabel?.label ?? ""}"`,
+      qualifier_label: "qualifier label",
+      qualifier_value: `value for "${staged.pendingLabel?.label ?? ""}"`,
     }[stage],
+  );
+  /** Which of the three hint words is the current one. */
+  const hintStage = $derived<"verb" | "target" | "qualifiers">(
+    stage === "verb" ? "verb" : stage === "target" ? "target" : "qualifiers",
   );
 
   $effect(() => {
@@ -306,7 +307,9 @@
     if (!typed) return;
     // Prefer an exact match, then the highlighted suggestion, then whatever "create" offers.
     const key = norm(typed);
-    const exact = suggestions.find((s) => norm(s.text) === key || norm(s.detail ?? "") === `alias: ${key}`);
+    const exact = suggestions.find(
+      (s) => norm(s.text) === key || norm(s.detail ?? "") === `alias: ${key}`,
+    );
     const pick = exact ?? suggestions[highlight] ?? suggestions[0];
     if (pick) await pick.apply();
   }
@@ -362,20 +365,21 @@
 </script>
 
 <div class="builder">
+  <div class="label" id={`${listId}-label`}>Add relation</div>
   <div class="line" class:focused>
     {#if staged.verb}
-      <span class="chip verb">{verbSlot(staged.verb.label)}</span>
+      <span class="chip relation verb">{verbSlot(staged.verb.label)}</span>
     {/if}
     {#if staged.target}
-      <span class="chip">
+      <span class="chip relation">
         {staged.target.title}{#if staged.target.kind === "stub"} <em>(new)</em>{/if}
       </span>
     {/if}
     {#each staged.qualifiers as q, i (i)}
-      <span class="chip qualifier">{q.label.label} {q.value}{#if q.stub} <em>(new)</em>{/if}</span>
+      <span class="chip relation">{q.label.label} {q.value}{#if q.stub} <em>(new)</em>{/if}</span>
     {/each}
     {#if staged.pendingLabel}
-      <span class="chip qualifier">{staged.pendingLabel.label} …</span>
+      <span class="chip relation">{staged.pendingLabel.label} …</span>
     {/if}
     <input
       type="text"
@@ -402,20 +406,15 @@
       <button class="primary" onclick={save} disabled={busy}>Save</button>
     {/if}
   </div>
-  {#if focused && suggestions.length > 0}
-    <ul class="suggestions" role="listbox" id={listId}>
-      {#each suggestions as s, i (s.key)}
-        <li role="option" id={`${listId}-${i}`} aria-selected={i === highlight}>
-          <button class="link" class:on={i === highlight} onmousedown={(e) => { e.preventDefault(); void s.apply(); }}>
-            {s.text}
-            {#if s.detail}<span class="muted">{s.detail}</span>{/if}
-          </button>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-  {#if staged.verb}
-    <p class="muted preview">{summary(staged, entry.title)}</p>
+  <p class="hint muted">
+    <span class:current={hintStage === "verb"}>verb</span>
+    <span aria-hidden="true">&rsaquo;</span>
+    <span class:current={hintStage === "target"}>target</span>
+    <span aria-hidden="true">&rsaquo;</span>
+    <span class:current={hintStage === "qualifiers"}>qualifiers</span>
+  </p>
+  {#if focused}
+    <Suggestions {listId} items={suggestions} {highlight} onpick={(i) => void suggestions[i]?.apply()} />
   {/if}
   {#if error}<p class="error">{error}</p>{/if}
 </div>
@@ -487,8 +486,14 @@
 
 <style>
   .builder {
-    position: relative;
     margin: 10px 0;
+  }
+  .label {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 4px;
   }
   .line {
     display: flex;
@@ -517,39 +522,15 @@
     font-weight: 600;
     letter-spacing: 0.02em;
   }
-  .chip.qualifier {
-    font-style: normal;
-  }
-  .suggestions {
-    position: absolute;
-    z-index: 5;
-    left: 0;
-    right: 0;
-    margin: 2px 0 0;
-    padding: 4px 0;
-    list-style: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg);
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
-    max-height: 260px;
-    overflow: auto;
-  }
-  .suggestions button {
+  .hint {
     display: flex;
-    gap: 10px;
-    width: 100%;
-    text-align: left;
-    padding: 4px 10px;
-    color: inherit;
-  }
-  .suggestions button.on,
-  .suggestions button:hover {
-    background: var(--chip-bg);
-  }
-  .preview {
+    gap: 6px;
     margin: 4px 0 0;
-    font-size: 0.9em;
+    font-size: 0.8em;
+  }
+  .hint .current {
+    color: var(--fg);
+    font-weight: 600;
   }
   label {
     display: grid;

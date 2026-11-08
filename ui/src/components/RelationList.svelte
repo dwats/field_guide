@@ -1,6 +1,8 @@
 <script lang="ts">
   // The relation list on an entry page: core's display lines grouped by the words in the verb
-  // slot, with "Referenced by" below. Qualifiers can be edited in place; an edge can be deleted.
+  // slot, with "Referenced by" below. One line can be selected (click, or arrows while the list
+  // has focus); a fixed action row then edits its qualifiers or deletes the edge. Enter opens the
+  // other end of the selected line.
   import { untrack } from "svelte";
 
   import {
@@ -13,7 +15,7 @@
   } from "../lib/api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { verbSlot } from "../lib/format";
-  import { routeHash } from "../lib/router";
+  import { navigate, routeHash } from "../lib/router";
 
   interface Props {
     entryId: string;
@@ -33,9 +35,11 @@
   let views = $state<RelationView[]>([]);
   let labels = $state<QualifierLabel[]>([]);
   let includeExternal = $state(false);
+  let selected = $state<string | null>(null);
   let editing = $state<{ relation: Relation; rows: QualifierRow[] } | null>(null);
   let pendingDelete = $state<RelationView | null>(null);
   let error = $state("");
+  const listId = `relations-${Math.random().toString(36).slice(2)}`;
 
   $effect(() => {
     void entryId;
@@ -48,10 +52,15 @@
     try {
       views = await api.relationsForEntry(entryId, external);
       labels = await api.listQualifierLabels(guideId);
+      if (selected && !views.some((v) => keyOf(v) === selected)) selected = null;
       error = "";
     } catch (e) {
       error = errorMessage(e);
     }
+  }
+
+  function keyOf(view: RelationView): string {
+    return view.relation.id + (view.qualifier_id ?? "") + view.perspective;
   }
 
   interface Group {
@@ -69,6 +78,41 @@
     return out;
   });
   const referencedBy = $derived(views.filter((v) => v.section === "referenced_by"));
+  /** Every line in display order, for arrow-key selection. */
+  const ordered = $derived([...groups.flatMap((g) => g.items), ...referencedBy]);
+  const selectedView = $derived(ordered.find((v) => keyOf(v) === selected) ?? null);
+
+  /** Under a group heading the verb slot is not repeated: `DROPS Cobblestone` reads `Cobblestone`. */
+  function shownSegments(view: RelationView) {
+    const first = view.segments[0];
+    if (view.section === "relations" && first && first.text === `${view.label} `) {
+      return view.segments.slice(1);
+    }
+    return view.segments;
+  }
+
+  /** The other end of the line: the first linked entry that is not the one being read. */
+  function otherEnd(view: RelationView): string | null {
+    return view.segments.find((s) => s.entry_id && s.entry_id !== entryId)?.entry_id ?? null;
+  }
+
+  function onListKey(event: KeyboardEvent) {
+    if (ordered.length === 0) return;
+    const index = ordered.findIndex((v) => keyOf(v) === selected);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      selected = keyOf(ordered[Math.min(index + 1, ordered.length - 1)]);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      selected = keyOf(ordered[Math.max(index - 1, 0)]);
+    } else if (event.key === "Enter" && selectedView) {
+      const target = otherEnd(selectedView);
+      if (target) navigate({ view: "entry", entryId: target });
+    } else if (event.key === "Escape" && selected) {
+      event.preventDefault();
+      selected = null;
+    }
+  }
 
   function valueText(value: Relation["qualifiers"][number]["value"]): string {
     if (value.kind === "entry") return value.value.title;
@@ -123,16 +167,13 @@
     }
   }
 
-  function remove(view: RelationView) {
-    pendingDelete = view;
-  }
-
   async function confirmDelete() {
     const view = pendingDelete;
     pendingDelete = null;
     if (!view) return;
     try {
       await api.deleteRelation(view.relation.id);
+      selected = null;
       await load(includeExternal);
     } catch (e) {
       error = errorMessage(e);
@@ -141,9 +182,17 @@
 </script>
 
 {#snippet line(view: RelationView)}
-  <li class="line">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <li
+    class="line"
+    class:selected={keyOf(view) === selected}
+    role="option"
+    aria-selected={keyOf(view) === selected}
+    id={`${listId}-${keyOf(view)}`}
+    onclick={() => (selected = keyOf(view))}
+  >
     <span class="text">
-      {#each view.segments as seg, i (i)}
+      {#each shownSegments(view) as seg, i (i)}
         {#if seg.entry_id && seg.entry_id !== entryId}
           <a href={routeHash({ view: "entry", entryId: seg.entry_id })}>{seg.text}</a>
         {:else}
@@ -151,10 +200,6 @@
         {/if}
       {/each}
       {#if view.external}<span class="chip">external</span>{/if}
-    </span>
-    <span class="actions">
-      <button class="link" onclick={() => startEdit(view.relation)}>Qualifiers</button>
-      <button class="link danger" onclick={() => remove(view)}>Delete</button>
     </span>
   </li>
 {/snippet}
@@ -168,24 +213,45 @@
     </label>
   </div>
   {#if error}<p class="error">{error}</p>{/if}
-  {#if groups.length === 0 && referencedBy.length === 0}
-    <p class="muted">No relations yet. Use the line above: verb, target, then + qualifiers.</p>
-  {/if}
-  {#each groups as group (group.label)}
-    <h3>{group.label}</h3>
-    <ul>
-      {#each group.items as view (view.relation.id + (view.qualifier_id ?? "") + view.perspective)}
-        {@render line(view)}
+  {#if ordered.length === 0}
+    <p class="muted">No relations yet. Type a verb above, such as DROPS.</p>
+  {:else}
+    <div
+      class="list"
+      role="listbox"
+      tabindex="0"
+      aria-label="Relations"
+      aria-activedescendant={selected ? `${listId}-${selected}` : undefined}
+      onkeydown={onListKey}
+    >
+      {#each groups as group (group.label)}
+        <h3>{group.label}</h3>
+        <ul>
+          {#each group.items as view (keyOf(view))}
+            {@render line(view)}
+          {/each}
+        </ul>
       {/each}
-    </ul>
-  {/each}
-  {#if referencedBy.length > 0}
-    <h3>Referenced by</h3>
-    <ul>
-      {#each referencedBy as view (view.relation.id + (view.qualifier_id ?? ""))}
-        {@render line(view)}
-      {/each}
-    </ul>
+      {#if referencedBy.length > 0}
+        <h3>Referenced by</h3>
+        <ul>
+          {#each referencedBy as view (keyOf(view))}
+            {@render line(view)}
+          {/each}
+        </ul>
+      {/if}
+    </div>
+    <div class="row actions">
+      <button disabled={!selectedView} onclick={() => selectedView && startEdit(selectedView.relation)}>
+        Edit qualifiers
+      </button>
+      <button class="danger" disabled={!selectedView} onclick={() => (pendingDelete = selectedView)}>
+        Delete
+      </button>
+      <span class="muted hint">
+        {#if selectedView}Enter opens the other end.{:else}Select a line to act on it.{/if}
+      </span>
+    </div>
   {/if}
 
   <ConfirmDialog
@@ -206,10 +272,15 @@
       </h3>
       {#each editing.rows as row, i (i)}
         <div class="row">
-          <select bind:value={row.label_id}>
+          <select bind:value={row.label_id} aria-label="Qualifier label">
             {#each labels as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
-          <input type="text" bind:value={row.text} placeholder="Value: an entry title, text, or number" />
+          <input
+            type="text"
+            bind:value={row.text}
+            placeholder="Value: an entry title, text, or number"
+            aria-label="Qualifier value"
+          />
           <button class="link danger" onclick={() => removeRow(i)}>Remove</button>
         </div>
       {/each}
@@ -245,23 +316,30 @@
     margin: 0;
     padding: 0;
   }
+  .list {
+    border-radius: 4px;
+  }
+  .list:focus-visible {
+    outline-offset: 4px;
+  }
   .line {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    padding: 2px 4px;
+    padding: 3px 6px;
     border-radius: 4px;
+    cursor: default;
   }
-  .line:hover {
-    background: var(--surface);
+  .line.selected {
+    background: var(--chip-bg);
   }
-  .line .actions {
-    visibility: hidden;
-    white-space: nowrap;
+  .actions {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
   }
-  .line:hover .actions,
-  .line:focus-within .actions {
-    visibility: visible;
+  .actions .hint {
+    font-size: 0.9em;
   }
   .edit {
     display: grid;
