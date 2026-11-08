@@ -36,6 +36,15 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Breadcrumbs in the top bar read Guides / guide / page; Back and Forward work.
 - [ ] Edit guide opens a modal; Delete guide asks first.
 
+## Right panel
+
+- [ ] An entry with headings opens on the Contents tab; a click scrolls the body to that heading. An entry without headings opens on Relations with Contents disabled.
+- [ ] The Relations tab holds the relation line at the top, the grouped list, Edit qualifiers in a dialog, Show external, and the Mentioned by and Unresolved links folds, which are absent when empty.
+- [ ] Hide panel folds it to a rail and the choice survives a restart; Show panel brings it back.
+- [ ] Switching to Edit folds the panel; the rail's button opens it for that edit only; the Settings toggle keeps it open always.
+- [ ] Settings, Appearance: Compact and Roomy change type size and row heights everywhere; the two entry page toggles show their effect in their pictures and apply at once.
+- [ ] A quote (`> text`) shows a bar down its left and an opening quote mark; nested quotes add a bar each.
+
 ## Guides
 
 - [ ] Create a guide; it appears in cards and table views; the view choice survives a restart.

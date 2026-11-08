@@ -8,8 +8,10 @@
 //! The output is plain, prefix-free HTML. Wikilinks become `<a class="wikilink" data-entry-id=...>`
 //! when they resolve and `<a class="wikilink wikilink-unresolved" data-target=...>` when they do
 //! not; the UI decides what a click does. Media keeps its `media/...` path in `src`, and the host
-//! rewrites it to a URL it can serve.
+//! rewrites it to a URL it can serve. Headings get an id from their text, listed in
+//! `Rendered::headings`, so a table of contents and exported HTML share one anchor.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd};
@@ -25,6 +27,17 @@ pub struct Rendered {
     pub unresolved_links: Vec<String>,
     /// Distinct entry ids the body links to.
     pub linked_entry_ids: Vec<EntryId>,
+    /// The body's headings in order, each with the id set on its `<hN>`.
+    pub headings: Vec<Heading>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Heading {
+    /// 1 to 6.
+    pub level: u8,
+    /// Plain text, links and code reduced to their text.
+    pub text: String,
+    pub id: String,
 }
 
 impl Vault {
@@ -95,9 +108,98 @@ pub fn render(
         }
     }
     flush_text(&mut text_run, &mut events, &mut out, resolve)?;
+    assign_heading_ids(&mut events, &mut out.headings);
 
     pulldown_cmark::html::push_html(&mut out.html, events.into_iter());
     Ok(out)
+}
+
+/// Gives every heading an id from its text (`Where found` becomes `where-found`; a repeat gets
+/// `-2`, `-3`, ...) and records it. Wikilinks inside a heading count by their shown text.
+fn assign_heading_ids(events: &mut [Event<'_>], headings: &mut Vec<Heading>) {
+    let mut found: Vec<(usize, u8, String)> = Vec::new();
+    let mut open: Option<(usize, u8, String)> = None;
+    for (i, event) in events.iter().enumerate() {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                open = Some((i, *level as u8, String::new()))
+            }
+            Event::End(TagEnd::Heading(_)) => found.extend(open.take()),
+            Event::Text(t) | Event::Code(t) => {
+                if let Some((_, _, text)) = open.as_mut() {
+                    text.push_str(t);
+                }
+            }
+            Event::Html(h) | Event::InlineHtml(h) => {
+                if let Some((_, _, text)) = open.as_mut() {
+                    text.push_str(&text_of_html(h));
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some((_, _, text)) = open.as_mut() {
+                    text.push(' ');
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut taken = HashSet::new();
+    for (start, level, raw) in found {
+        let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+        let base = slug(&text);
+        let mut id = base.clone();
+        let mut n = 1;
+        while !taken.insert(id.clone()) {
+            n += 1;
+            id = format!("{base}-{n}");
+        }
+        if let Event::Start(Tag::Heading { id: slot, .. }) = &mut events[start] {
+            *slot = Some(CowStr::from(id.clone()));
+        }
+        headings.push(Heading { level, text, id });
+    }
+}
+
+/// Lowercase letters and digits with single dashes between runs; `section` when nothing is left.
+fn slug(text: &str) -> String {
+    let mut out = String::new();
+    let mut dash = false;
+    for c in text.chars() {
+        if c.is_alphanumeric() {
+            out.extend(c.to_lowercase());
+            dash = false;
+        } else if !dash && !out.is_empty() {
+            out.push('-');
+            dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.is_empty() {
+        "section".to_owned()
+    } else {
+        out
+    }
+}
+
+/// The text of a fragment this module wrote: tags dropped, the entities `escape` writes undone.
+fn text_of_html(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }
 
 fn push_text_with_wikilinks<'a>(
@@ -250,6 +352,32 @@ mod tests {
         assert!(r.html.contains("<table>"), "{}", r.html);
         assert!(r.html.contains("<del>gone</del>"), "{}", r.html);
         assert!(r.html.contains("type=\"checkbox\""), "{}", r.html);
+    }
+
+    #[test]
+    fn headings_get_anchor_ids_and_are_listed() {
+        let r = render_with(
+            "# Where found\n\ntext\n\n## Where  found\n\n### [[Oak Log]] & co\n\n#### !!!\n",
+            &[("Oak Log", "n1")],
+        );
+        let listed: Vec<(u8, &str, &str)> = r
+            .headings
+            .iter()
+            .map(|h| (h.level, h.text.as_str(), h.id.as_str()))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (1, "Where found", "where-found"),
+                (2, "Where found", "where-found-2"),
+                (3, "Oak Log & co", "oak-log-co"),
+                (4, "!!!", "section"),
+            ]
+        );
+        assert!(r.html.contains("<h1 id=\"where-found\">"), "{}", r.html);
+        assert!(r.html.contains("<h2 id=\"where-found-2\">"), "{}", r.html);
+        assert!(r.html.contains("<h3 id=\"oak-log-co\">"), "{}", r.html);
+        assert!(r.html.contains("<h4 id=\"section\">"), "{}", r.html);
     }
 
     #[test]

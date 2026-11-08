@@ -1,8 +1,8 @@
 <script lang="ts">
-  // The relation list on an entry page: core's display lines grouped by the words in the verb
-  // slot, with "Referenced by" below. One line can be selected (click, or arrows while the list
-  // has focus); a fixed action row then edits its qualifiers or deletes the edge. Enter opens the
-  // other end of the selected line.
+  // The relation list in the panel: core's display lines grouped by the words in the verb slot,
+  // with "Referenced by" below. One line can be selected (click, or arrows while the list has
+  // focus); the fixed action row then edits its qualifiers in a dialog or deletes the edge.
+  // Enter opens the other end of the selected line.
   import { untrack } from "svelte";
 
   import {
@@ -14,6 +14,7 @@
     type RelationView,
   } from "../lib/api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import Modal from "./Modal.svelte";
   import { verbSlot } from "../lib/format";
   import { bodySegments, otherEnd } from "../lib/relationLines";
   import { navigate, routeHash } from "../lib/router";
@@ -194,14 +195,7 @@
   </li>
 {/snippet}
 
-<section class="relations">
-  <div class="row">
-    <h2>Relations</h2>
-    <span class="spacer"></span>
-    <label class="row muted">
-      <input type="checkbox" bind:checked={includeExternal} /> Show external
-    </label>
-  </div>
+<section class="relations" aria-label="Relations">
   {#if error}<p class="error">{error}</p>{/if}
   {#if ordered.length === 0}
     <p class="muted">No relations yet. Type a verb above, such as DROPS.</p>
@@ -238,11 +232,14 @@
       <button class="danger" disabled={!selectedView} onclick={() => (pendingDelete = selectedView)}>
         Delete
       </button>
-      <span class="muted hint">
-        {#if selectedView}Enter opens the other end.{:else}Select a line to act on it.{/if}
-      </span>
     </div>
+    <p class="muted hint">
+      {#if selectedView}Enter opens the other end.{:else}Select a line to act on it.{/if}
+    </p>
   {/if}
+  <label class="row muted external">
+    <input type="checkbox" bind:checked={includeExternal} /> Show external
+  </label>
 
   <ConfirmDialog
     open={pendingDelete !== null}
@@ -253,52 +250,51 @@
     oncancel={() => (pendingDelete = null)}
   />
 
-  {#if editing}
-    <div class="edit">
-      <h3>
-        Qualifiers on {editing.relation.subject.title}
+  <Modal open={editing !== null} title="Edit qualifiers" onclose={() => (editing = null)}>
+    {#if editing}
+      <p class="muted">
+        {editing.relation.subject.title}
         {verbSlot(editing.relation.verb.label)}
         {editing.relation.object.title}
-      </h3>
-      {#each editing.rows as row, i (i)}
+      </p>
+      <div class="rows">
+        {#each editing.rows as row, i (i)}
+          <div class="row">
+            <select bind:value={row.label_id} aria-label="Qualifier label">
+              {#each labels as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
+            </select>
+            <input
+              type="text"
+              class="value"
+              bind:value={row.text}
+              placeholder="An entry title, text, or number"
+              aria-label="Qualifier value"
+            />
+            <button class="link danger" onclick={() => removeRow(i)}>Remove</button>
+          </div>
+        {/each}
         <div class="row">
-          <select bind:value={row.label_id} aria-label="Qualifier label">
-            {#each labels as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
-          </select>
-          <input
-            type="text"
-            bind:value={row.text}
-            placeholder="Value: an entry title, text, or number"
-            aria-label="Qualifier value"
-          />
-          <button class="link danger" onclick={() => removeRow(i)}>Remove</button>
+          <button onclick={addRow} disabled={labels.length === 0}>Add qualifier</button>
+          {#if labels.length === 0}
+            <span class="muted">Create a qualifier label from the relation line first.</span>
+          {/if}
         </div>
-      {/each}
-      <div class="row">
-        <button onclick={addRow} disabled={labels.length === 0}>Add qualifier</button>
-        <span class="spacer"></span>
-        <button onclick={() => (editing = null)}>Cancel</button>
-        <button class="primary" onclick={saveEdit}>Save</button>
       </div>
-      {#if labels.length === 0}
-        <p class="muted">Create a qualifier label from the relation line first.</p>
-      {/if}
-    </div>
-  {/if}
+    {/if}
+    {#snippet actions()}
+      <button onclick={() => (editing = null)}>Cancel</button>
+      <button class="primary" onclick={saveEdit}>Save</button>
+    {/snippet}
+  </Modal>
 </section>
 
 <style>
   .relations {
-    margin-top: 20px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
-  }
-  .spacer {
-    flex: 1;
+    margin-top: var(--space-2);
   }
   h3 {
-    margin: 10px 0 2px;
-    font-size: 0.95rem;
+    margin: var(--space-3) 0 2px;
+    font-size: 0.9rem;
     letter-spacing: 0.02em;
   }
   ul {
@@ -324,23 +320,23 @@
     background: var(--chip-bg);
   }
   .actions {
-    margin-top: 8px;
-    padding-top: 8px;
+    margin-top: var(--space-3);
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
   }
-  .actions .hint {
-    font-size: 0.9em;
+  .hint {
+    margin: 4px 0 0;
+    font-size: var(--small);
   }
-  .edit {
+  .external {
+    margin-top: var(--space-3);
+    font-size: var(--small);
+  }
+  .rows {
     display: grid;
     gap: 8px;
-    margin-top: 12px;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
   }
-  .edit input {
+  .value {
     flex: 1;
     min-width: 12em;
   }

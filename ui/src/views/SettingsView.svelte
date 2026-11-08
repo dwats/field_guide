@@ -1,12 +1,14 @@
 <script lang="ts">
-  // Where the data lives, the rolling backups with restore, and the update-check placeholder.
+  // Appearance choices as pictured toggles, where the data lives, the rolling backups with
+  // restore, and the update-check placeholder.
   import { untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
-  import { api, errorMessage, type BackupInfo } from "../lib/api";
+  import PrefCard from "../components/PrefCard.svelte";
+  import { api, errorMessage, type BackupInfo, type Density } from "../lib/api";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
-  import { notify, session, setCurrent } from "../lib/session.svelte";
+  import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
 
   let backups = $state<BackupInfo[]>([]);
   let busy = $state(false);
@@ -65,6 +67,9 @@
     }
   }
 
+  function setDensity(density: Density) {
+    void savePrefs({ density });
+  }
 
   function fileName(path: string): string {
     return path.split(/[\\/]/).pop() ?? path;
@@ -76,8 +81,93 @@
   }
 </script>
 
+<!-- Pictures: a window with a sidebar, a content column, and a panel, drawn in the muted colour
+     with the part a setting changes in the accent colour. -->
+{#snippet lines(count: number, gap: number)}
+  <svg viewBox="0 0 120 72">
+    {#each Array.from({ length: count }, (_, i) => i) as i (i)}
+      <rect x="14" y={12 + i * gap} width={i % 3 === 2 ? 56 : 88} height="3" rx="1.5" fill="currentColor" />
+    {/each}
+  </svg>
+{/snippet}
+
+{#snippet panelPicture(open: boolean)}
+  <svg viewBox="0 0 120 72">
+    <rect x="6" y="8" width="18" height="56" rx="2" fill="currentColor" opacity="0.35" />
+    <rect x="28" y="8" width={open ? 30 : 40} height="56" rx="2" fill="currentColor" opacity="0.35" />
+    <rect x={open ? 62 : 72} y="8" width={open ? 30 : 40} height="56" rx="2" fill="currentColor" opacity="0.35" />
+    <rect x={open ? 96 : 114} y="8" width={open ? 18 : 2} height="56" rx="1" fill="var(--accent)" />
+  </svg>
+{/snippet}
+
+{#snippet contentsPicture(hidden: boolean)}
+  <svg viewBox="0 0 120 72">
+    <rect x="6" y="8" width="18" height="56" rx="2" fill="currentColor" opacity="0.35" />
+    <rect x="28" y="8" width="56" height="56" rx="2" fill="currentColor" opacity="0.35" />
+    <rect x="88" y="8" width="26" height="56" rx="2" fill="currentColor" opacity="0.35" />
+    {#if hidden}
+      <rect x="92" y="14" width="18" height="3" rx="1.5" fill="var(--accent)" />
+    {:else}
+      <rect x="92" y="14" width="8" height="3" rx="1.5" fill="var(--accent)" />
+      <rect x="102" y="14" width="8" height="3" rx="1.5" fill="currentColor" />
+      <rect x="92" y="24" width="18" height="2" rx="1" fill="var(--accent)" />
+      <rect x="96" y="30" width="14" height="2" rx="1" fill="var(--accent)" />
+      <rect x="92" y="36" width="18" height="2" rx="1" fill="var(--accent)" />
+    {/if}
+  </svg>
+{/snippet}
+
 <div class="page">
   <h1>Settings</h1>
+
+  <section>
+    <h2>Appearance</h2>
+    <p class="muted">Each choice shows what it changes. Nothing here touches your data.</p>
+    <div class="group" role="radiogroup" aria-label="Density">
+      <h3>Density</h3>
+      <div class="cards">
+        <PrefCard
+          label="Compact"
+          description="Smaller type and tighter rows."
+          role="radio"
+          selected={session.prefs.density === "compact"}
+          onselect={() => setDensity("compact")}
+        >
+          {#snippet picture()}{@render lines(8, 6)}{/snippet}
+        </PrefCard>
+        <PrefCard
+          label="Roomy"
+          description="Larger type and more air."
+          role="radio"
+          selected={session.prefs.density === "roomy"}
+          onselect={() => setDensity("roomy")}
+        >
+          {#snippet picture()}{@render lines(5, 10)}{/snippet}
+        </PrefCard>
+      </div>
+    </div>
+    <div class="group">
+      <h3>Entry page</h3>
+      <div class="cards">
+        <PrefCard
+          label="Keep the right panel open while editing"
+          description="Off, the panel folds away in Split so the editor and the preview get the room."
+          selected={session.prefs.panel_open_in_edit}
+          onselect={(next) => void savePrefs({ panel_open_in_edit: next })}
+        >
+          {#snippet picture(on)}{@render panelPicture(on)}{/snippet}
+        </PrefCard>
+        <PrefCard
+          label="Always hide the table of contents"
+          description="Off, the Contents tab appears whenever the entry has a heading."
+          selected={session.prefs.hide_contents}
+          onselect={(next) => void savePrefs({ hide_contents: next })}
+        >
+          {#snippet picture(on)}{@render contentsPicture(on)}{/snippet}
+        </PrefCard>
+      </div>
+    </div>
+  </section>
 
   {#if startup}
     <section>
@@ -164,6 +254,17 @@
   }
   .spacer {
     flex: 1;
+  }
+  .group {
+    margin-top: var(--space-4);
+  }
+  .group h3 {
+    margin-bottom: var(--space-2);
+    font-size: 1rem;
+  }
+  .cards {
+    display: grid;
+    gap: var(--space-3);
   }
   .facts th {
     width: 10em;

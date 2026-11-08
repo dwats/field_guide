@@ -1,16 +1,15 @@
 <script lang="ts">
-  // An entry: title row with the mode toggle, the autosave slot and a More menu; tags and
-  // aliases; the relation line and list; the rendered body or the editor with a live preview.
-  // Edits save on a short delay and when the page is left. Moving to Trash does not confirm; it
-  // offers Undo in a notice instead.
+  // An entry: the content column (title row with the mode toggle, the autosave slot and a More
+  // menu; tags; aliases; the rendered body or the editor with a live preview) and the right
+  // panel with the Contents and Relations tabs. Edits save on a short delay and when the page is
+  // left. Moving to Trash does not confirm; it offers Undo in a notice instead.
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
+  import EntryPanel from "../components/EntryPanel.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
   import Preview from "../components/Preview.svelte";
-  import RelationBuilder from "../components/RelationBuilder.svelte";
-  import RelationList from "../components/RelationList.svelte";
   import TagPicker from "../components/TagPicker.svelte";
   import {
     api,
@@ -41,6 +40,8 @@
   let error = $state("");
   let missing = $state(false);
   let relationsVersion = $state(0);
+  /** The scrolling content column, for Contents jumps. */
+  let content = $state<HTMLElement | null>(null);
 
   let renaming = $state(false);
   let titleDraft = $state("");
@@ -315,6 +316,13 @@
     }
   }
 
+  /** Scrolls the body to a heading; the ids come from core's renderer. */
+  function jumpTo(id: string) {
+    content
+      ?.querySelector<HTMLElement>(`.preview [id="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: "start" });
+  }
+
   onDestroy(() => {
     clearTimeout(previewTimer);
     clearTimeout(saveTimer);
@@ -322,92 +330,105 @@
   });
 </script>
 
-<div class="page">
-  {#if entry && guide}
-    <div class="row header">
-      <h1>{entry.title}</h1>
-      {#if entry.is_stub}<span class="chip">stub</span>{/if}
-      <span class="spacer"></span>
-      <div class="segmented" role="group" aria-label="Mode">
-        <button class:on={mode === "read"} onclick={() => setMode("read")}>Read</button>
-        <button class:on={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
-      </div>
-      <span class="save-slot" aria-live="polite">
-        {#if mode === "edit"}
-          {#if saveState === "saved"}
-            <span class="muted">Saved</span>
-          {:else if saveState === "dirty"}
-            <span class="muted">Unsaved</span>
-          {:else}
-            <span class="error">Save failed</span>
-            <button class="link" onclick={() => void save()}>Retry</button>
-          {/if}
-        {/if}
-      </span>
-      <Menu>
-        {#snippet items(close)}
-          <button
-            role="menuitem"
-            onclick={() => {
-              close();
-              openRename();
-            }}
-          >
-            Rename...
-          </button>
-          <button
-            role="menuitem"
-            onclick={() => {
-              close();
-              editingAliases = true;
-            }}
-          >
-            Edit aliases...
-          </button>
-          {#if undoable}
-            <button
-              role="menuitem"
-              onclick={() => {
-                close();
-                void undoRename();
-              }}
-            >
-              Undo rename (from "{undoable.old_title}")
-            </button>
-          {/if}
-          <div class="separator"></div>
-          <button
-            role="menuitem"
-            class="danger"
-            onclick={() => {
-              close();
-              void moveToTrash();
-            }}
-          >
-            Move to Trash
-          </button>
-        {/snippet}
-      </Menu>
-    </div>
-
-    <div class="row meta">
-      <TagPicker scope={guide.id} selected={entry.tag_ids} onchange={setTags} compact />
-    </div>
-    {#if entry.aliases.length > 0}
-      <p class="muted aliases">Aliases: {entry.aliases.join(", ")}</p>
-    {/if}
-
-    <RelationBuilder {entry} {guide} onsaved={relationSaved} />
-
-    {#if error}<p class="error">{error}</p>{/if}
-
-    {#if mode === "edit"}
-      <div class="split">
-        <div class="pane">
-          <Editor value={draft} onchange={onEditorChange} onsave={() => void save()} />
+<div class="entry">
+  <div class="content" bind:this={content}>
+    <div class="page">
+      {#if entry && guide}
+        <div class="row header">
+          <h1>{entry.title}</h1>
+          {#if entry.is_stub}<span class="chip">stub</span>{/if}
+          <span class="spacer"></span>
+          <div class="segmented" role="group" aria-label="Mode">
+            <button class:on={mode === "read"} onclick={() => setMode("read")}>Read</button>
+            <button class:on={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
+          </div>
+          <span class="save-slot" aria-live="polite">
+            {#if mode === "edit"}
+              {#if saveState === "saved"}
+                <span class="muted">Saved</span>
+              {:else if saveState === "dirty"}
+                <span class="muted">Unsaved</span>
+              {:else}
+                <span class="error">Save failed</span>
+                <button class="link" onclick={() => void save()}>Retry</button>
+              {/if}
+            {/if}
+          </span>
+          <Menu>
+            {#snippet items(close)}
+              <button
+                role="menuitem"
+                onclick={() => {
+                  close();
+                  openRename();
+                }}
+              >
+                Rename...
+              </button>
+              <button
+                role="menuitem"
+                onclick={() => {
+                  close();
+                  editingAliases = true;
+                }}
+              >
+                Edit aliases...
+              </button>
+              {#if undoable}
+                <button
+                  role="menuitem"
+                  onclick={() => {
+                    close();
+                    void undoRename();
+                  }}
+                >
+                  Undo rename (from "{undoable.old_title}")
+                </button>
+              {/if}
+              <div class="separator"></div>
+              <button
+                role="menuitem"
+                class="danger"
+                onclick={() => {
+                  close();
+                  void moveToTrash();
+                }}
+              >
+                Move to Trash
+              </button>
+            {/snippet}
+          </Menu>
         </div>
-        <div class="pane">
-          {#if rendered}
+
+        <div class="row meta">
+          <TagPicker scope={guide.id} selected={entry.tag_ids} onchange={setTags} compact />
+        </div>
+        {#if entry.aliases.length > 0}
+          <p class="muted aliases">Aliases: {entry.aliases.join(", ")}</p>
+        {/if}
+
+        {#if error}<p class="error">{error}</p>{/if}
+
+        {#if mode === "edit"}
+          <div class="split">
+            <div class="pane">
+              <Editor value={draft} onchange={onEditorChange} onsave={() => void save()} />
+            </div>
+            <div class="pane">
+              {#if rendered}
+                <Preview
+                  html={rendered.html}
+                  mediaDir={session.startup?.media_dir ?? null}
+                  onnavigate={(id) => navigate({ view: "entry", entryId: id })}
+                  oncreate={createFromLink}
+                />
+              {/if}
+            </div>
+          </div>
+        {:else if rendered}
+          {#if entry.body_md.trim() === ""}
+            <p class="muted">No body yet. Choose Edit to write one.</p>
+          {:else}
             <Preview
               html={rendered.html}
               mediaDir={session.startup?.media_dir ?? null}
@@ -415,108 +436,110 @@
               oncreate={createFromLink}
             />
           {/if}
-        </div>
-      </div>
-    {:else if rendered}
-      {#if entry.body_md.trim() === ""}
-        <p class="muted">No body yet. Choose Edit to write one.</p>
-      {:else}
-        <Preview
-          html={rendered.html}
-          mediaDir={session.startup?.media_dir ?? null}
-          onnavigate={(id) => navigate({ view: "entry", entryId: id })}
-          oncreate={createFromLink}
-        />
-      {/if}
-    {/if}
+        {/if}
 
-    {#if rendered && rendered.unresolved_links.length > 0}
-      <p class="muted">
-        Links to entries that do not exist yet: {rendered.unresolved_links.join(", ")}. Click one
-        to create it.
-      </p>
-    {/if}
+        <Modal open={renaming} title="Rename entry" onclose={() => (renaming = false)}>
+          <form
+            onsubmit={(e) => {
+              e.preventDefault();
+              void rename();
+            }}
+          >
+            <label>
+              New title
+              <!-- svelte-ignore a11y_autofocus -->
+              <input type="text" bind:value={titleDraft} required autofocus />
+            </label>
+            <p class="muted">
+              Links to this entry are rewritten and the old title stays as an alias. Undo is
+              available until Field Guide closes.
+            </p>
+          </form>
+          {#snippet actions()}
+            <button onclick={() => (renaming = false)}>Cancel</button>
+            <button class="primary" onclick={rename}>Rename</button>
+          {/snippet}
+        </Modal>
 
-    <RelationList entryId={entry.id} guideId={guide.id} version={relationsVersion} />
-
-    {#if mentionedBy.length > 0}
-      <section class="mentions">
-        <h2>Mentioned by</h2>
-        <ul>
-          {#each mentionedBy as m (m.id)}
-            <li><a href={routeHash({ view: "entry", entryId: m.id })}>{m.title}</a></li>
-          {/each}
-        </ul>
-      </section>
-    {/if}
-
-    <Modal open={renaming} title="Rename entry" onclose={() => (renaming = false)}>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void rename();
-        }}
-      >
-        <label>
-          New title
-          <!-- svelte-ignore a11y_autofocus -->
-          <input type="text" bind:value={titleDraft} required autofocus />
-        </label>
-        <p class="muted">
-          Links to this entry are rewritten and the old title stays as an alias. Undo is available
-          until Field Guide closes.
+        <Modal open={editingAliases} title="Edit aliases" onclose={() => (editingAliases = false)}>
+          <p class="muted">Other names this entry answers to. Links through an alias resolve to it.</p>
+          <div class="row">
+            {#each entry.aliases as alias (alias)}
+              <span class="chip">
+                {alias}
+                <button onclick={() => removeAlias(alias)} aria-label="Remove alias {alias}">&times;</button>
+              </span>
+            {/each}
+          </div>
+          <form
+            onsubmit={(e) => {
+              e.preventDefault();
+              void addAlias();
+            }}
+          >
+            <label>
+              Add alias
+              <!-- svelte-ignore a11y_autofocus -->
+              <input type="text" bind:value={aliasDraft} autofocus placeholder="Press Enter to add" />
+            </label>
+          </form>
+          {#snippet actions()}
+            <button class="primary" onclick={() => (editingAliases = false)}>Done</button>
+          {/snippet}
+        </Modal>
+      {:else if missing}
+        <h1>This entry no longer exists</h1>
+        <p class="muted">It was purged from Trash, or a backup was restored.</p>
+        <p>
+          {#if guide}
+            <a href={routeHash({ view: "guide", guideId: guide.id })}>Back to {guide.name}</a>
+          {:else}
+            <a href={routeHash({ view: "guides" })}>Back to Guides</a>
+          {/if}
         </p>
-      </form>
-      {#snippet actions()}
-        <button onclick={() => (renaming = false)}>Cancel</button>
-        <button class="primary" onclick={rename}>Rename</button>
-      {/snippet}
-    </Modal>
-
-    <Modal open={editingAliases} title="Edit aliases" onclose={() => (editingAliases = false)}>
-      <p class="muted">Other names this entry answers to. Links through an alias resolve to it.</p>
-      <div class="row">
-        {#each entry.aliases as alias (alias)}
-          <span class="chip">
-            {alias}
-            <button onclick={() => removeAlias(alias)} aria-label="Remove alias {alias}">&times;</button>
-          </span>
-        {/each}
-      </div>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void addAlias();
-        }}
-      >
-        <label>
-          Add alias
-          <!-- svelte-ignore a11y_autofocus -->
-          <input type="text" bind:value={aliasDraft} autofocus placeholder="Press Enter to add" />
-        </label>
-      </form>
-      {#snippet actions()}
-        <button class="primary" onclick={() => (editingAliases = false)}>Done</button>
-      {/snippet}
-    </Modal>
-  {:else if missing}
-    <h1>This entry no longer exists</h1>
-    <p class="muted">It was purged from Trash, or a backup was restored.</p>
-    <p>
-      {#if guide}
-        <a href={routeHash({ view: "guide", guideId: guide.id })}>Back to {guide.name}</a>
-      {:else}
-        <a href={routeHash({ view: "guides" })}>Back to Guides</a>
+      {:else if error}
+        <p class="error">{error}</p>
       {/if}
-    </p>
-  {:else if error}
-    <p class="error">{error}</p>
+    </div>
+  </div>
+  {#if entry && guide}
+    <EntryPanel
+      {entry}
+      {guide}
+      {rendered}
+      {mentionedBy}
+      version={relationsVersion}
+      {mode}
+      onsaved={relationSaved}
+      oncreate={createFromLink}
+      onjump={jumpTo}
+    />
   {/if}
 </div>
 
 <style>
+  /* The content column and the panel scroll on their own; the panel sizes its own column. */
+  .entry {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .content {
+    min-width: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+  /* One line always: a long title truncates instead of pushing the controls down. */
   .header {
-    margin-bottom: 8px;
+    flex-wrap: nowrap;
+    margin-bottom: var(--space-2);
+  }
+  .header h1 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .spacer {
     flex: 1;
@@ -553,19 +576,14 @@
   .split {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-top: 12px;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
     min-height: 60vh;
   }
   .pane {
     display: flex;
     flex-direction: column;
     min-width: 0;
-  }
-  .mentions {
-    margin-top: 24px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
   }
   label {
     display: grid;

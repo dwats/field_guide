@@ -434,7 +434,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    min-height: 28px;
+    min-height: var(--row-h);
     padding-right: 10px;
     border-left: 3px solid transparent;
     color: inherit;

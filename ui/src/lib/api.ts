@@ -163,10 +163,20 @@ export interface NameMatch {
   is_stub: boolean;
 }
 
+export interface Heading {
+  /** 1 to 6. */
+  level: number;
+  text: string;
+  /** The id on the heading element. */
+  id: string;
+}
+
 export interface Rendered {
   html: string;
   unresolved_links: string[];
   linked_entry_ids: Id[];
+  /** The body's headings in order. */
+  headings: Heading[];
 }
 
 // ---- relations and vocabulary (used from phase 5 on) ----

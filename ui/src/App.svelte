@@ -24,9 +24,19 @@
   const inGuide = $derived(
     route.view === "guide" || route.view === "tags" || route.view === "entry" || route.view === "trash",
   );
+  /** The sidebar column: a rail when collapsed, the dragged width, else the density preset's. */
   const sidebarWidth = $derived(
-    session.prefs.sidebar_collapsed ? "28px" : `${session.prefs.sidebar_width ?? 260}px`,
+    session.prefs.sidebar_collapsed
+      ? "28px"
+      : session.prefs.sidebar_width
+        ? `${session.prefs.sidebar_width}px`
+        : "var(--sidebar-w)",
   );
+
+  // The density preset is an attribute on <html>, so every size token follows it.
+  $effect(() => {
+    document.documentElement.dataset.density = session.prefs.density;
+  });
 
   interface Crumb {
     text: string;
@@ -166,11 +176,11 @@
       {/if}
     </div>
   {/if}
-  <div class="columns" class:with-sidebar={inGuide} style:--sidebar-w={sidebarWidth}>
+  <div class="columns" class:with-sidebar={inGuide} style:--sidebar-col={sidebarWidth}>
     {#if inGuide}
       <Sidebar {route} />
     {/if}
-    <main tabindex="-1">
+    <main tabindex="-1" class:split={route.view === "entry"}>
       {#if route.view === "guides"}
         <GuidesView />
       {:else if route.view === "guide"}
@@ -250,13 +260,20 @@
     grid-template-columns: 1fr;
   }
   .columns.with-sidebar {
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-col) minmax(0, 1fr);
   }
   main {
+    display: flex;
+    flex-direction: column;
     min-height: 0;
     overflow: auto;
     /* The gutter is always reserved, so a page that grows a scrollbar does not shift sideways. */
     scrollbar-gutter: stable;
+  }
+  /* The entry page scrolls its own columns. */
+  main.split {
+    overflow: hidden;
+    scrollbar-gutter: auto;
   }
   main:focus {
     outline: none;
