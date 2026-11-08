@@ -5,7 +5,7 @@
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import { api, errorMessage, type Guide, type TagNode } from "../lib/api";
-  import { routeHash } from "../lib/router";
+  import { setCurrent, touch } from "../lib/session.svelte";
 
   interface Props {
     guideId: string;
@@ -33,6 +33,7 @@
   async function load() {
     try {
       guide = await api.getGuide(guideId);
+      setCurrent(guide, null);
       tree = await api.tagTree(guideId);
       error = "";
     } catch (e) {
@@ -43,6 +44,7 @@
   async function run(action: () => Promise<unknown>) {
     try {
       await action();
+      touch();
       error = "";
       await load();
     } catch (e) {
@@ -186,10 +188,6 @@
 
 <div class="page">
   {#if guide}
-    <p class="muted crumbs">
-      <a href={routeHash({ view: "guides" })}>Guides</a> /
-      <a href={routeHash({ view: "guide", guideId })}>{guide.name}</a>
-    </p>
     <div class="row header">
       <h1>Tags</h1>
       <span class="spacer"></span>
@@ -255,9 +253,6 @@
 </div>
 
 <style>
-  .crumbs {
-    margin-bottom: 4px;
-  }
   .header {
     margin-bottom: 4px;
   }

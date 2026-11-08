@@ -114,6 +114,7 @@ fn search_is_scoped_to_the_guide_and_combines_with_tags() {
         tag_ids: vec![tools.id.clone()],
         text: Some("pick".to_owned()),
         stubs_only: false,
+        untagged: false,
     };
     assert_eq!(titles(&v.list_entries(&g, &query).unwrap()), ["Pickaxe"]);
     assert_eq!(search(&v, &h, "pick"), ["Pickaxe"]);

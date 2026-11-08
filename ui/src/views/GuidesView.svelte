@@ -6,7 +6,7 @@
   import Modal from "../components/Modal.svelte";
   import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
-  import { session } from "../lib/session.svelte";
+  import { savePrefs, session, setCurrent } from "../lib/session.svelte";
   import { when } from "../lib/format";
   import { flattenTags, type TagOption } from "../lib/tags";
 
@@ -29,7 +29,10 @@
   });
 
   $effect(() => {
-    untrack(() => void loadTags());
+    untrack(() => {
+      setCurrent(null);
+      void loadTags();
+    });
   });
 
   async function load(name: string, tagIds: string[]) {
@@ -57,7 +60,7 @@
   }
 
   async function setView(view: GuideView) {
-    session.prefs = await api.setPrefs({ ...session.prefs, guide_view: view });
+    await savePrefs({ guide_view: view });
   }
 
   async function create() {

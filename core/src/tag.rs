@@ -5,7 +5,7 @@
 //! retags, carries the source's children along, and deletes the source. In both cases a child
 //! whose name is already taken at its new level is merged into that tag rather than lost.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,25 @@ pub struct TagNode {
     /// Display path, e.g. `Consumables/Potions`.
     pub path: String,
     pub children: Vec<TagNode>,
+}
+
+/// How many live entries a guide holds: in total, with no tag, in the Trash, and per tag. The
+/// sidebar shows these beside the tree.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryCounts {
+    pub total: usize,
+    pub untagged: usize,
+    pub trashed: usize,
+    pub by_tag: Vec<TagCount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TagCount {
+    pub tag_id: TagId,
+    /// Live entries carrying the tag itself.
+    pub direct: usize,
+    /// Distinct live entries carrying the tag or any tag under it.
+    pub subtree: usize,
 }
 
 impl Vault {
@@ -223,6 +242,75 @@ impl Vault {
         load_tag(self.conn(), id)?;
         subtree_ids(self.conn(), id)
     }
+
+    /// Live entry counts for the sidebar: total, untagged, trashed, and per tag with and without
+    /// its subtree. One pass over the guide's tag assignments, no query per tag.
+    pub fn entry_counts(&self, guide_id: &GuideId) -> Result<EntryCounts> {
+        self.get_guide(guide_id)?;
+        let conn = self.conn();
+        let count = |condition: &str| -> Result<usize> {
+            let n: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM entry n WHERE n.guide_id = ?1 AND {condition}"),
+                params![guide_id],
+                |row| row.get(0),
+            )?;
+            Ok(usize::try_from(n).unwrap_or(0))
+        };
+        let total = count("n.deleted_at IS NULL")?;
+        let trashed = count("n.deleted_at IS NOT NULL")?;
+        let untagged = count(
+            "n.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM entry_tag nt WHERE nt.entry_id = n.id)",
+        )?;
+
+        let mut direct: HashMap<TagId, HashSet<EntryId>> = HashMap::new();
+        let mut stmt = conn.prepare(
+            "SELECT nt.tag_id, nt.entry_id FROM entry_tag nt JOIN entry n ON n.id = nt.entry_id
+             WHERE n.guide_id = ?1 AND n.deleted_at IS NULL",
+        )?;
+        let rows = stmt.query_map(params![guide_id], |row| {
+            Ok((row.get::<_, TagId>(0)?, row.get::<_, EntryId>(1)?))
+        })?;
+        for row in rows {
+            let (tag_id, entry_id) = row?;
+            direct.entry(tag_id).or_default().insert(entry_id);
+        }
+
+        let mut children: HashMap<Option<TagId>, Vec<TagId>> = HashMap::new();
+        for tag in list_scope(conn, Some(guide_id))? {
+            children.entry(tag.parent_id).or_default().push(tag.id);
+        }
+        let mut by_tag = Vec::new();
+        for root in children.get(&None).cloned().unwrap_or_default() {
+            count_subtree(&root, &children, &direct, &mut by_tag);
+        }
+        Ok(EntryCounts {
+            total,
+            untagged,
+            trashed,
+            by_tag,
+        })
+    }
+}
+
+/// A tag's subtree set is its own entries plus its children's sets. Pushes one count per tag,
+/// children before their parent.
+fn count_subtree(
+    id: &TagId,
+    children: &HashMap<Option<TagId>, Vec<TagId>>,
+    direct: &HashMap<TagId, HashSet<EntryId>>,
+    out: &mut Vec<TagCount>,
+) -> HashSet<EntryId> {
+    let mut set = direct.get(id).cloned().unwrap_or_default();
+    let own = set.len();
+    for child in children.get(&Some(id.clone())).into_iter().flatten() {
+        set.extend(count_subtree(child, children, direct, out));
+    }
+    out.push(TagCount {
+        tag_id: id.clone(),
+        direct: own,
+        subtree: set.len(),
+    });
+    set
 }
 
 const COLUMNS: &str = "id, scope_guide_id, parent_id, name, color";

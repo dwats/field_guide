@@ -1,7 +1,7 @@
 use std::fs;
 
 use fieldguide_core::Error;
-use fieldguide_core::config::{Config, GuideView, WindowState};
+use fieldguide_core::config::{Config, Density, GuideView, WindowState};
 use fieldguide_core::datadir::{DataDir, Mode};
 use tempfile::tempdir;
 
@@ -99,6 +99,10 @@ fn ui_prefs_and_the_sync_warning_round_trip() {
     };
     let mut config = Config::default_for(&data);
     config.ui.guide_view = GuideView::Table;
+    config.ui.density = Density::Compact;
+    config.ui.sidebar_collapsed = true;
+    config.ui.sidebar_width = Some(240);
+    config.ui.sidebar_split = Some(35);
     config.sync_warning_shown_for = Some("D:/stick".to_owned());
     config.save(&data).unwrap();
     assert_eq!(Config::load(&data).unwrap(), config);
@@ -114,5 +118,7 @@ fn a_config_from_before_ui_prefs_existed_still_loads() {
     fs::write(data.config_path(), "vault = \"vault\"\n").unwrap();
     let loaded = Config::load(&data).unwrap();
     assert_eq!(loaded.ui.guide_view, GuideView::Cards);
+    assert_eq!(loaded.ui.density, Density::Roomy);
+    assert!(loaded.ui.sidebar_width.is_none());
     assert!(loaded.sync_warning_shown_for.is_none());
 }

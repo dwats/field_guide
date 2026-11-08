@@ -101,6 +101,7 @@ fn main() -> anyhow::Result<()> {
             commands::purge_entry,
             commands::list_trash,
             commands::empty_trash,
+            commands::entry_counts,
             commands::render_entry,
             commands::render_markdown,
             commands::relations_for_entry,

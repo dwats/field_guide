@@ -36,6 +36,8 @@ pub struct EntrySummary {
     pub deleted_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// The entry's tags, by name, so a list can show paths without a query per row.
+    pub tag_ids: Vec<TagId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +60,9 @@ pub struct EntryQuery {
     pub text: Option<String>,
     #[serde(default)]
     pub stubs_only: bool,
+    /// Only entries with no tag at all: the sidebar's "Untagged" scope.
+    #[serde(default)]
+    pub untagged: bool,
 }
 
 /// A title or alias that starts with what the user typed, for autocomplete.
@@ -295,6 +300,11 @@ impl Vault {
         if query.stubs_only {
             conditions.push("n.is_stub = 1".to_owned());
         }
+        if query.untagged {
+            conditions.push(
+                "NOT EXISTS (SELECT 1 FROM entry_tag nt WHERE nt.entry_id = n.id)".to_owned(),
+            );
+        }
         sql.push_str(" WHERE ");
         sql.push_str(&conditions.join(" AND "));
         sql.push_str(if text.is_some() {
@@ -435,10 +445,14 @@ impl Vault {
     }
 }
 
-const SUMMARY_COLUMNS: &str =
-    "n.id, n.guide_id, n.title, n.is_stub, n.deleted_at, n.created_at, n.updated_at";
+/// Every query that selects these aliases the entry table as `n`. The last column is the
+/// entry's tag ids in name order, joined with commas, from a correlated subquery.
+const SUMMARY_COLUMNS: &str = "n.id, n.guide_id, n.title, n.is_stub, n.deleted_at, n.created_at, n.updated_at, \
+     (SELECT group_concat(tag_id) FROM (SELECT nt.tag_id FROM entry_tag nt JOIN tag t ON t.id = nt.tag_id \
+       WHERE nt.entry_id = n.id ORDER BY t.name_norm, t.id))";
 
 fn summary_from_row(row: &Row<'_>) -> rusqlite::Result<EntrySummary> {
+    let tags: Option<String> = row.get(7)?;
     Ok(EntrySummary {
         id: row.get(0)?,
         guide_id: row.get(1)?,
@@ -447,6 +461,9 @@ fn summary_from_row(row: &Row<'_>) -> rusqlite::Result<EntrySummary> {
         deleted_at: row.get(4)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
+        tag_ids: tags
+            .map(|joined| joined.split(',').map(TagId::from).collect())
+            .unwrap_or_default(),
     })
 }
 

@@ -1,5 +1,6 @@
 use std::slice::from_ref;
 
+use fieldguide_core::entry::EntryQuery;
 use fieldguide_core::{Error, TagId};
 
 use fieldguide_core::board::BoardFilters;
@@ -257,4 +258,58 @@ fn merging_a_tag_follows_through_to_verb_defaults_and_board_filters() {
     v.delete_tag(&minerals.id).unwrap();
     assert!(v.get_board(&board.id).unwrap().filters.tag_ids.is_empty());
     assert_eq!(v.get_verb(&drops.id).unwrap().object_default_tag_id, None);
+}
+
+#[test]
+fn entry_counts_follow_the_tree_the_trash_and_untagged_entries() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let blocks = v.ensure_tag_path(Some(&g), "Blocks").unwrap();
+    let natural = v.ensure_tag_path(Some(&g), "Blocks/Natural").unwrap();
+    let ore = v.ensure_tag_path(Some(&g), "Blocks/Ore").unwrap();
+    let stone = entry(&mut v, &g, "Stone", "");
+    let iron = entry(&mut v, &g, "Iron Ore", "");
+    let both = entry(&mut v, &g, "Deepslate Iron", "");
+    entry(&mut v, &g, "Loose", "");
+    let gone = entry(&mut v, &g, "Gone", "");
+    v.set_entry_tags(&stone, from_ref(&natural.id)).unwrap();
+    v.set_entry_tags(&iron, from_ref(&ore.id)).unwrap();
+    v.set_entry_tags(&both, &[ore.id.clone(), natural.id.clone()])
+        .unwrap();
+    v.set_entry_tags(&gone, from_ref(&blocks.id)).unwrap();
+    v.trash_entry(&gone).unwrap();
+
+    let counts = v.entry_counts(&g).unwrap();
+    assert_eq!((counts.total, counts.untagged, counts.trashed), (4, 1, 1));
+    let of = |id: &TagId| {
+        let c = counts.by_tag.iter().find(|c| &c.tag_id == id).unwrap();
+        (c.direct, c.subtree)
+    };
+    // Gone is in the Trash, so Blocks has no live direct entry; its subtree has three distinct.
+    assert_eq!(of(&blocks.id), (0, 3));
+    assert_eq!(of(&natural.id), (2, 2));
+    assert_eq!(of(&ore.id), (2, 2));
+
+    let untagged = v
+        .list_entries(
+            &g,
+            &EntryQuery {
+                untagged: true,
+                ..EntryQuery::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(titles(&untagged), ["Loose"]);
+
+    // Summaries carry tag ids in name order, so a list shows paths without a query per row.
+    let all = v.list_entries(&g, &EntryQuery::default()).unwrap();
+    let deepslate = all.iter().find(|e| e.title == "Deepslate Iron").unwrap();
+    assert_eq!(deepslate.tag_ids, [natural.id.clone(), ore.id.clone()]);
+    assert!(
+        all.iter()
+            .find(|e| e.title == "Loose")
+            .unwrap()
+            .tag_ids
+            .is_empty()
+    );
 }

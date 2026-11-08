@@ -6,7 +6,7 @@
   import { api, errorMessage, type BackupInfo } from "../lib/api";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
-  import { notify, session } from "../lib/session.svelte";
+  import { notify, session, setCurrent } from "../lib/session.svelte";
 
   let backups = $state<BackupInfo[]>([]);
   let busy = $state(false);
@@ -16,7 +16,10 @@
   const startup = $derived(session.startup);
 
   $effect(() => {
-    untrack(() => void load());
+    untrack(() => {
+      setCurrent(null);
+      void load();
+    });
   });
 
   async function load() {

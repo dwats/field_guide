@@ -6,6 +6,7 @@
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
+  import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
   import Preview from "../components/Preview.svelte";
   import RelationBuilder from "../components/RelationBuilder.svelte";
@@ -21,9 +22,8 @@
     type RenameRecord,
     type Rendered,
   } from "../lib/api";
-  import { moveHighlight } from "../lib/combobox";
   import { navigate, replace, routeHash } from "../lib/router";
-  import { notify, session } from "../lib/session.svelte";
+  import { notify, session, setCurrent, touch } from "../lib/session.svelte";
 
   interface Props {
     entryId: string;
@@ -42,9 +42,6 @@
   let missing = $state(false);
   let relationsVersion = $state(0);
 
-  let menuOpen = $state(false);
-  let moreButton = $state<HTMLButtonElement | null>(null);
-  let menu = $state<HTMLDivElement | null>(null);
   let renaming = $state(false);
   let titleDraft = $state("");
   let editingAliases = $state(false);
@@ -62,53 +59,16 @@
     untrack(() => void load(id));
   });
 
-  // The More menu: focus moves to its first item when it opens, arrows walk the items, Escape or
-  // a click anywhere else closes it, and focus returns to the More button.
-  $effect(() => {
-    if (!menuOpen) return;
-    const items = () =>
-      Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-    items()[0]?.focus();
-    const close = () => (menuOpen = false);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMenu();
-      } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        const list = items();
-        const delta = event.key === "ArrowDown" ? 1 : -1;
-        const index = list.indexOf(document.activeElement as HTMLButtonElement);
-        const from = index >= 0 ? index : delta > 0 ? -1 : 0;
-        list[moveHighlight(from, delta, list.length)]?.focus();
-      } else if (event.key === "Tab") {
-        menuOpen = false;
-      }
-    };
-    window.addEventListener("click", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  });
-
-  /** Closes the menu with focus back on More, so a dialog opened from an item returns there. */
-  function closeMenu() {
-    menuOpen = false;
-    moreButton?.focus();
-  }
-
   async function load(id: string) {
     await leave();
     mode = "read";
     renaming = false;
     editingAliases = false;
-    menuOpen = false;
     missing = false;
     try {
       entry = await api.getEntry(id);
       guide = await api.getGuide(entry.guide_id);
+      setCurrent(guide, entry);
       draft = entry.body_md;
       saveState = "saved";
       await refresh();
@@ -215,7 +175,6 @@
   function openRename() {
     if (!entry) return;
     titleDraft = entry.title;
-    closeMenu();
     renaming = true;
   }
 
@@ -234,6 +193,7 @@
       renaming = false;
       error = "";
       await load(id);
+      touch();
       notify(`Renamed "${old}" to "${title}".`, {
         action: { label: "Undo", run: () => revertRename(id, record) },
       });
@@ -246,13 +206,13 @@
   async function revertRename(id: string, record: RenameRecord) {
     await api.undoRename(record);
     delete session.renames[id];
+    touch();
     if (entry?.id === id) await load(id);
     else navigate({ view: "entry", entryId: id });
   }
 
   async function undoRename() {
     if (!entry || !undoable) return;
-    closeMenu();
     try {
       await revertRename(entry.id, undoable);
     } catch (e) {
@@ -286,6 +246,8 @@
     if (!entry) return;
     try {
       entry = await api.setEntryTags(entry.id, ids);
+      setCurrent(guide, entry);
+      touch();
     } catch (e) {
       error = errorMessage(e);
     }
@@ -294,17 +256,18 @@
   /** Reversible, so no confirmation: the notice carries Undo, and Back does not return here. */
   async function moveToTrash() {
     if (!entry) return;
-    closeMenu();
     const { id, title, guide_id } = entry;
     try {
       await leave();
       await api.trashEntry(id);
+      touch();
       replace({ view: "guide", guideId: guide_id });
       notify(`Moved "${title}" to Trash.`, {
         action: {
           label: "Undo",
           run: async () => {
             await api.restoreEntry(id);
+            touch();
             navigate({ view: "entry", entryId: id });
           },
         },
@@ -321,12 +284,14 @@
     try {
       await flush();
       const created = await api.createEntry(entry.guide_id, title);
+      touch();
       navigate({ view: "entry", entryId: created.id });
       notify(`Created "${title}".`, {
         action: {
           label: "Undo",
           run: async () => {
             await api.trashEntry(created.id);
+            touch();
             // Leave the trashed entry's page if it is still showing; anywhere else, stay put.
             if (window.location.hash === routeHash({ view: "entry", entryId: created.id })) {
               replace({ view: "entry", entryId: origin });
@@ -344,6 +309,8 @@
     // A stub may have been created or the body's links may now resolve.
     if (entry) {
       entry = await api.getEntry(entry.id);
+      setCurrent(guide, entry);
+      touch();
       await refresh();
     }
   }
@@ -357,11 +324,6 @@
 
 <div class="page">
   {#if entry && guide}
-    <p class="muted crumbs">
-      <a href={routeHash({ view: "guides" })}>Guides</a> /
-      <a href={routeHash({ view: "guide", guideId: guide.id })}>{guide.name}</a>
-    </p>
-
     <div class="row header">
       <h1>{entry.title}</h1>
       {#if entry.is_stub}<span class="chip">stub</span>{/if}
@@ -382,45 +344,50 @@
           {/if}
         {/if}
       </span>
-      <div class="more">
-        <button
-          bind:this={moreButton}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onclick={(e) => {
-            e.stopPropagation();
-            menuOpen = !menuOpen;
-          }}
-        >
-          More
-        </button>
-        {#if menuOpen}
-          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <div
-            class="menu"
-            role="menu"
-            tabindex="-1"
-            bind:this={menu}
-            onclick={(e) => e.stopPropagation()}
+      <Menu>
+        {#snippet items(close)}
+          <button
+            role="menuitem"
+            onclick={() => {
+              close();
+              openRename();
+            }}
           >
-            <button role="menuitem" onclick={openRename}>Rename...</button>
+            Rename...
+          </button>
+          <button
+            role="menuitem"
+            onclick={() => {
+              close();
+              editingAliases = true;
+            }}
+          >
+            Edit aliases...
+          </button>
+          {#if undoable}
             <button
               role="menuitem"
               onclick={() => {
-                closeMenu();
-                editingAliases = true;
+                close();
+                void undoRename();
               }}
             >
-              Edit aliases...
+              Undo rename (from "{undoable.old_title}")
             </button>
-            {#if undoable}
-              <button role="menuitem" onclick={undoRename}>Undo rename (from "{undoable.old_title}")</button>
-            {/if}
-            <div class="separator"></div>
-            <button role="menuitem" class="danger" onclick={moveToTrash}>Move to Trash</button>
-          </div>
-        {/if}
-      </div>
+          {/if}
+          <div class="separator"></div>
+          <button
+            role="menuitem"
+            class="danger"
+            onclick={() => {
+              close();
+              void moveToTrash();
+            }}
+          >
+            Move to Trash
+          </button>
+        {/snippet}
+      </Menu>
     </div>
 
     <div class="row meta">
@@ -548,9 +515,6 @@
 </div>
 
 <style>
-  .crumbs {
-    margin-bottom: 4px;
-  }
   .header {
     margin-bottom: 8px;
   }
@@ -585,38 +549,6 @@
     gap: 4px;
     min-width: 11em;
     font-size: 0.9em;
-  }
-  .more {
-    position: relative;
-  }
-  .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    z-index: 5;
-    min-width: 14em;
-    display: flex;
-    flex-direction: column;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg);
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
-  }
-  .menu button {
-    text-align: left;
-    border: none;
-    background: none;
-    padding: 6px 10px;
-    border-radius: 4px;
-  }
-  .menu button:hover {
-    background: var(--chip-bg);
-  }
-  .menu .separator {
-    height: 1px;
-    margin: 4px 0;
-    background: var(--border);
   }
   .split {
     display: grid;

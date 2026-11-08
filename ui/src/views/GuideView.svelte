@@ -1,14 +1,19 @@
 <script lang="ts">
-  // One guide: header, entry list with the live filter line, and the way into its tag editor.
+  // One guide: the title row with New entry and More, the fixed filter summary line, and the
+  // entry table. The list is the sidebar's (`session.sidebar`), so both show the same entries.
   import { untrack } from "svelte";
 
+  import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
   import TagPicker from "../components/TagPicker.svelte";
-  import { api, errorMessage, type Guide, type EntrySummary } from "../lib/api";
+  import { api, errorMessage, type Guide } from "../lib/api";
   import { parseFilter } from "../lib/filter";
-  import { navigate, routeHash } from "../lib/router";
   import { when } from "../lib/format";
-  import { findByPath, flattenTags, type TagOption } from "../lib/tags";
+  import { navigate, routeHash } from "../lib/router";
+  import { freshSidebar, notify, session, setCurrent, touch } from "../lib/session.svelte";
+  import { scopeLabel, summaryLine } from "../lib/sidebar";
+  import { flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
     guideId: string;
@@ -17,36 +22,39 @@
 
   let guide = $state<Guide | null>(null);
   let tags = $state<TagOption[]>([]);
-  let entries = $state<EntrySummary[]>([]);
-  let filterLine = $state("");
-  let stubsOnly = $state(false);
-  let unknownTags = $state<string[]>([]);
   let error = $state("");
-  /** Only the newest list request may land. */
-  let listRequest = 0;
 
   let editing = $state(false);
   let nameDraft = $state("");
   let descriptionDraft = $state("");
-  let newTitle = $state("");
   let creatingEntry = $state(false);
+  let newTitle = $state("");
   let createError = $state("");
+  let confirmingDelete = $state(false);
+
+  /** The sidebar's state once it belongs to this guide. */
+  const sidebar = $derived(session.sidebar.guideId === guideId ? session.sidebar : null);
+  const parsed = $derived(parseFilter(sidebar?.search ?? ""));
+  const filtering = $derived(
+    sidebar !== null &&
+      (parsed.text !== "" || parsed.tags.length > 0 || sidebar.stubsOnly || sidebar.scope.kind !== "all"),
+  );
+  const summary = $derived(
+    sidebar
+      ? summaryLine(scopeLabel(sidebar.scope, tags), parsed, sidebar.stubsOnly, sidebar.entries.length)
+      : "",
+  );
 
   $effect(() => {
     void guideId;
-    untrack(() => void loadGuide());
+    void session.revision;
+    untrack(() => void load());
   });
 
-  $effect(() => {
-    const parsed = parseFilter(filterLine);
-    const stubs = stubsOnly;
-    const options = tags;
-    untrack(() => void loadEntries(parsed.text, parsed.tags, stubs, options));
-  });
-
-  async function loadGuide() {
+  async function load() {
     try {
       guide = await api.getGuide(guideId);
+      setCurrent(guide, null);
       tags = flattenTags(await api.tagTree(guideId));
       error = "";
     } catch (e) {
@@ -54,18 +62,17 @@
     }
   }
 
-  async function loadEntries(text: string, tagPaths: string[], stubs: boolean, options: TagOption[]) {
-    const resolved = tagPaths.map((p) => ({ path: p, option: findByPath(options, p) }));
-    unknownTags = resolved.filter((r) => !r.option).map((r) => r.path);
-    const tag_ids = resolved.flatMap((r) => (r.option ? [r.option.id] : []));
-    const request = ++listRequest;
-    try {
-      const result = await api.listEntries(guideId, { text: text || null, tag_ids, stubs_only: stubs });
-      if (request !== listRequest) return;
-      entries = result;
-    } catch (e) {
-      error = errorMessage(e);
-    }
+  function pathsOf(ids: string[]): string {
+    return ids.map((id) => tags.find((t) => t.id === id)?.path ?? "…").join(", ");
+  }
+
+  /** Back to every entry: scope, text, chips, and the stubs toggle. The list stays until it reloads. */
+  function clearFilter() {
+    session.sidebar = {
+      ...freshSidebar(guideId),
+      expanded: session.sidebar.expanded,
+      entries: session.sidebar.entries,
+    };
   }
 
   function startEdit() {
@@ -82,6 +89,7 @@
         name: nameDraft.trim(),
         description: descriptionDraft.trim(),
       });
+      setCurrent(guide, null);
       editing = false;
       error = "";
     } catch (e) {
@@ -107,53 +115,96 @@
       const entry = await api.createEntry(guideId, title);
       newTitle = "";
       creatingEntry = false;
+      touch();
       navigate({ view: "entry", entryId: entry.id });
     } catch (e) {
       createError = errorMessage(e);
     }
   }
 
+  async function deleteGuide() {
+    confirmingDelete = false;
+    if (!guide) return;
+    const name = guide.name;
+    try {
+      await api.deleteGuide(guide.id);
+      navigate({ view: "guides" });
+      notify(`Deleted the guide "${name}".`);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
 </script>
 
 <div class="page">
   {#if guide}
-    {#if editing}
-      <form
-        class="edit"
-        onsubmit={(e) => {
-          e.preventDefault();
-          void saveEdit();
+    <div class="row header">
+      <h1>{guide.name}</h1>
+      <span class="spacer"></span>
+      <button
+        class="primary"
+        onclick={() => {
+          newTitle = "";
+          createError = "";
+          creatingEntry = true;
         }}
       >
-        <label>Name <input type="text" bind:value={nameDraft} required /></label>
-        <label>Description <input type="text" bind:value={descriptionDraft} /></label>
-        <div class="row">
-          <span class="muted">Guide tags</span>
-          <TagPicker scope={null} selected={guide.tag_ids} onchange={setGuideTags} />
-        </div>
-        <div class="row">
-          <button type="submit" class="primary">Save</button>
-          <button type="button" onclick={() => (editing = false)}>Done</button>
-        </div>
-      </form>
+        New entry
+      </button>
+      <Menu>
+        {#snippet items(close)}
+          <button
+            role="menuitem"
+            onclick={() => {
+              close();
+              startEdit();
+            }}
+          >
+            Edit guide...
+          </button>
+          <div class="separator"></div>
+          <button
+            role="menuitem"
+            class="danger"
+            onclick={() => {
+              close();
+              confirmingDelete = true;
+            }}
+          >
+            Delete guide...
+          </button>
+        {/snippet}
+      </Menu>
+    </div>
+    {#if guide.description}<p class="muted">{guide.description}</p>{/if}
+
+    <div class="row summary">
+      <span class="muted">{summary}</span>
+      {#if filtering}<button class="link" onclick={clearFilter}>Clear</button>{/if}
+    </div>
+
+    {#if error}<p class="error">{error}</p>{/if}
+
+    {#if !sidebar || sidebar.entries.length === 0}
+      <p class="muted">
+        {#if filtering}No entries match this filter.{:else}No entries yet. Choose New entry.{/if}
+      </p>
     {:else}
-      <div class="row header">
-        <h1>{guide.name}</h1>
-        <span class="spacer"></span>
-        <a href={routeHash({ view: "tags", guideId })}>Tags</a>
-        <button onclick={startEdit}>Edit guide</button>
-        <button
-          class="primary"
-          onclick={() => {
-            newTitle = "";
-            createError = "";
-            creatingEntry = true;
-          }}
-        >
-          New entry
-        </button>
-      </div>
-      {#if guide.description}<p class="muted">{guide.description}</p>{/if}
+      <table>
+        <thead><tr><th>Title</th><th>Tags</th><th>Updated</th></tr></thead>
+        <tbody>
+          {#each sidebar.entries as entry (entry.id)}
+            <tr>
+              <td>
+                <a href={routeHash({ view: "entry", entryId: entry.id })}>{entry.title}</a>
+                {#if entry.is_stub}<span class="chip">stub</span>{/if}
+              </td>
+              <td class="muted">{pathsOf(entry.tag_ids)}</td>
+              <td class="muted">{when(entry.updated_at)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     {/if}
 
     <Modal open={creatingEntry} title="New entry" onclose={() => (creatingEntry = false)}>
@@ -176,39 +227,44 @@
       {/snippet}
     </Modal>
 
-    <div class="row toolbar">
-      <input
-        type="search"
-        class="filter"
-        placeholder="Filter entries: text and #Tag/Path"
-        bind:value={filterLine}
-      />
-      <label class="row"><input type="checkbox" bind:checked={stubsOnly} /> Stubs only</label>
-    </div>
-    {#if unknownTags.length > 0}
-      <p class="muted">No tag named {unknownTags.map((t) => `"${t}"`).join(", ")} in this guide.</p>
-    {/if}
+    <Modal open={editing} title="Edit guide" onclose={() => (editing = false)}>
+      <form
+        class="edit"
+        onsubmit={(e) => {
+          e.preventDefault();
+          void saveEdit();
+        }}
+      >
+        <label class="field">
+          Name
+          <!-- svelte-ignore a11y_autofocus -->
+          <input type="text" bind:value={nameDraft} required autofocus />
+        </label>
+        <label class="field">
+          Description
+          <input type="text" bind:value={descriptionDraft} />
+        </label>
+        <div class="field">
+          <span class="muted">Guide tags</span>
+          <TagPicker scope={null} selected={guide.tag_ids} onchange={setGuideTags} />
+        </div>
+      </form>
+      {#snippet actions()}
+        <button onclick={() => (editing = false)}>Cancel</button>
+        <button class="primary" onclick={saveEdit} disabled={!nameDraft.trim()}>Save</button>
+      {/snippet}
+    </Modal>
 
-    {#if error}<p class="error">{error}</p>{/if}
-
-    {#if entries.length === 0}
-      <p class="muted">No entries match.</p>
-    {:else}
-      <table>
-        <thead><tr><th>Title</th><th>Updated</th></tr></thead>
-        <tbody>
-          {#each entries as entry (entry.id)}
-            <tr>
-              <td>
-                <a href={routeHash({ view: "entry", entryId: entry.id })}>{entry.title}</a>
-                {#if entry.is_stub}<span class="chip">stub</span>{/if}
-              </td>
-              <td class="muted">{when(entry.updated_at)}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {/if}
+    <ConfirmDialog
+      open={confirmingDelete}
+      title={`Delete the guide "${guide.name}"?`}
+      body={[
+        "Every entry, tag, relation, and board in it is removed for good. Export the guide first to keep a copy.",
+      ]}
+      confirmLabel="Delete guide"
+      onconfirm={deleteGuide}
+      oncancel={() => (confirmingDelete = false)}
+    />
   {:else if error}
     <p class="error">{error}</p>
   {/if}
@@ -221,29 +277,17 @@
   .spacer {
     flex: 1;
   }
+  /* Fixed height: the line is present whether or not a filter is in effect. */
+  .summary {
+    min-height: 2em;
+    margin: 8px 0 4px;
+  }
   .edit {
     display: grid;
-    gap: 8px;
-    padding: 12px;
-    margin-bottom: 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
-  }
-  .edit label {
-    display: grid;
-    gap: 2px;
-    max-width: 480px;
+    gap: 10px;
   }
   .field {
     display: grid;
     gap: 2px;
-  }
-  .toolbar {
-    margin: 12px 0 8px;
-  }
-  .filter {
-    flex: 1;
-    max-width: 480px;
   }
 </style>

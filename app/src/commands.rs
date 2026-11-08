@@ -20,7 +20,7 @@ use fieldguide_core::media::{Media, MediaDimensions};
 use fieldguide_core::relation::{
     CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, RelationView,
 };
-use fieldguide_core::tag::{Tag, TagNode};
+use fieldguide_core::tag::{EntryCounts, Tag, TagNode};
 use fieldguide_core::vocabulary::{
     Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb, VerbMatch, VocabularyCopy,
 };
@@ -297,6 +297,11 @@ pub fn purge_entry(state: S<'_>, id: EntryId) -> CmdResult<()> {
 #[tauri::command(rename_all = "snake_case")]
 pub fn list_trash(state: S<'_>, guide_id: GuideId) -> CmdResult<Vec<EntrySummary>> {
     state.with_vault(|v| v.list_trash(&guide_id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn entry_counts(state: S<'_>, guide_id: GuideId) -> CmdResult<EntryCounts> {
+    state.with_vault(|v| v.entry_counts(&guide_id))
 }
 
 #[tauri::command(rename_all = "snake_case")]

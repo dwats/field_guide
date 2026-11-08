@@ -45,9 +45,22 @@ export interface Startup {
 }
 
 export type GuideView = "cards" | "table";
+export type Density = "compact" | "roomy";
 
 export interface UiPrefs {
   guide_view: GuideView;
+  density: Density;
+  sidebar_collapsed: boolean;
+  panel_collapsed: boolean;
+  /** Keep the right panel open while editing in Split. */
+  panel_open_in_edit: boolean;
+  /** Never show the table of contents. */
+  hide_contents: boolean;
+  /** Column widths in CSS pixels once dragged; null takes the density preset's. */
+  sidebar_width: number | null;
+  panel_width: number | null;
+  /** Share of the sidebar's height given to the tag tree, in percent; null is half. */
+  sidebar_split: number | null;
 }
 
 // ---- guides ----
@@ -83,6 +96,21 @@ export interface TagNode {
   children: TagNode[];
 }
 
+export interface TagCount {
+  tag_id: Id;
+  /** Live entries carrying the tag itself. */
+  direct: number;
+  /** Distinct live entries carrying the tag or any tag under it. */
+  subtree: number;
+}
+
+export interface EntryCounts {
+  total: number;
+  untagged: number;
+  trashed: number;
+  by_tag: TagCount[];
+}
+
 // ---- entries ----
 
 export interface Entry {
@@ -106,12 +134,16 @@ export interface EntrySummary {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  /** The entry's tags, by name. */
+  tag_ids: Id[];
 }
 
 export interface EntryQuery {
   tag_ids: Id[];
   text: string | null;
   stubs_only: boolean;
+  /** Only entries with no tag at all. */
+  untagged: boolean;
 }
 
 export interface RenameRecord {
@@ -313,6 +345,7 @@ export const api = {
         tag_ids: query.tag_ids ?? [],
         text: query.text ?? null,
         stubs_only: query.stubs_only ?? false,
+        untagged: query.untagged ?? false,
       },
     }),
   lookupEntry: (guide_id: Id, text: string) =>
@@ -323,6 +356,7 @@ export const api = {
   restoreEntry: (id: Id) => invoke<EntrySummary>("restore_entry", { id }),
   purgeEntry: (id: Id) => invoke<void>("purge_entry", { id }),
   listTrash: (guide_id: Id) => invoke<EntrySummary[]>("list_trash", { guide_id }),
+  entryCounts: (guide_id: Id) => invoke<EntryCounts>("entry_counts", { guide_id }),
   emptyTrash: (guide_id: Id) => invoke<number>("empty_trash", { guide_id }),
 
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),

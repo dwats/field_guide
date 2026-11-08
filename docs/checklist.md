@@ -24,6 +24,18 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Closing and reopening the window restores its size and position without first appearing elsewhere.
 - [ ] A vault that another process holds open produces the "open in another Field Guide" screen, not a blank window.
 
+## Sidebar and Trash
+
+- [ ] Inside a guide, the sidebar shows the search line, Stubs only, the tag tree with All entries at the top and Untagged and Trash at the bottom, and the entries of the selected scope below a splitter.
+- [ ] Each tag row shows a count that includes the tags under it; a tag the open entry carries shows a dot.
+- [ ] Selecting a tag narrows the entry list and the guide page table to the entries under it; the guide page summary line names the scope and the count, and Clear returns to All entries.
+- [ ] Typing in the search narrows the list on each keystroke and prunes the tree to matching tags with their parents open; clearing it restores the tree.
+- [ ] Opening an entry from a wikilink moves the scope to the entry's first tag when the current scope does not hold it; opening one from the list keeps the scope.
+- [ ] The sidebar collapses to a rail and expands again; the width and the splitter position survive a restart.
+- [ ] Trash lists trashed entries with their deletion time and tags; Restore puts one back with its tags and relations and offers Undo; Purge and Empty trash ask first.
+- [ ] Breadcrumbs in the top bar read Guides / guide / page; Back and Forward work.
+- [ ] Edit guide opens a modal; Delete guide asks first.
+
 ## Guides
 
 - [ ] Create a guide; it appears in cards and table views; the view choice survives a restart.

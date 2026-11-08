@@ -32,6 +32,26 @@ pub struct Config {
 pub struct UiPrefs {
     #[serde(default)]
     pub guide_view: GuideView,
+    #[serde(default)]
+    pub density: Density,
+    #[serde(default)]
+    pub sidebar_collapsed: bool,
+    #[serde(default)]
+    pub panel_collapsed: bool,
+    /// Keep the right panel open while editing in Split; off, it collapses for the edit.
+    #[serde(default)]
+    pub panel_open_in_edit: bool,
+    /// Never show the table of contents, even when the body has headings.
+    #[serde(default)]
+    pub hide_contents: bool,
+    /// Column widths in CSS pixels once the user has dragged them; `None` takes the preset's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_width: Option<u32>,
+    /// Share of the sidebar's height given to the tag tree, in percent; `None` is half.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_split: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +60,15 @@ pub enum GuideView {
     #[default]
     Cards,
     Table,
+}
+
+/// Spacing preset (design section 5, "Density").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Density {
+    Compact,
+    #[default]
+    Roomy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

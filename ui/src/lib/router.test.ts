@@ -14,6 +14,7 @@ describe("parseRoute", () => {
   it("reads guide, tags, entry, and settings routes", () => {
     expect(parseRoute("#/guide/abc")).toEqual({ view: "guide", guideId: "abc" });
     expect(parseRoute("#/guide/abc/tags")).toEqual({ view: "tags", guideId: "abc" });
+    expect(parseRoute("#/guide/abc/trash")).toEqual({ view: "trash", guideId: "abc" });
     expect(parseRoute("#/entry/n1")).toEqual({ view: "entry", entryId: "n1" });
     expect(parseRoute("#/settings")).toEqual({ view: "settings" });
   });
@@ -23,6 +24,7 @@ describe("parseRoute", () => {
       HOME,
       { view: "guide", guideId: "g 1" },
       { view: "tags", guideId: "g/2" },
+      { view: "trash", guideId: "g 2" },
       { view: "entry", entryId: "n#3" },
       { view: "settings" },
     ];
