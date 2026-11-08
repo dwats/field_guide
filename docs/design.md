@@ -184,6 +184,19 @@ None. A new guide has zero verbs and zero qualifier labels. Vocabulary arrives t
 - **Entry page:** rendered body, gallery, tags, and the relation list grouped by verb with both directions shown as in section 4.
 - **Trash:** per guide. Restore or purge individual entries; empty trash.
 
+### Interface principles
+
+Decided with the owner on 2026-11-08, before the UX pass that turns them into layouts.
+
+- Audience: the owner first, friends through export second. Nothing waits on feedback from others.
+- Navigation inside a guide: a persistent left sidebar with the tag tree and search, breadcrumbs above the content, and a right-hand table of contents built from the entry's headings.
+- Density: a setting with a compact and a roomy preset.
+- Theme: follow the operating system's light or dark setting; a manual override comes later.
+- Entry page: relations live in a right-hand panel beside the body, with the relation line at the top of that panel.
+- Editing: Read and Edit modes stay; Edit offers a toggle between the split live preview and a single pane that renders in place.
+- Input: keyboard first, with a command palette for search, jump, and new entry on the shortcut each platform expects (Ctrl on Windows and Linux, Cmd on macOS); every action also reachable by mouse.
+- Attention: minimal chrome, no animation, fixed placement, confirmations only for destructive actions. Revisit after use.
+
 ## 6. Board
 
 - Scope: current guide. Toggles for external edges and mentions.
