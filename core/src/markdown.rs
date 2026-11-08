@@ -2,8 +2,10 @@
 //! wikilink and media resolution is tested once (`docs/design.md` section 1).
 //!
 //! Supported: CommonMark, GFM tables, strikethrough, task lists, `[[wikilinks]]`, and media
-//! references of the form `media/<sha256>.<ext>`. Raw HTML in a body is shown as text, never
-//! passed through, so a body from someone else's archive cannot inject markup.
+//! references of the form `media/<sha256>.<ext>`. A single newline inside a paragraph or a quote
+//! is a line break, as in Obsidian and GitHub comments, not CommonMark's space. Raw HTML in a
+//! body is shown as text, never passed through, so a body from someone else's archive cannot
+//! inject markup.
 //!
 //! The output is plain, prefix-free HTML. Wikilinks become `<a class="wikilink" data-entry-id=...>`
 //! when they resolve and `<a class="wikilink wikilink-unresolved" data-target=...>` when they do
@@ -100,6 +102,11 @@ pub fn render(
             Event::Start(Tag::Image { dest_url, .. }) => {
                 flush_text(&mut text_run, &mut events, &mut out, resolve)?;
                 image = Some((dest_url.into_string(), String::new()));
+            }
+            // A newline the author typed is a line break they meant.
+            Event::SoftBreak => {
+                flush_text(&mut text_run, &mut events, &mut out, resolve)?;
+                events.push(Event::HardBreak);
             }
             other => {
                 flush_text(&mut text_run, &mut events, &mut out, resolve)?;
@@ -378,6 +385,15 @@ mod tests {
         assert!(r.html.contains("<h2 id=\"where-found-2\">"), "{}", r.html);
         assert!(r.html.contains("<h3 id=\"oak-log-co\">"), "{}", r.html);
         assert!(r.html.contains("<h4 id=\"section\">"), "{}", r.html);
+    }
+
+    #[test]
+    fn a_newline_inside_a_paragraph_or_quote_is_a_line_break() {
+        let r = render_with("one\ntwo\n\n> first\n> second\n", &[]);
+        assert_eq!(
+            r.html,
+            "<p>one<br />\ntwo</p>\n<blockquote>\n<p>first<br />\nsecond</p>\n</blockquote>\n"
+        );
     }
 
     #[test]
