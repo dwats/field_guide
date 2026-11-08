@@ -115,3 +115,26 @@ fn restoring_from_a_file_that_is_not_a_database_changes_nothing() {
     let reopened = Vault::open(&db).unwrap();
     assert_eq!(browse(&reopened, &g), ["First"]);
 }
+
+#[test]
+fn the_oldest_of_five_backups_can_be_restored() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    let mut v = Vault::open(&db).unwrap();
+    let g = guide(&mut v, "G");
+    let backups = dir.path().join("backups");
+    note(&mut v, &g, "First", "");
+    let oldest = v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
+    for title in ["Second", "Third", "Fourth", "Fifth"] {
+        note(&mut v, &g, title, "");
+        v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
+    }
+    assert_eq!(backup::list_backups(&backups).unwrap().len(), 5);
+
+    // The safety backup taken during restore prunes the oldest file, which is the one chosen.
+    let restored = v
+        .restore_from_backup(&oldest.path, &backups, BACKUPS_TO_KEEP)
+        .unwrap();
+    assert_eq!(browse(&restored, &g), ["First"]);
+    assert_eq!(backup::list_backups(&backups).unwrap().len(), 5);
+}

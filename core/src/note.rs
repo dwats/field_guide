@@ -65,6 +65,10 @@ pub struct RenameRecord {
     pub new_title: String,
     /// False when only the casing changed, since the old title would collide with the new one.
     pub alias_added: bool,
+    /// An alias of the same note that the new title matched. It was removed when the title took
+    /// its place (renaming back after a rename is the common case); undo puts it back.
+    #[serde(default)]
+    pub alias_promoted: Option<String>,
     /// Notes whose bodies had links rewritten.
     pub rewritten_note_ids: Vec<NoteId>,
 }
@@ -108,11 +112,28 @@ impl Vault {
         let tx = self.savepoint()?;
         let (guide_id, old_title) = guide_and_title(&tx, id)?;
         let same_key = normalize(&old_title) == normalize(&new_title);
-        if !same_key && let Some(holder) = name_holder(&tx, &guide_id, &normalize(&new_title))? {
+        // The note's own alias does not block the rename: the alias becomes the title.
+        let alias_promoted: Option<String> = tx
+            .query_row(
+                "SELECT alias FROM note_alias WHERE note_id = ?1 AND alias_norm = ?2",
+                params![id, normalize(&new_title)],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if !same_key
+            && alias_promoted.is_none()
+            && let Some(holder) = name_holder(&tx, &guide_id, &normalize(&new_title))?
+        {
             return Err(Error::NameTaken {
                 name: new_title,
                 note_id: holder,
             });
+        }
+        if alias_promoted.is_some() {
+            tx.execute(
+                "DELETE FROM note_alias WHERE note_id = ?1 AND alias_norm = ?2",
+                params![id, normalize(&new_title)],
+            )?;
         }
         // The old title lives on as an alias, so links through it stay resolved.
         let rewritten_note_ids = retitle(&tx, id, &guide_id, &old_title, &new_title, true)?;
@@ -125,6 +146,7 @@ impl Vault {
             old_title,
             new_title,
             alias_added: !same_key,
+            alias_promoted,
             rewritten_note_ids,
         })
     }
@@ -164,6 +186,9 @@ impl Vault {
             &record.old_title,
             false,
         )?;
+        if let Some(alias) = &record.alias_promoted {
+            insert_alias(&tx, &record.note_id, &guide_id, alias)?;
+        }
         tx.commit()?;
         load_note(self.conn(), &record.note_id)
     }

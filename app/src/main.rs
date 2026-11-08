@@ -39,6 +39,8 @@ fn main() -> anyhow::Result<()> {
                 if let Some(saved) = saved {
                     apply_window_state(&window, &saved);
                 }
+                // The window starts hidden so it appears where it was, not at the default spot.
+                let _ = window.show();
             }
             Ok(())
         })

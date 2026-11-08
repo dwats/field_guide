@@ -77,9 +77,20 @@ impl Vault {
             .ok_or_else(|| Error::Invalid("an in-memory vault cannot be restored".to_owned()))?
             .to_path_buf();
         validate_backup(backup_path)?;
-        self.backup(backups_dir, keep)?;
-        self.close()?;
-        swap_database(&db_path, backup_path)?;
+        // Copy first: the safety backup below prunes to `keep` files and may remove the very
+        // backup being restored when it is the oldest.
+        let tmp = fsutil::temp_sibling(&db_path);
+        fs::copy(backup_path, &tmp).map_err(|source| Error::Io {
+            context: "copying",
+            path: backup_path.to_path_buf(),
+            source,
+        })?;
+        let closed = self.backup(backups_dir, keep).and_then(|_| self.close());
+        if let Err(e) = closed {
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
+        }
+        swap_database(&db_path, &tmp)?;
         Vault::open(&db_path)
     }
 }
@@ -111,16 +122,14 @@ fn validate_backup(path: &Path) -> Result<()> {
     conn.close().map_err(|(_, e)| Error::Sqlite(e))
 }
 
-/// Puts a copy of `source` at `db_path`: copied to a temporary sibling, stale WAL and shared-memory
-/// files removed, then renamed into place. The vault must be closed.
-fn swap_database(db_path: &Path, source: &Path) -> Result<()> {
-    let tmp = fsutil::temp_sibling(db_path);
+/// Moves the already-copied database at `tmp` over `db_path`: stale WAL and shared-memory files
+/// are removed first, then the rename. The vault must be closed.
+fn swap_database(db_path: &Path, tmp: &Path) -> Result<()> {
     let io_error = |context: &'static str, path: &Path, source: io::Error| Error::Io {
         context,
         path: path.to_path_buf(),
         source,
     };
-    fs::copy(source, &tmp).map_err(|e| io_error("copying", source, e))?;
     for suffix in ["-wal", "-shm"] {
         let mut name = db_path.as_os_str().to_owned();
         name.push(suffix);
@@ -128,12 +137,12 @@ fn swap_database(db_path: &Path, source: &Path) -> Result<()> {
         if let Err(e) = fs::remove_file(&sidecar)
             && e.kind() != io::ErrorKind::NotFound
         {
-            let _ = fs::remove_file(&tmp);
+            let _ = fs::remove_file(tmp);
             return Err(io_error("removing", &sidecar, e));
         }
     }
-    fs::rename(&tmp, db_path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
+    fs::rename(tmp, db_path).map_err(|e| {
+        let _ = fs::remove_file(tmp);
         io_error("writing", db_path, e)
     })
 }

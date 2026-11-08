@@ -102,7 +102,7 @@ Drag-and-drop and clipboard paste of images, drag-and-drop of `.webm`, into the 
 
 Done when: a pasted screenshot appears inline, in the gallery, and in the export archive exactly once; cleanup lists and removes an orphaned file and nothing else.
 
-Decide first: whether images are converted to WebP on ingest (`docs/design.md` section 11). Video is stored as dropped.
+Images are converted to WebP on ingest (`docs/design.md` section 3); lossless or lossy is decided when this phase starts (section 11). Video is stored as dropped.
 
 ## Phase 9: Import and export UI
 

@@ -117,6 +117,7 @@ export interface RenameRecord {
   old_title: string;
   new_title: string;
   alias_added: boolean;
+  alias_promoted: string | null;
   rewritten_note_ids: Id[];
 }
 

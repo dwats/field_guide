@@ -122,6 +122,7 @@ Deleting a note sets `deleted_at`. A trashed note is hidden from browse, search,
 ### Media
 
 - Dropped or pasted files are hashed, copied to `vault/media/<sha256>.<ext>`, deduplicated by hash, and a `media` row is created. Clipboard paste of an image is a first-class path, since Print Screen then Ctrl+V is the common capture flow for game notes.
+- Images are converted to WebP on ingest (decided 2026-11-08) so a vault of screenshots stays small; the hash is taken over the stored WebP bytes, so the same source image still deduplicates. Video is stored as dropped; `.webm` is the only format the preview plays.
 - Inline placement inserts the markdown reference at the cursor. Gallery placement adds a `note_media` row. A file can be in both.
 - Media is vault-scoped, not guide-scoped, so the same screenshot can serve two guides. Export only includes media referenced by the exported notes.
 - Media is never deleted automatically. "Clean up unused media" in Settings lists files that no live or trashed note references, with sizes and a total, and deletes them on confirmation. A non-modal notice appears when unreferenced media exceeds 250 MB (adjustable) or free space on the vault's drive drops below 1 GB.
@@ -263,6 +264,6 @@ A menu item, "Check for updates", fetches `latest.json` from the release URL, co
 ## 11. Open questions
 
 - Whether qualifier values should support dates as a distinct type.
-- Whether to convert pasted and dropped media to WebP and WebM on ingest to save space (phase 8). Lossless WebP encoding is available as a small pure-Rust dependency; video transcoding is not something the binary can carry.
+- Whether image ingest uses lossless WebP (pure-Rust encoder from the `image` project, pixels unchanged, roughly a quarter smaller than PNG) or lossy WebP (`libwebp` through a C binding, several times smaller, pixels changed). Decide when phase 8 starts.
 - Whether export should offer a hop-depth scope (a note plus everything within N edges) with a preview of what it will include (phase 9). The archive format needs no change for it.
 - Whether import into an existing guide should ask per field (cover, description, guide tags) before overwriting (phase 9). Today the cover is set only when the local guide has none and the description is left alone.

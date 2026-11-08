@@ -141,3 +141,28 @@ fn links_through_an_alias_are_left_alone() {
     );
     assert_eq!(v.lookup_note(&g, "Oak").unwrap().map(|n| n.id), Some(oak));
 }
+
+#[test]
+fn renaming_back_to_a_title_that_became_an_alias_promotes_the_alias() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let n = note(&mut v, &g, "Stone Block", "");
+    v.rename_note(&n, "Stone").unwrap();
+    assert_eq!(v.get_note(&n).unwrap().aliases, ["Stone Block"]);
+
+    let back = v.rename_note(&n, "Stone Block").unwrap();
+    let after = v.get_note(&n).unwrap();
+    assert_eq!(after.title, "Stone Block");
+    assert_eq!(after.aliases, ["Stone"]);
+    assert_eq!(back.alias_promoted.as_deref(), Some("Stone Block"));
+    assert_eq!(
+        v.lookup_note(&g, "stone").unwrap().map(|s| s.id),
+        Some(n.clone()),
+        "the demoted title still resolves as an alias"
+    );
+
+    v.undo_rename(&back).unwrap();
+    let undone = v.get_note(&n).unwrap();
+    assert_eq!(undone.title, "Stone");
+    assert_eq!(undone.aliases, ["Stone Block"]);
+}
