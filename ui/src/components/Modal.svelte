@@ -1,6 +1,9 @@
 <script lang="ts">
-  // A small dialog on top of the current page, built on the native <dialog> element. Escape and
-  // the backdrop close it through `onclose`; the parent owns `open`.
+  // A small dialog on top of the current page. It uses the <dialog> element in its non-modal
+  // form plus its own backdrop and focus trap: WebView2 drops keystrokes now and then after
+  // showModal() makes the rest of the page inert, and nothing else in the app has shown that
+  // problem. Escape and a click on the backdrop close it through `onclose`; the parent owns
+  // `open`.
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -14,34 +17,77 @@
   let { open, title, onclose, children, actions }: Props = $props();
 
   let dialog: HTMLDialogElement;
+  let opener: HTMLElement | null = null;
+  const titleId = `dialog-title-${Math.random().toString(36).slice(2)}`;
+
+  const FOCUSABLE =
+    "a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+  function focusables(): HTMLElement[] {
+    return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => el.offsetParent !== null || el === document.activeElement,
+    );
+  }
 
   $effect(() => {
     if (!dialog) return;
     if (open && !dialog.open) {
-      dialog.showModal();
-      // The webview sometimes reports the autofocused field as focused while keystrokes go
-      // nowhere until the user clicks. A real focus change once the dialog is open fixes it.
-      requestAnimationFrame(() => {
-        const target = dialog.querySelector<HTMLElement>(
-          "[autofocus], input:not([type=hidden]), select, textarea, button",
-        );
-        (document.activeElement as HTMLElement | null)?.blur?.();
-        target?.focus();
-      });
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.show();
+      const preferred = dialog.querySelector<HTMLElement>("[autofocus]");
+      (preferred ?? focusables()[0] ?? dialog).focus();
     }
-    if (!open && dialog.open) dialog.close();
+    if (!open && dialog.open) {
+      dialog.close();
+      // Focus goes back to where it was, as a modal would do.
+      opener?.focus();
+      opener = null;
+    }
   });
 
-  function onclick(event: MouseEvent) {
-    // A click on the backdrop lands on the dialog element itself, not on its content.
-    if (event.target === dialog) onclose();
+  function onkeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onclose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    // Tab cycles inside the dialog instead of reaching the page behind it.
+    const items = focusables();
+    if (items.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === dialog)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-<dialog bind:this={dialog} oncancel={(e) => { e.preventDefault(); onclose(); }} {onclick}>
+{#if open}
+  <!-- A click outside closes, like Escape does; the backdrop itself is not a control. -->
+  <div class="backdrop" role="presentation" onclick={onclose}></div>
+{/if}
+<dialog
+  bind:this={dialog}
+  aria-modal="true"
+  aria-labelledby={titleId}
+  tabindex="-1"
+  {onkeydown}
+  oncancel={(e) => {
+    e.preventDefault();
+    onclose();
+  }}
+>
   <div class="body">
-    <h2>{title}</h2>
+    <h2 id={titleId}>{title}</h2>
     {@render children()}
     {#if actions}
       <div class="row actions">{@render actions()}</div>
@@ -50,7 +96,17 @@
 </dialog>
 
 <style>
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgb(0 0 0 / 0.35);
+  }
   dialog {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    z-index: 21;
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -58,9 +114,11 @@
     color: var(--fg);
     min-width: min(480px, 90vw);
     max-width: 90vw;
+    max-height: 90vh;
+    overflow: auto;
   }
-  dialog::backdrop {
-    background: rgb(0 0 0 / 0.35);
+  dialog:focus {
+    outline: none;
   }
   .body {
     display: grid;

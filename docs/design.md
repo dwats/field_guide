@@ -190,7 +190,7 @@ Decided with the owner on 2026-11-08, first in an interview and then over the UX
 
 - Audience: the owner first, friends through export second. Nothing waits on feedback from others.
 - Shell: one top bar with breadcrumbs, a left sidebar, the content column, and a right panel. Column widths never change when the mode or the view changes; the sidebar and the right panel can each be collapsed by the user, and the choice is remembered.
-- Sidebar inside a guide: search, the tag tree, and the entries under the selected tag, so an entry is reachable from the sidebar without leaving the page. Breadcrumbs sit above the content.
+- Sidebar inside a guide, two regions: search and the tag tree above, the entries under the selected tag below, filtered live by the search; an entry is reachable from the sidebar without leaving the page, the tree stays compact, and the entry list has one fixed home. Breadcrumbs sit above the content.
 - Right panel on an entry page: two tabs, "Contents" and "Relations", with Contents selected on arrival. The relation line sits at the top of the Relations tab. While editing in Split the panel collapses; a setting keeps it open instead.
 - Contents: built from the entry's headings; shown whenever the body has at least one heading; a display setting hides it always, off by default.
 - Lists: selecting a row enables one fixed action row per list. No control appears or disappears on hover.

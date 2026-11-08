@@ -84,11 +84,11 @@ The staged input line from `docs/design.md` section 4, the stub prompt, and the 
 
 Done when: the `Stone Block DROPS Cobblestone Block +mined with Pickaxe` example can be entered from Stone Block, from Cobblestone Block, and reads correctly on all three pages.
 
-## Phase 6: Category browse and trash
+## Phase 6: Shell, category browse, and trash
 
-Tag tree sidebar, live-filtered entry list, stubs-only toggle. Trash view with restore, purge, and empty.
+The shell from `docs/design.md` section 5, "Interface principles": top bar with breadcrumbs, the collapsible left sidebar in two regions (search and the tag tree above, the selected tag's entries below, both filtered live), the content column, and the right panel with the Contents and Relations tabs, collapsed in Edit unless a setting keeps it open. Stubs-only toggle. Trash view with restore, purge, and empty. The density setting and the command palette for search, jump, and new entry.
 
-Done when: typing in the filter updates the list on each keystroke with no visible lag at a few thousand entries; a deleted entry can be restored from Trash with its relations intact.
+Done when: typing in the sidebar search updates the tree and the list on each keystroke with no visible lag at a few thousand entries; any entry under the selected tag opens from the sidebar without leaving the page; the content column keeps its width when the mode, the view, or a panel's state changes; a deleted entry can be restored from Trash with its relations intact.
 
 ## Phase 7: Board
 

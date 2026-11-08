@@ -18,8 +18,10 @@
     type Guide,
     type Entry,
     type EntrySummary,
+    type RenameRecord,
     type Rendered,
   } from "../lib/api";
+  import { moveHighlight } from "../lib/combobox";
   import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session } from "../lib/session.svelte";
 
@@ -41,6 +43,8 @@
   let relationsVersion = $state(0);
 
   let menuOpen = $state(false);
+  let moreButton = $state<HTMLButtonElement | null>(null);
+  let menu = $state<HTMLDivElement | null>(null);
   let renaming = $state(false);
   let titleDraft = $state("");
   let editingAliases = $state(false);
@@ -48,6 +52,8 @@
 
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The write in flight, if any; `save` joins it instead of starting a second one. */
+  let saving: Promise<void> | null = null;
 
   const undoable = $derived(entry ? session.renames[entry.id] : undefined);
 
@@ -56,12 +62,28 @@
     untrack(() => void load(id));
   });
 
-  // The More menu closes on a click anywhere else and on Escape.
+  // The More menu: focus moves to its first item when it opens, arrows walk the items, Escape or
+  // a click anywhere else closes it, and focus returns to the More button.
   $effect(() => {
     if (!menuOpen) return;
+    const items = () =>
+      Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    items()[0]?.focus();
     const close = () => (menuOpen = false);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+      } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const list = items();
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        const index = list.indexOf(document.activeElement as HTMLButtonElement);
+        const from = index >= 0 ? index : delta > 0 ? -1 : 0;
+        list[moveHighlight(from, delta, list.length)]?.focus();
+      } else if (event.key === "Tab") {
+        menuOpen = false;
+      }
     };
     window.addEventListener("click", close);
     window.addEventListener("keydown", onKey);
@@ -71,8 +93,14 @@
     };
   });
 
+  /** Closes the menu with focus back on More, so a dialog opened from an item returns there. */
+  function closeMenu() {
+    menuOpen = false;
+    moreButton?.focus();
+  }
+
   async function load(id: string) {
-    await flush();
+    await leave();
     mode = "read";
     renaming = false;
     editingAliases = false;
@@ -120,27 +148,60 @@
     }
   }
 
-  async function save() {
+  /** One write at a time; a call while one is in flight joins it. */
+  function save(): Promise<void> {
     clearTimeout(saveTimer);
-    if (!entry) return;
-    if (draft === entry.body_md) {
-      if (saveState === "dirty") saveState = "saved";
+    saving ??= write().finally(() => (saving = null));
+    return saving;
+  }
+
+  async function write() {
+    const current = entry;
+    if (!current) return;
+    // The body is captured here. Keystrokes that land during the write leave the state dirty,
+    // and their own timer writes them.
+    const body = draft;
+    if (body === current.body_md) {
+      saveState = "saved";
       return;
     }
     try {
-      entry = await api.updateEntryBody(entry.id, draft);
-      saveState = "saved";
-      error = "";
+      const saved = await api.updateEntryBody(current.id, body);
+      if (entry?.id === current.id) entry = saved;
+      if (draft === body) {
+        saveState = "saved";
+        error = "";
+      }
     } catch (e) {
       saveState = "error";
       error = errorMessage(e);
     }
   }
 
-  /** Saves anything pending; used before leaving the entry or switching to read mode. */
+  /** Writes anything pending, with one retry for a body whose last write failed. */
   async function flush() {
     clearTimeout(previewTimer);
-    if (saveState === "dirty") await save();
+    await saving;
+    let retried = false;
+    while (saveState === "dirty" || (saveState === "error" && !retried)) {
+      if (saveState === "error") retried = true;
+      await save();
+    }
+  }
+
+  /**
+   * Flushes before the entry is left. A body that still cannot be saved is reported in a notice,
+   * since the page that showed the error is going away.
+   */
+  async function leave() {
+    await flush();
+    if (entry && saveState !== "saved") {
+      const { id, title } = entry;
+      notify(`The body of "${title}" could not be saved: ${error}`, {
+        kind: "error",
+        action: { label: "Open entry", run: () => navigate({ view: "entry", entryId: id }) },
+      });
+    }
   }
 
   async function setMode(next: "read" | "edit") {
@@ -154,7 +215,7 @@
   function openRename() {
     if (!entry) return;
     titleDraft = entry.title;
-    menuOpen = false;
+    closeMenu();
     renaming = true;
   }
 
@@ -174,20 +235,26 @@
       error = "";
       await load(id);
       notify(`Renamed "${old}" to "${title}".`, {
-        action: { label: "Undo", run: () => undoRename() },
+        action: { label: "Undo", run: () => revertRename(id, record) },
       });
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
+  /** Reverts a rename. The record is passed in, so the notice's Undo works after leaving the page. */
+  async function revertRename(id: string, record: RenameRecord) {
+    await api.undoRename(record);
+    delete session.renames[id];
+    if (entry?.id === id) await load(id);
+    else navigate({ view: "entry", entryId: id });
+  }
+
   async function undoRename() {
     if (!entry || !undoable) return;
-    menuOpen = false;
+    closeMenu();
     try {
-      await api.undoRename(undoable);
-      delete session.renames[entry.id];
-      await load(entry.id);
+      await revertRename(entry.id, undoable);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -227,10 +294,10 @@
   /** Reversible, so no confirmation: the notice carries Undo, and Back does not return here. */
   async function moveToTrash() {
     if (!entry) return;
-    menuOpen = false;
+    closeMenu();
     const { id, title, guide_id } = entry;
     try {
-      await flush();
+      await leave();
       await api.trashEntry(id);
       replace({ view: "guide", guideId: guide_id });
       notify(`Moved "${title}" to Trash.`, {
@@ -250,6 +317,7 @@
   /** Reversible too: the created entry can be sent to Trash from the notice. */
   async function createFromLink(title: string) {
     if (!entry) return;
+    const origin = entry.id;
     try {
       await flush();
       const created = await api.createEntry(entry.guide_id, title);
@@ -259,7 +327,10 @@
           label: "Undo",
           run: async () => {
             await api.trashEntry(created.id);
-            history.back();
+            // Leave the trashed entry's page if it is still showing; anywhere else, stay put.
+            if (window.location.hash === routeHash({ view: "entry", entryId: created.id })) {
+              replace({ view: "entry", entryId: origin });
+            }
           },
         },
       });
@@ -280,15 +351,7 @@
   onDestroy(() => {
     clearTimeout(previewTimer);
     clearTimeout(saveTimer);
-    if (entry && saveState === "dirty") {
-      const { id, title } = entry;
-      api.updateEntryBody(id, draft).catch((e) => {
-        notify(`The body of "${title}" could not be saved: ${errorMessage(e)}`, {
-          kind: "error",
-          action: { label: "Open entry", run: () => navigate({ view: "entry", entryId: id }) },
-        });
-      });
-    }
+    void leave();
   });
 </script>
 
@@ -321,6 +384,7 @@
       </span>
       <div class="more">
         <button
+          bind:this={moreButton}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onclick={(e) => {
@@ -332,12 +396,18 @@
         </button>
         {#if menuOpen}
           <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+          <div
+            class="menu"
+            role="menu"
+            tabindex="-1"
+            bind:this={menu}
+            onclick={(e) => e.stopPropagation()}
+          >
             <button role="menuitem" onclick={openRename}>Rename...</button>
             <button
               role="menuitem"
               onclick={() => {
-                menuOpen = false;
+                closeMenu();
                 editingAliases = true;
               }}
             >
@@ -464,7 +534,7 @@
     </Modal>
   {:else if missing}
     <h1>This entry no longer exists</h1>
-    <p class="muted">It was purged or the vault was restored from a backup.</p>
+    <p class="muted">It was purged from Trash, or a backup was restored.</p>
     <p>
       {#if guide}
         <a href={routeHash({ view: "guide", guideId: guide.id })}>Back to {guide.name}</a>
@@ -513,7 +583,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    min-width: 8em;
+    min-width: 11em;
     font-size: 0.9em;
   }
   .more {

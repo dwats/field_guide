@@ -505,14 +505,16 @@ fn guide_and_title(conn: &Connection, id: &EntryId) -> Result<(GuideId, String)>
     .ok_or_else(|| not_found("entry", id))
 }
 
-/// The entry holding `key` as its title or an alias in the guide, trashed or not.
-/// The entry that holds a normalized name in a guide, and whether it holds it as an alias.
+/// The entry that holds a normalized name in a guide, how it holds it, and whether it is in
+/// the Trash.
 pub(crate) struct NameHolder {
     pub id: EntryId,
     pub title: String,
     pub via_alias: bool,
+    pub in_trash: bool,
 }
 
+/// The entry holding `key` as its title or an alias in the guide, trashed or not.
 pub(crate) fn name_holder(
     conn: &Connection,
     guide_id: &GuideId,
@@ -520,9 +522,11 @@ pub(crate) fn name_holder(
 ) -> Result<Option<NameHolder>> {
     Ok(conn
         .query_row(
-            "SELECT id, title, 0 FROM entry WHERE guide_id = ?1 AND title_norm = ?2
+            "SELECT id, title, 0, deleted_at IS NOT NULL FROM entry
+             WHERE guide_id = ?1 AND title_norm = ?2
              UNION ALL
-             SELECT e.id, e.title, 1 FROM entry_alias a JOIN entry e ON e.id = a.entry_id
+             SELECT e.id, e.title, 1, e.deleted_at IS NOT NULL
+             FROM entry_alias a JOIN entry e ON e.id = a.entry_id
              WHERE a.guide_id = ?1 AND a.alias_norm = ?2
              LIMIT 1",
             params![guide_id, key],
@@ -531,6 +535,7 @@ pub(crate) fn name_holder(
                     id: row.get(0)?,
                     title: row.get(1)?,
                     via_alias: row.get::<_, i64>(2)? != 0,
+                    in_trash: row.get::<_, i64>(3)? != 0,
                 })
             },
         )
@@ -544,6 +549,7 @@ pub(crate) fn name_taken(name: impl Into<String>, holder: NameHolder) -> Error {
         holder_id: holder.id,
         holder_title: holder.title,
         held_as_alias: holder.via_alias,
+        holder_in_trash: holder.in_trash,
     }
 }
 

@@ -177,6 +177,9 @@ pub struct Segment {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_id: Option<EntryId>,
+    /// The words in the verb slot, which a list grouped by verb does not repeat on each line.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub verb_slot: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -446,7 +449,7 @@ fn render(
     let (section, label, inverted) = match perspective {
         Perspective::Subject => {
             let label = verb_slot(&verb.label);
-            line.plain(format!("{label} ")).entry(&relation.object);
+            line.verb(&label).entry(&relation.object);
             line.qualifiers(&relation.qualifiers, None);
             (Section::Relations, label, false)
         }
@@ -458,7 +461,7 @@ fn render(
             } else {
                 (format!("← {}", verb_slot(&verb.label)), true)
             };
-            line.plain(format!("{label} ")).entry(&relation.subject);
+            line.verb(&label).entry(&relation.subject);
             line.qualifiers(&relation.qualifiers, None);
             (Section::Relations, label, inverted)
         }
@@ -471,7 +474,7 @@ fn render(
             match &qualifier.label.inverse_label {
                 Some(inverse) => {
                     let label = verb_slot(inverse);
-                    line.plain(format!("{label} "))
+                    line.verb(&label)
                         .entry(&relation.subject)
                         .plain(" → ")
                         .entry(&relation.object);
@@ -513,6 +516,17 @@ impl Line {
         self.segments.push(Segment {
             text: text.into(),
             entry_id: None,
+            verb_slot: false,
+        });
+        self
+    }
+
+    /// The verb slot and the space after it.
+    fn verb(&mut self, label: &str) -> &mut Self {
+        self.segments.push(Segment {
+            text: format!("{label} "),
+            entry_id: None,
+            verb_slot: true,
         });
         self
     }
@@ -521,6 +535,7 @@ impl Line {
         self.segments.push(Segment {
             text: entry.title.clone(),
             entry_id: Some(entry.id.clone()),
+            verb_slot: false,
         });
         self
     }

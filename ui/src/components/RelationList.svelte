@@ -15,6 +15,7 @@
   } from "../lib/api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { verbSlot } from "../lib/format";
+  import { bodySegments, otherEnd } from "../lib/relationLines";
   import { navigate, routeHash } from "../lib/router";
 
   interface Props {
@@ -39,7 +40,8 @@
   let editing = $state<{ relation: Relation; rows: QualifierRow[] } | null>(null);
   let pendingDelete = $state<RelationView | null>(null);
   let error = $state("");
-  const listId = `relations-${Math.random().toString(36).slice(2)}`;
+  const uid = $props.id();
+  const listId = `${uid}-relations`;
 
   $effect(() => {
     void entryId;
@@ -82,22 +84,9 @@
   const ordered = $derived([...groups.flatMap((g) => g.items), ...referencedBy]);
   const selectedView = $derived(ordered.find((v) => keyOf(v) === selected) ?? null);
 
-  /** Under a group heading the verb slot is not repeated: `DROPS Cobblestone` reads `Cobblestone`. */
-  function shownSegments(view: RelationView) {
-    const first = view.segments[0];
-    if (view.section === "relations" && first && first.text === `${view.label} `) {
-      return view.segments.slice(1);
-    }
-    return view.segments;
-  }
-
-  /** The other end of the line: the first linked entry that is not the one being read. */
-  function otherEnd(view: RelationView): string | null {
-    return view.segments.find((s) => s.entry_id && s.entry_id !== entryId)?.entry_id ?? null;
-  }
-
   function onListKey(event: KeyboardEvent) {
-    if (ordered.length === 0) return;
+    // Keys on a link inside a line are the link's own; the list reacts only to its own focus.
+    if (event.target !== event.currentTarget || ordered.length === 0) return;
     const index = ordered.findIndex((v) => keyOf(v) === selected);
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -106,7 +95,7 @@
       event.preventDefault();
       selected = keyOf(ordered[Math.max(index - 1, 0)]);
     } else if (event.key === "Enter" && selectedView) {
-      const target = otherEnd(selectedView);
+      const target = otherEnd(selectedView, entryId);
       if (target) navigate({ view: "entry", entryId: target });
     } else if (event.key === "Escape" && selected) {
       event.preventDefault();
@@ -192,9 +181,10 @@
     onclick={() => (selected = keyOf(view))}
   >
     <span class="text">
-      {#each shownSegments(view) as seg, i (i)}
+      {#each bodySegments(view) as seg, i (i)}
         {#if seg.entry_id && seg.entry_id !== entryId}
-          <a href={routeHash({ view: "entry", entryId: seg.entry_id })}>{seg.text}</a>
+          <!-- Not a tab stop: the list is, and Enter on a selected line opens the other end. -->
+          <a href={routeHash({ view: "entry", entryId: seg.entry_id })} tabindex="-1">{seg.text}</a>
         {:else}
           {seg.text}
         {/if}
@@ -224,17 +214,17 @@
       aria-activedescendant={selected ? `${listId}-${selected}` : undefined}
       onkeydown={onListKey}
     >
-      {#each groups as group (group.label)}
-        <h3>{group.label}</h3>
-        <ul>
+      {#each groups as group, i (group.label)}
+        <h3 id={`${listId}-g${i}`}>{group.label}</h3>
+        <ul role="group" aria-labelledby={`${listId}-g${i}`}>
           {#each group.items as view (keyOf(view))}
             {@render line(view)}
           {/each}
         </ul>
       {/each}
       {#if referencedBy.length > 0}
-        <h3>Referenced by</h3>
-        <ul>
+        <h3 id={`${listId}-ref`}>Referenced by</h3>
+        <ul role="group" aria-labelledby={`${listId}-ref`}>
           {#each referencedBy as view (keyOf(view))}
             {@render line(view)}
           {/each}

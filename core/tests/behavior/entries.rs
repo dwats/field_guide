@@ -208,4 +208,11 @@ fn a_taken_name_says_which_entry_holds_it_and_how() {
         by_alias.to_string(),
         "\"Stone\" is already an alias of \"Stone Block\""
     );
+
+    v.trash_entry(&stone).unwrap();
+    let trashed = v.create_entry(new_entry(&g, "Stone Block")).unwrap_err();
+    assert_eq!(
+        trashed.to_string(),
+        "\"Stone Block\" is already the title of \"Stone Block\" (in Trash)"
+    );
 }

@@ -680,3 +680,30 @@ fn a_failed_save_leaves_no_new_words_behind() {
     assert!(v.list_verbs(&g).unwrap().is_empty());
     assert!(v.list_qualifier_labels(&g).unwrap().is_empty());
 }
+
+#[test]
+fn display_segments_mark_the_verb_slot_and_link_the_titles() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone Block", "");
+    let cobble = entry(&mut v, &g, "Cobblestone Block", "");
+    let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+    relate(&mut v, &stone, &drops, &cobble);
+
+    let from_stone = v
+        .relations_for_entry(&stone, &RelationFilter::default())
+        .unwrap();
+    let segments = &from_stone[0].segments;
+    assert!(segments[0].verb_slot);
+    assert_eq!(segments[0].text, "DROPS ");
+    assert_eq!(segments[1].entry_id, Some(cobble.clone()));
+    assert!(!segments[1].verb_slot);
+    let joined: String = segments.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(joined, from_stone[0].text);
+
+    let from_cobble = v
+        .relations_for_entry(&cobble, &RelationFilter::default())
+        .unwrap();
+    assert_eq!(from_cobble[0].segments[0].text, "DROPPED BY ");
+    assert!(from_cobble[0].segments[0].verb_slot);
+}

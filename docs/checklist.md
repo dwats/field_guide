@@ -40,7 +40,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Rename an entry; an entry that linked to it shows the new title; "Undo rename" puts the old title back and removes the alias.
 - [ ] Rename an entry and then rename it back by typing the original title; the original title returns and the interim title becomes the alias.
 - [ ] Add and remove an alias; linking by alias resolves; the entry filter finds the entry by its alias.
-- [ ] Tag an entry by typing a new path such as `Blocks/Natural`; the path appears under Tags for the guide.
+- [ ] Tag an entry by typing a new path such as `Blocks/Natural` and choosing the Create row; the path appears under Tags for the guide. Enter on a typed prefix picks the highlighted match.
 - [ ] The guide entry list filters by text and by `#Tag/Path`, and "Stubs only" hides described entries.
 - [ ] More, Move to Trash moves the entry without a confirmation, returns to the guide page, and offers Undo in the notice; Back does not return to the trashed entry.
 - [ ] Rename shows a notice with Undo; Edit aliases opens a dialog; the aliases line appears only when there are aliases.

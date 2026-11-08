@@ -19,6 +19,7 @@
     type Verb,
     type VerbSpec,
   } from "../lib/api";
+  import { focusTracker, moveHighlight, pickIndex } from "../lib/combobox";
   import { verbSlot } from "../lib/format";
   import {
     EMPTY,
@@ -61,10 +62,12 @@
   let stubPrompt = $state<{ title: string; tag_id: string | null } | null>(null);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let blurTimer: ReturnType<typeof setTimeout> | undefined;
   /** Only the newest suggestion request may land; slower earlier ones are dropped. */
   let suggestionRequest = 0;
-  const listId = `suggestions-${Math.random().toString(36).slice(2)}`;
+  const uid = $props.id();
+  const listId = `${uid}-suggestions`;
+  const labelId = `${uid}-label`;
+  const focus = focusTracker((f) => (focused = f));
 
   const stage = $derived(stageOf(staged));
   const placeholder = $derived(
@@ -280,12 +283,9 @@
   }
 
   async function onkeydown(event: KeyboardEvent) {
-    if (event.key === "ArrowDown" && suggestions.length > 0) {
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && suggestions.length > 0) {
       event.preventDefault();
-      highlight = (highlight + 1) % suggestions.length;
-    } else if (event.key === "ArrowUp" && suggestions.length > 0) {
-      event.preventDefault();
-      highlight = (highlight - 1 + suggestions.length) % suggestions.length;
+      highlight = moveHighlight(highlight, event.key === "ArrowDown" ? 1 : -1, suggestions.length);
     } else if (event.key === "Enter") {
       event.preventDefault();
       await onEnter();
@@ -305,13 +305,13 @@
       return;
     }
     if (!typed) return;
-    // Prefer an exact match, then the highlighted suggestion, then whatever "create" offers.
+    // The exact match, else the highlighted row; the last row offers "create".
     const key = norm(typed);
-    const exact = suggestions.find(
+    const exact = suggestions.findIndex(
       (s) => norm(s.text) === key || norm(s.detail ?? "") === `alias: ${key}`,
     );
-    const pick = exact ?? suggestions[highlight] ?? suggestions[0];
-    if (pick) await pick.apply();
+    const index = pickIndex(exact, highlight, suggestions.length);
+    if (index !== null) await suggestions[index].apply();
   }
 
   async function save() {
@@ -365,7 +365,7 @@
 </script>
 
 <div class="builder">
-  <div class="label" id={`${listId}-label`}>Add relation</div>
+  <div class="label" id={labelId}>Add relation</div>
   <div class="line" class:focused>
     {#if staged.verb}
       <span class="chip relation verb">{verbSlot(staged.verb.label)}</span>
@@ -387,16 +387,10 @@
       bind:value={text}
       {placeholder}
       {onkeydown}
-      onfocus={() => {
-        clearTimeout(blurTimer);
-        focused = true;
-      }}
-      onblur={() => {
-        clearTimeout(blurTimer);
-        blurTimer = setTimeout(() => (focused = false), 150);
-      }}
+      onfocus={focus.onfocus}
+      onblur={focus.onblur}
       disabled={busy}
-      aria-label="Relation input"
+      aria-labelledby={labelId}
       role="combobox"
       aria-expanded={focused && suggestions.length > 0}
       aria-controls={listId}
@@ -490,7 +484,8 @@
   }
   .label {
     font-size: 0.8em;
-    text-transform: uppercase;
+    /* Small caps, not text-transform: Chromium folds text-transform into the accessible name. */
+    font-variant-caps: all-small-caps;
     letter-spacing: 0.04em;
     color: var(--muted);
     margin-bottom: 4px;

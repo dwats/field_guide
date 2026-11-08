@@ -1,12 +1,13 @@
 <script lang="ts">
   // Chips for the selected tags plus a way to add one. Typing a path shows matching tags in the
-  // shared suggestion list; Enter picks the highlighted one or creates the typed path, every
-  // missing level included (core's `ensure_tag_path`). In compact form the input hides behind an
-  // "Add tag" button until it is needed.
+  // shared suggestion list, with a last row that creates the typed path (every missing level
+  // included, core's `ensure_tag_path`) when no tag has it. Enter takes the exact match, else the
+  // highlighted row. In compact form the input hides behind an "Add tag" button until needed.
   import { untrack } from "svelte";
 
   import Suggestions from "./Suggestions.svelte";
   import { api, errorMessage, type Id } from "../lib/api";
+  import { focusTracker, moveHighlight, pickIndex } from "../lib/combobox";
   import { flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
@@ -26,6 +27,14 @@
     compact = false,
   }: Props = $props();
 
+  interface Row {
+    key: string;
+    text: string;
+    detail?: string;
+    /** What picking the row adds. */
+    path: string;
+  }
+
   let entries = $state<TagOption[]>([]);
   let text = $state("");
   let error = $state("");
@@ -33,16 +42,28 @@
   let focused = $state(false);
   let highlight = $state(0);
   let input = $state<HTMLInputElement | null>(null);
-  let blurTimer: ReturnType<typeof setTimeout> | undefined;
-  const listId = `tags-${Math.random().toString(36).slice(2)}`;
+  const uid = $props.id();
+  const listId = `${uid}-tags`;
+  const focus = focusTracker((f) => {
+    focused = f;
+    if (!f && compact && text.trim() === "") adding = false;
+  });
 
-  const matches = $derived.by(() => {
-    const key = text.trim().toLowerCase();
+  /** Tags not yet selected that contain the typed text, exact and prefix matches first. */
+  const items = $derived.by((): Row[] => {
+    const typed = text.trim();
+    const key = typed.toLowerCase();
     if (!key) return [];
-    return entries
+    const rank = (path: string) => (path === key ? 0 : path.startsWith(key) ? 1 : 2);
+    const rows: Row[] = entries
       .filter((e) => !selected.includes(e.id) && e.path.toLowerCase().includes(key))
+      .sort((a, b) => rank(a.path.toLowerCase()) - rank(b.path.toLowerCase()))
       .slice(0, 8)
-      .map((e) => ({ key: e.id, text: e.path }));
+      .map((e) => ({ key: e.id, text: e.path, path: e.path }));
+    if (!entries.some((e) => e.path.toLowerCase() === key)) {
+      rows.push({ key: "create", text: `Create tag "${typed}"`, path: typed });
+    }
+    return rows;
   });
 
   $effect(() => {
@@ -55,7 +76,7 @@
   });
 
   $effect(() => {
-    void matches;
+    void items;
     highlight = 0;
   });
 
@@ -84,8 +105,8 @@
   }
 
   function pick(index: number) {
-    const match = matches[index];
-    if (match) void addPath(match.text);
+    const row = items[index];
+    if (row) void addPath(row.path);
   }
 
   function remove(id: Id) {
@@ -97,37 +118,23 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    if (event.key === "ArrowDown" && matches.length > 0) {
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && items.length > 0) {
       event.preventDefault();
-      highlight = (highlight + 1) % matches.length;
-    } else if (event.key === "ArrowUp" && matches.length > 0) {
-      event.preventDefault();
-      highlight = (highlight - 1 + matches.length) % matches.length;
+      highlight = moveHighlight(highlight, event.key === "ArrowDown" ? 1 : -1, items.length);
     } else if (event.key === "Enter") {
       event.preventDefault();
       const typed = text.trim();
-      const exact = matches.find((m) => m.text.toLowerCase() === typed.toLowerCase());
-      if (exact) void addPath(exact.text);
-      else if (matches.length > 0 && typed && highlight > 0) pick(highlight);
-      else void addPath(typed);
+      const key = typed.toLowerCase();
+      const exact = items.findIndex((r) => r.key !== "create" && r.path.toLowerCase() === key);
+      const index = pickIndex(exact, highlight, items.length);
+      if (index !== null) pick(index);
+      // No rows only when the typed path is a tag already on the entry: nothing to add, so clear.
+      else if (typed) void addPath(typed);
     } else if (event.key === "Escape") {
       event.preventDefault();
       text = "";
       if (compact) adding = false;
     }
-  }
-
-  function onfocus() {
-    clearTimeout(blurTimer);
-    focused = true;
-  }
-
-  function onblur() {
-    clearTimeout(blurTimer);
-    blurTimer = setTimeout(() => {
-      focused = false;
-      if (compact && text.trim() === "") adding = false;
-    }, 150);
   }
 </script>
 
@@ -149,19 +156,19 @@
         bind:value={text}
         {placeholder}
         {onkeydown}
-        {onfocus}
-        {onblur}
+        onfocus={focus.onfocus}
+        onblur={focus.onblur}
         role="combobox"
         aria-label="Add tag"
-        aria-expanded={focused && matches.length > 0}
+        aria-expanded={focused && items.length > 0}
         aria-controls={listId}
-        aria-activedescendant={focused && matches.length > 0 ? `${listId}-${highlight}` : undefined}
+        aria-activedescendant={focused && items.length > 0 ? `${listId}-${highlight}` : undefined}
       />
     {/if}
     {#if error}<span class="error">{error}</span>{/if}
   </div>
   {#if focused}
-    <Suggestions {listId} items={matches} {highlight} onpick={pick} />
+    <Suggestions {listId} {items} {highlight} onpick={pick} />
   {/if}
 </div>
 

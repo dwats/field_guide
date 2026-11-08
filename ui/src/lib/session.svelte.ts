@@ -30,16 +30,19 @@ export const session = $state({
 let nextNoticeId = 1;
 
 /**
- * Queues a message for the notice slot. Info notices replace any earlier info notice, since
- * each one reports the latest thing that happened; warnings and errors stay until dismissed.
+ * Queues a message for the notice slot. An info notice reports the latest thing that happened,
+ * so it goes to the front and replaces any earlier info notice; warnings and errors queue behind
+ * and stay until dismissed.
  */
 export function notify(text: string, options: { kind?: NoticeKind; action?: NoticeAction } = {}): number {
   const kind = options.kind ?? "info";
-  if (kind === "info") {
-    session.notices = session.notices.filter((n) => n.kind !== "info");
-  }
   const id = nextNoticeId++;
-  session.notices.push({ id, kind, text, action: options.action });
+  const notice: Notice = { id, kind, text, action: options.action };
+  if (kind === "info") {
+    session.notices = [notice, ...session.notices.filter((n) => n.kind !== "info")];
+  } else {
+    session.notices.push(notice);
+  }
   return id;
 }
 

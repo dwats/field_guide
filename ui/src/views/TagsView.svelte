@@ -77,7 +77,7 @@
 
   function deleteBody(node: TagNode): string[] {
     const children = node.children.length;
-    const lines = ["Entries tagged with it lose the tag. Nothing else changes."];
+    const lines = ["Entries tagged with it lose the tag."];
     if (children > 0) {
       lines.push(`${children} child tag${children === 1 ? "" : "s"} move up one level.`);
     }

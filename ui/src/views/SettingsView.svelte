@@ -6,12 +6,11 @@
   import { api, errorMessage, type BackupInfo } from "../lib/api";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
-  import { session } from "../lib/session.svelte";
+  import { notify, session } from "../lib/session.svelte";
 
   let backups = $state<BackupInfo[]>([]);
   let busy = $state(false);
   let pendingRestore = $state<BackupInfo | null>(null);
-  let message = $state("");
   let error = $state("");
 
   const startup = $derived(session.startup);
@@ -33,7 +32,7 @@
     error = "";
     try {
       const info = await api.backupNow();
-      message = `Backed up to ${fileName(info.path)}.`;
+      notify(`Backed up to ${fileName(info.path)}.`);
       await load();
     } catch (e) {
       error = errorMessage(e);
@@ -54,7 +53,7 @@
     error = "";
     try {
       backups = await api.restoreBackup(backup.path);
-      message = `Restored the backup from ${when(backup.created_at)}.`;
+      notify(`Restored the backup from ${when(backup.created_at)}.`);
       navigate({ view: "guides" });
     } catch (e) {
       error = errorMessage(e);
@@ -115,7 +114,6 @@
       A backup of the database is taken on the first open of each day. The five most recent are
       kept. Media files are not included; they are content-addressed and never change.
     </p>
-    {#if message}<p>{message}</p>{/if}
     {#if error}<p class="error">{error}</p>{/if}
     {#if backups.length === 0}
       <p class="muted">No backups yet.</p>

@@ -188,6 +188,8 @@ export interface Relation {
 export interface Segment {
   text: string;
   entry_id?: Id;
+  /** The words in the verb slot; a list grouped by verb does not repeat them per line. */
+  verb_slot?: boolean;
 }
 
 export interface RelationView {

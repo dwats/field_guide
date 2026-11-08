@@ -24,6 +24,7 @@
       <li role="option" id={`${listId}-${i}`} aria-selected={i === highlight}>
         <button
           type="button"
+          tabindex="-1"
           class:on={i === highlight}
           onmousedown={(e) => {
             // mousedown, not click, so the input does not blur and close the list first.

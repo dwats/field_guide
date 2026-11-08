@@ -78,12 +78,18 @@ pub enum Error {
 
     /// Titles and aliases share one namespace per guide. The message names the entry that holds
     /// the word and how, so the UI never has to show an id.
-    #[error("\"{name}\" is already {} of \"{holder_title}\"", held_as(.held_as_alias))]
+    #[error(
+        "\"{name}\" is already {} of \"{holder_title}\"{}",
+        held_as(.held_as_alias),
+        in_trash(.holder_in_trash)
+    )]
     NameTaken {
         name: String,
         holder_id: EntryId,
         holder_title: String,
         held_as_alias: bool,
+        /// The holder is in the Trash, so browse does not show it; the message says so.
+        holder_in_trash: bool,
     },
 
     #[error("a guide named \"{0}\" already exists")]
@@ -128,4 +134,8 @@ pub(crate) fn not_found(kind: &'static str, id: impl Display) -> Error {
 
 fn held_as(alias: &bool) -> &'static str {
     if *alias { "an alias" } else { "the title" }
+}
+
+fn in_trash(trashed: &bool) -> &'static str {
+    if *trashed { " (in Trash)" } else { "" }
 }

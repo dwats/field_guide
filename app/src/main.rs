@@ -39,7 +39,10 @@ fn main() -> anyhow::Result<()> {
                 if let Some(saved) = saved {
                     apply_window_state(&window, &saved);
                 }
-                disable_browser_accelerator_keys(&window)?;
+                // A keyboard preference must never stop the app from starting.
+                if let Err(e) = disable_browser_accelerator_keys(&window) {
+                    eprintln!("could not turn off the webview's accelerator keys: {e}");
+                }
                 // The window starts hidden so it appears where it was, not at the default spot.
                 let _ = window.show();
             }
@@ -192,6 +195,10 @@ fn save_window_state(window: &WebviewWindow) {
 fn disable_browser_accelerator_keys(window: &WebviewWindow) -> tauri::Result<()> {
     use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
     use windows_core::Interface;
+    // Debug builds keep the keys so F12 still opens the developer tools.
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
     window.with_webview(|webview| {
         // SAFETY: COM calls on the controller this webview owns, made on its own thread.
         unsafe {

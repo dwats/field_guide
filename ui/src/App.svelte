@@ -3,48 +3,13 @@
 
   import { api, errorMessage } from "./lib/api";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
+  import { fatalText } from "./lib/fatal";
   import { dismiss, notify, session } from "./lib/session.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
   import EntryView from "./views/EntryView.svelte";
   import SettingsView from "./views/SettingsView.svelte";
   import TagsView from "./views/TagsView.svelte";
-
-  /** Sentences for the start-up failures core can report, keyed on the error kind. */
-  function fatalText(kind: string, message: string): { what: string; next: string } {
-    switch (kind) {
-      case "vault_locked":
-        return {
-          what: "The vault is open in another Field Guide.",
-          next: "Close the other window, then start this one again.",
-        };
-      case "newer_schema":
-        return {
-          what: "This vault was written by a newer Field Guide.",
-          next: "Update Field Guide to open it.",
-        };
-      case "portable_dir_not_writable":
-        return {
-          what: "Portable mode is on, and the folder beside the executable cannot be written.",
-          next: "Move Field Guide to a writable folder, or remove the file named portable.",
-        };
-      case "data_dir_not_writable":
-        return {
-          what: "The data folder cannot be written.",
-          next: "Check the folder's permissions, then start Field Guide again.",
-        };
-      case "config_parse":
-        return {
-          what: "The settings file could not be read.",
-          next: "Fix or delete config.toml, then start Field Guide again.",
-        };
-      default: {
-        const sentence = message.trim();
-        const cased = sentence.charAt(0).toUpperCase() + sentence.slice(1);
-        return { what: cased.endsWith(".") ? cased : `${cased}.`, next: "" };
-      }
-    }
-  }
 
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
@@ -104,21 +69,26 @@
 
   async function backUpNow() {
     try {
-      await api.backupNow();
-      notify("Backed up.", { kind: "info" });
+      const info = await api.backupNow();
+      notify(`Backed up to ${info.path.split(/[\\/]/).pop() ?? info.path}.`);
     } catch (e) {
       notify(`Backup failed: ${errorMessage(e)}`, { kind: "error" });
     }
   }
 
+  /** Runs a notice's action; a failure becomes an error notice instead of a silent rejection. */
   async function runAction(id: number, run: () => void | Promise<void>) {
     dismiss(id);
-    await run();
+    try {
+      await run();
+    } catch (e) {
+      notify(errorMessage(e), { kind: "error" });
+    }
   }
 </script>
 
 {#if loading}
-  <main class="centered"><p>Opening your vault.</p></main>
+  <main class="centered"><p>Opening your guides.</p></main>
 {:else if session.startup?.fatal}
   {@const fatal = fatalText(session.startup.fatal.kind, session.startup.fatal.message)}
   <main class="centered fatal">
@@ -217,6 +187,8 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+    /* The gutter is always reserved, so a page that grows a scrollbar does not shift sideways. */
+    scrollbar-gutter: stable;
   }
   .centered {
     display: grid;
