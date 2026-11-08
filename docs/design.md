@@ -80,8 +80,8 @@ relation          id, subject_note_id, verb_id, object_note_id, created_at
                   unique (subject_note_id, verb_id, object_note_id)
 relation_qualifier id, relation_id, qualifier_label_id, value_note_id | value_text | value_num, sort
 mention           note_id, target_norm, target_note_id (NULL while unresolved)   cache of [[wikilinks]], one row per distinct link text
-board             id, guide_id, name, filters_json
-board_node        board_id, note_id, x, y
+board             id, guide_id, name, name_norm, filters_json, created_at, updated_at   unique (guide_id, name_norm)
+board_node        board_id, note_id, x, y          (notes from other guides allowed, for the external toggle)
 notes_fts         FTS5 over title, aliases, body; tokenizer unicode61 with remove_diacritics
 ```
 
@@ -183,7 +183,7 @@ None. A new guide has zero verbs and zero qualifier labels. Vocabulary arrives t
 - Scope: current guide. Toggles for external edges and mentions.
 - Filters, all live: tag chips (ancestor-inclusive), free text (FTS5), and topics: a set of selected notes plus a hop depth. The board shows notes that pass the filter and every edge whose endpoints are both visible.
 - Nodes are cards: title, cover thumbnail if the note has gallery media, tag chips. Edges are labeled with the verb; qualifiers render as a second line on the label. Mentions are dashed.
-- Layout: SVG with pan and zoom. Unplaced nodes get force-directed positions on open. Dragging persists `(x, y)` to `board_node` on drag end. A guide can have several named boards, each with its own layout and saved filters.
+- Layout: SVG with pan and zoom. Unplaced nodes get force-directed positions on open. Dragging persists `(x, y)` to `board_node` on drag end. A guide can have several named boards, each with its own layout and saved filters. Board names are unique per guide, case-insensitively. Filters are stored as JSON and read back into a typed struct by `core`; a position may be saved for a note from another guide, since the external toggle can show one.
 - Canvas rendering is a later optimization if SVG falls over past a few hundred nodes.
 
 ## 7. Export

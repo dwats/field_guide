@@ -87,3 +87,7 @@ id_type!(
     /// Identifies one qualifier on a relation.
     QualifierId
 );
+id_type!(
+    /// Identifies a board: a named view of a guide with saved filters and positions.
+    BoardId
+);

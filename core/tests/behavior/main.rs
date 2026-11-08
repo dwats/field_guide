@@ -4,6 +4,7 @@
 mod common;
 
 mod backup;
+mod boards;
 mod config;
 mod datadir;
 mod guides;

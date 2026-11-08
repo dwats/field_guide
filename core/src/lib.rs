@@ -4,6 +4,7 @@
 //! cross the crate boundary. Business rules live here so they can be tested without a window.
 
 pub mod backup;
+pub mod board;
 mod clock;
 pub mod config;
 pub mod datadir;
@@ -24,5 +25,7 @@ pub mod wikilink;
 
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, Result};
-pub use ids::{GuideId, MediaId, NoteId, QualifierId, QualifierLabelId, RelationId, TagId, VerbId};
+pub use ids::{
+    BoardId, GuideId, MediaId, NoteId, QualifierId, QualifierLabelId, RelationId, TagId, VerbId,
+};
 pub use vault::Vault;

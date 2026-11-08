@@ -56,6 +56,10 @@ pub enum Error {
     #[error("config could not be serialized: {0}")]
     ConfigSerialize(#[from] toml::ser::Error),
 
+    /// Stored or exchanged JSON (board filters, archives) that does not parse or serialize.
+    #[error("invalid JSON: {0}")]
+    Json(#[from] serde_json::Error),
+
     #[error("{kind} {id} not found")]
     NotFound { kind: &'static str, id: String },
 
@@ -71,6 +75,9 @@ pub enum Error {
 
     #[error("a tag named \"{0}\" already exists at that level")]
     TagNameTaken(String),
+
+    #[error("a board named \"{0}\" already exists in this guide")]
+    BoardNameTaken(String),
 
     #[error("a tag cannot be moved or merged into itself or one of its descendants")]
     TagCycle,
