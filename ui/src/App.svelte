@@ -4,11 +4,16 @@
   // and on no other, so a view always has the same layout. Each column scrolls on its own.
   import { onMount } from "svelte";
 
+  import GuidesSidebar from "./components/GuidesSidebar.svelte";
+  import Palette from "./components/Palette.svelte";
+  import SettingsSidebar from "./components/SettingsSidebar.svelte";
   import Sidebar from "./components/Sidebar.svelte";
+  import { perform } from "./lib/actions";
   import { api, errorMessage } from "./lib/api";
   import { fatalText } from "./lib/fatal";
+  import { actionFor, displayKeys, isEditable, type Action } from "./lib/keys";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
-  import { DEFAULT_PREFS, dismiss, notify, session } from "./lib/session.svelte";
+  import { DEFAULT_PREFS, dismiss, notify, savePrefs, session } from "./lib/session.svelte";
   import EntryView from "./views/EntryView.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
@@ -18,6 +23,7 @@
 
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
+  let paletteOpen = $state(false);
 
   /** The notice slot shows one notice at a time; the rest wait behind it. */
   const current = $derived(session.notices[0]);
@@ -63,9 +69,62 @@
       route = parseRoute(window.location.hash);
     };
     window.addEventListener("hashchange", onHash);
+    window.addEventListener("keydown", onKey);
     void boot();
-    return () => window.removeEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("keydown", onKey);
+    };
   });
+
+  /** The keyboard map (lib/keys.ts). Plain keys such as F2 stay in fields where typing happens. */
+  function onKey(event: KeyboardEvent) {
+    if (session.startup?.fatal) return;
+    const action = actionFor(event);
+    if (!action) return;
+    const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (plain && isEditable(event.target)) return;
+    event.preventDefault();
+    act(action);
+  }
+
+  /** Shell-level actions run here; the rest go to whichever view registered them. */
+  function act(action: Action) {
+    switch (action) {
+      case "palette":
+        paletteOpen = true;
+        return;
+      case "settings":
+        navigate({ view: "settings" });
+        return;
+      case "back":
+        history.back();
+        return;
+      case "forward":
+        history.forward();
+        return;
+      case "toggle-sidebar":
+        void savePrefs({ sidebar_collapsed: !session.prefs.sidebar_collapsed });
+        return;
+      case "density-compact":
+        void savePrefs({ density: "compact" });
+        return;
+      case "density-roomy":
+        void savePrefs({ density: "roomy" });
+        return;
+      case "dismiss-notice":
+        if (current) dismiss(current.id);
+        return;
+      case "tag-editor":
+        if (session.current.guide) navigate({ view: "tags", guideId: session.current.guide.id });
+        return;
+      case "trash":
+        if (session.current.guide) navigate({ view: "trash", guideId: session.current.guide.id });
+        return;
+      default:
+        perform(action);
+    }
+  }
 
   async function boot() {
     try {
@@ -159,6 +218,9 @@
       {/each}
     </nav>
     <nav class="tools" aria-label="Tools">
+      <button class="link search" onclick={() => (paletteOpen = true)}>
+        Search <kbd>{displayKeys("Mod+K")}</kbd>
+      </button>
       <a href={routeHash({ view: "settings" })} class:active={route.view === "settings"}>Settings</a>
     </nav>
   </header>
@@ -176,9 +238,13 @@
       {/if}
     </div>
   {/if}
-  <div class="columns" class:with-sidebar={inGuide} style:--sidebar-col={sidebarWidth}>
+  <div class="columns" style:--sidebar-col={sidebarWidth}>
     {#if inGuide}
       <Sidebar {route} />
+    {:else if route.view === "settings"}
+      <SettingsSidebar />
+    {:else}
+      <GuidesSidebar />
     {/if}
     <main tabindex="-1" class:split={route.view === "entry"}>
       {#if route.view === "guides"}
@@ -196,6 +262,7 @@
       {/if}
     </main>
   </div>
+  <Palette open={paletteOpen} {route} onclose={() => (paletteOpen = false)} onaction={act} />
 {/if}
 
 <style>
@@ -233,6 +300,15 @@
   .tools a.active {
     text-decoration: underline;
   }
+  .search kbd {
+    font: inherit;
+    font-size: var(--small);
+    margin-left: 4px;
+    padding: 0 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+  }
   .notice {
     display: flex;
     align-items: center;
@@ -253,13 +329,11 @@
   .notice .count {
     font-size: 0.9em;
   }
+  /* Every view has the sidebar column; its contents change with the level. */
   .columns {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: 1fr;
-  }
-  .columns.with-sidebar {
     grid-template-columns: var(--sidebar-col) minmax(0, 1fr);
   }
   main {

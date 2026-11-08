@@ -120,7 +120,7 @@
 <div class="page">
   <h1>Settings</h1>
 
-  <section>
+  <section id="settings-appearance">
     <h2>Appearance</h2>
     <p class="muted">Each choice shows what it changes. Nothing here touches your data.</p>
     <div class="group" role="radiogroup" aria-label="Density">
@@ -170,7 +170,7 @@
   </section>
 
   {#if startup}
-    <section>
+    <section id="settings-data">
       <h2>Data</h2>
       <table class="facts">
         <tbody>
@@ -178,12 +178,13 @@
             <th>Mode</th>
             <td>
               {startup.mode === "portable" ? "Portable" : "Default"}
+              <br />
               <span class="muted">
                 {#if startup.mode === "portable"}
-                  (a file named <code>portable</code> sits beside the executable)
+                  A file named <code>portable</code> sits beside the executable.
                 {:else}
-                  (platform data directory; add a file named <code>portable</code> beside the
-                  executable to switch)
+                  The platform data directory. Add a file named <code>portable</code> beside the
+                  executable to switch.
                 {/if}
               </span>
             </td>
@@ -197,7 +198,7 @@
     </section>
   {/if}
 
-  <section>
+  <section id="settings-backups">
     <div class="row">
       <h2>Backups</h2>
       <span class="spacer"></span>
@@ -238,7 +239,7 @@
     oncancel={() => (pendingRestore = null)}
   />
 
-  <section>
+  <section id="settings-updates">
     <h2>Updates</h2>
     <p class="muted">
       Field Guide never checks for updates on its own. The button below arrives with the release

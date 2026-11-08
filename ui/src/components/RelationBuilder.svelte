@@ -229,6 +229,11 @@
     }, 0);
   }
 
+  /** Puts the caret in the line; Mod+R and the palette use it. */
+  export function focusLine() {
+    input?.focus();
+  }
+
   async function openStubPrompt(title: string) {
     let tag_id: string | null = null;
     if (staged.verb?.id) {

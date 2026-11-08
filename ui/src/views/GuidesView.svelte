@@ -1,20 +1,20 @@
 <script lang="ts">
-  // Top-level browse: every guide in the vault as cards or a table, filtered by name and by the
-  // global tags applied to guides.
+  // Top-level browse: every guide in the vault as cards or a table. The filters live in the
+  // sidebar (`session.guidesFilter`); the toolbar holds New guide and the view toggle.
   import { untrack } from "svelte";
 
   import Modal from "../components/Modal.svelte";
   import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
+  import { register } from "../lib/actions";
+  import { displayKeys } from "../lib/keys";
   import { navigate, routeHash } from "../lib/router";
-  import { savePrefs, session, setCurrent } from "../lib/session.svelte";
+  import { savePrefs, session, setCurrent, touch } from "../lib/session.svelte";
   import { when } from "../lib/format";
-  import { flattenTags, type TagOption } from "../lib/tags";
+  import { colorVar, flattenTags, type TagOption } from "../lib/tags";
 
   let guides = $state<Guide[]>([]);
   let allGuides = $state<Guide[]>([]);
   let tags = $state<TagOption[]>([]);
-  let nameFilter = $state("");
-  let selectedTags = $state<string[]>([]);
   let error = $state("");
 
   let creating = $state(false);
@@ -22,9 +22,14 @@
   let newDescription = $state("");
   let copyFrom = $state("");
 
+  const filtering = $derived(
+    session.guidesFilter.name.trim() !== "" || session.guidesFilter.tagIds.length > 0,
+  );
+
   $effect(() => {
-    const name = nameFilter.trim();
-    const tagIds = [...selectedTags];
+    const name = session.guidesFilter.name.trim();
+    const tagIds = [...session.guidesFilter.tagIds];
+    void session.revision;
     untrack(() => void load(name, tagIds));
   });
 
@@ -35,10 +40,14 @@
     });
   });
 
+  $effect(() => register("new", openNew));
+  $effect(() => register("new-guide", openNew));
+
   async function load(name: string, tagIds: string[]) {
     try {
       guides = await api.listGuides({ name_contains: name || null, tag_ids: tagIds });
       if (!name && tagIds.length === 0) allGuides = guides;
+      else allGuides = await api.listGuides();
       error = "";
     } catch (e) {
       error = errorMessage(e);
@@ -53,14 +62,19 @@
     }
   }
 
-  function toggleTag(id: string) {
-    selectedTags = selectedTags.includes(id)
-      ? selectedTags.filter((t) => t !== id)
-      : [...selectedTags, id];
+  function openNew() {
+    newName = "";
+    newDescription = "";
+    copyFrom = "";
+    creating = true;
   }
 
   async function setView(view: GuideView) {
     await savePrefs({ guide_view: view });
+  }
+
+  function clearFilter() {
+    session.guidesFilter = { name: "", tagIds: [] };
   }
 
   async function create() {
@@ -69,9 +83,7 @@
     try {
       const guide = await api.createGuide(name, newDescription.trim(), copyFrom || null);
       creating = false;
-      newName = "";
-      newDescription = "";
-      copyFrom = "";
+      touch();
       navigate({ view: "guide", guideId: guide.id });
     } catch (e) {
       error = errorMessage(e);
@@ -83,14 +95,30 @@
       .map((id) => tags.find((t) => t.id === id))
       .filter((t): t is TagOption => t !== undefined);
   }
-
 </script>
+
+{#snippet tagChips(guide: Guide)}
+  {#each tagPaths(guide) as tag (tag.id)}
+    <span class="chip">
+      {#if colorVar(tag.color)}<span class="tag-dot" style:--dot={colorVar(tag.color)}></span>{/if}
+      {tag.path}
+    </span>
+  {/each}
+{/snippet}
 
 <div class="page">
   <div class="row header">
     <h1>Guides</h1>
     <span class="spacer"></span>
-    <button class="primary" onclick={() => (creating = !creating)}>New guide</button>
+    <div class="segmented" role="group" aria-label="View">
+      <button class:on={session.prefs.guide_view === "cards"} onclick={() => setView("cards")}>
+        Cards
+      </button>
+      <button class:on={session.prefs.guide_view === "table"} onclick={() => setView("table")}>
+        Table
+      </button>
+    </div>
+    <button class="primary" onclick={openNew} title={displayKeys("Mod+N")}>New guide</button>
   </div>
 
   <Modal open={creating} title="New guide" onclose={() => (creating = false)}>
@@ -127,44 +155,25 @@
     {/snippet}
   </Modal>
 
-  <div class="row toolbar">
-    <input type="search" placeholder="Filter by name" bind:value={nameFilter} />
-    {#each tags as tag (tag.id)}
-      <button
-        class="chip"
-        class:selected={selectedTags.includes(tag.id)}
-        onclick={() => toggleTag(tag.id)}
-      >
-        {tag.path}
-      </button>
-    {/each}
-    <span class="spacer"></span>
-    <div class="segmented" role="group" aria-label="View">
-      <button class:on={session.prefs.guide_view === "cards"} onclick={() => setView("cards")}>
-        Cards
-      </button>
-      <button class:on={session.prefs.guide_view === "table"} onclick={() => setView("table")}>
-        Table
-      </button>
-    </div>
-  </div>
-
-  {#if error}<p class="error">{error}</p>{/if}
+  {#if error && !creating}<p class="error">{error}</p>{/if}
 
   {#if guides.length === 0}
-    <p class="muted">
-      {allGuides.length === 0 ? "No guides yet. Create one to start." : "No guides match."}
-    </p>
+    <div class="empty">
+      {#if filtering}
+        <p class="muted">No guides match.</p>
+        <button onclick={clearFilter}>Clear filter</button>
+      {:else}
+        <p class="muted">No guides yet.</p>
+        <button class="primary" onclick={openNew}>New guide</button>
+      {/if}
+    </div>
   {:else if session.prefs.guide_view === "cards"}
     <div class="cards">
       {#each guides as guide (guide.id)}
         <a class="card" href={routeHash({ view: "guide", guideId: guide.id })}>
-          <div class="cover" class:empty={!guide.cover_media_id}></div>
           <h2>{guide.name}</h2>
           {#if guide.description}<p>{guide.description}</p>{/if}
-          <div class="row">
-            {#each tagPaths(guide) as tag (tag.id)}<span class="chip">{tag.path}</span>{/each}
-          </div>
+          <div class="row">{@render tagChips(guide)}</div>
         </a>
       {/each}
     </div>
@@ -178,9 +187,7 @@
           <tr>
             <td><a href={routeHash({ view: "guide", guideId: guide.id })}>{guide.name}</a></td>
             <td>{guide.description}</td>
-            <td>
-              {#each tagPaths(guide) as tag (tag.id)}<span class="chip">{tag.path}</span>{/each}
-            </td>
+            <td><div class="row">{@render tagChips(guide)}</div></td>
             <td class="muted">{when(guide.updated_at)}</td>
           </tr>
         {/each}
@@ -191,13 +198,10 @@
 
 <style>
   .header {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-4);
   }
   .spacer {
     flex: 1;
-  }
-  .toolbar {
-    margin-bottom: 16px;
   }
   .new-guide {
     display: grid;
@@ -221,14 +225,19 @@
     background: var(--chip-bg);
     font-weight: 600;
   }
+  .empty {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+  }
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
+    gap: var(--space-3);
   }
   .card {
     display: block;
-    padding: 12px;
+    padding: var(--space-3);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: inherit;
@@ -237,12 +246,6 @@
   }
   .card:hover {
     border-color: var(--muted);
-  }
-  .cover {
-    height: 80px;
-    margin-bottom: 8px;
-    border-radius: 4px;
-    background: var(--chip-bg);
   }
   .card h2 {
     font-size: 1.05rem;

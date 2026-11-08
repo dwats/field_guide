@@ -8,7 +8,7 @@
   import Suggestions from "./Suggestions.svelte";
   import { api, errorMessage, type Id } from "../lib/api";
   import { focusTracker, moveHighlight, pickIndex } from "../lib/combobox";
-  import { flattenTags, type TagOption } from "../lib/tags";
+  import { colorVar, flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
     /** Guide id for that guide's tags; null for the global tags applied to guides. */
@@ -109,6 +109,12 @@
     if (row) void addPath(row.path);
   }
 
+  /** Opens the input in compact form; Mod+T and the palette use it. */
+  export function startAdding() {
+    adding = true;
+    input?.focus();
+  }
+
   function remove(id: Id) {
     void onchange(selected.filter((s) => s !== id));
   }
@@ -141,7 +147,9 @@
 <div class="picker">
   <div class="row">
     {#each selected as id (id)}
+      {@const dot = colorVar(entries.find((e) => e.id === id)?.color)}
       <span class="chip">
+        {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
         {pathOf(id)}
         <button onclick={() => remove(id)} aria-label="Remove tag {pathOf(id)}">&times;</button>
       </span>

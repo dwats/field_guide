@@ -72,6 +72,8 @@ export const session = $state({
   /** Bumped after a change the rest of the shell should reload for (tree, counts, lists). */
   revision: 0,
   sidebar: freshSidebar(null),
+  /** The guides list's filter, set from its sidebar. */
+  guidesFilter: { name: "", tagIds: [] as string[] },
 });
 
 let nextNoticeId = 1;

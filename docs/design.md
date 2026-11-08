@@ -201,7 +201,9 @@ Decided with the owner on 2026-11-08, first in an interview and then over the UX
 - Density: a setting with a compact and a roomy preset.
 - Theme: follow the operating system's light or dark setting; a manual override comes later.
 - Editing: Read and Edit modes stay; Edit offers a toggle between the split live preview and a single pane that renders in place.
-- Input: keyboard first, with a command palette for search, jump, and new entry on the shortcut each platform expects (Ctrl on Windows and Linux, Cmd on macOS); every action also reachable by mouse.
+- Input: keyboard first, with a command palette for search, jump, and new entry on the shortcut each platform expects (Ctrl on Windows and Linux, Cmd on macOS); every action also reachable by mouse. The map (review 4.1) lives in `ui/src/lib/keys.ts`: Mod+K palette, Mod+N new entry (new guide on the guides list), Mod+Shift+N new guide, Mod+F search this guide, Mod+E Read or Edit, Mod+R the relation line, Mod+T add a tag, Mod+, Settings, Alt+Left and Alt+Right history, F2 rename; Escape belongs to the focused thing. The palette groups Entries, Commands with their shortcuts, and Guides, ends with a row that creates the typed entry, and takes `>` to limit itself to commands (decided 2026-11-08).
+- Sidebar at every level: inside a guide as above; on the guides list the name filter and the global tags with guide counts; in Settings the sections with the one in view marked (decided 2026-11-08).
+- Tag editor: the tree on the left and a detail pane on the right with name, parent, colour, counts, Add child tag, Merge into..., and Delete tag; no control appears on hover; Up and Down, Left and Right, F2, and Delete work in the tree; drag to nest stays for the mouse (decided 2026-11-08).
 - Attention: minimal chrome, no animation, fixed placement, confirmations only for destructive actions. Revisit after use.
 - Settings: appearance choices are toggles, each with a small picture of what it changes, so a choice can be made without trying it first.
 

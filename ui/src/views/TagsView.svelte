@@ -1,11 +1,17 @@
 <script lang="ts">
-  // The tag tree of one guide. Rename inline, add a child, delete (children move up a level and
-  // entries lose the tag, as core does), and drag a tag onto another to nest it under it.
-  import { untrack } from "svelte";
+  // The tag editor (review 3.5): the tree on the left, a detail pane for the selected tag on the
+  // right. Selecting a row fills the pane: name, parent, colour, counts, and the actions. Drag a
+  // tag onto another to nest it, or onto the bar under the tree to make it top-level.
+  import { tick, untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
-  import { api, errorMessage, type Guide, type TagNode } from "../lib/api";
-  import { setCurrent, touch } from "../lib/session.svelte";
+  import Modal from "../components/Modal.svelte";
+  import Suggestions from "../components/Suggestions.svelte";
+  import { api, errorMessage, type EntryCounts, type Guide, type TagNode } from "../lib/api";
+  import { moveHighlight, pickIndex } from "../lib/combobox";
+  import { notify, setCurrent, touch } from "../lib/session.svelte";
+  import { TAG_COLORS, colorVar, flattenTags, type TagOption } from "../lib/tags";
+  import { findNode, subtreeIds, visibleRows } from "../lib/tree";
 
   interface Props {
     guideId: string;
@@ -14,20 +20,60 @@
 
   let guide = $state<Guide | null>(null);
   let tree = $state<TagNode[]>([]);
+  let tags = $state<TagOption[]>([]);
+  let counts = $state<EntryCounts | null>(null);
+  let expanded = $state<string[]>([]);
+  let selectedId = $state<string | null>(null);
   let error = $state("");
 
-  let editingId = $state<string | null>(null);
-  let editName = $state("");
-  /** Tag id to add a child under, "root" for a new top-level tag, or null for no form. */
-  let addingUnder = $state<string | null>(null);
+  let nameDraft = $state("");
+  let nameInput = $state<HTMLInputElement | null>(null);
+  let treeEl = $state<HTMLElement | null>(null);
+
+  /** The New tag or Add child dialog; `parent` is null for a top-level tag. */
+  let creating = $state<{ parent: string | null } | null>(null);
   let newName = $state("");
+  let merging = $state(false);
+  let mergeText = $state("");
+  let mergeHighlight = $state(0);
   let pendingDelete = $state<TagNode | null>(null);
   let dragId = $state<string | null>(null);
   let overId = $state<string | null>(null);
 
+  const uid = $props.id();
+  const expandedSet = $derived(new Set(expanded));
+  const rows = $derived(visibleRows(tree, expandedSet));
+  const selected = $derived(selectedId ? findNode(tree, selectedId) : null);
+  const selectedCount = $derived(
+    selected ? counts?.by_tag.find((c) => c.tag_id === selected.tag.id) : undefined,
+  );
+  /** Tags the selected one can move under or merge into: everything outside its own subtree. */
+  const others = $derived.by(() => {
+    if (!selected) return tags;
+    const excluded = new Set(subtreeIds(selected));
+    return tags.filter((t) => !excluded.has(t.id));
+  });
+  const mergeItems = $derived.by(() => {
+    const key = mergeText.trim().toLowerCase();
+    return others
+      .filter((t) => !key || t.path.toLowerCase().includes(key))
+      .slice(0, 8)
+      .map((t) => ({ key: t.id, text: t.path }));
+  });
+
   $effect(() => {
     void guideId;
     untrack(() => void load());
+  });
+
+  // The name field follows the selection.
+  $effect(() => {
+    nameDraft = selected?.tag.name ?? "";
+  });
+
+  $effect(() => {
+    void mergeItems;
+    mergeHighlight = 0;
   });
 
   async function load() {
@@ -35,6 +81,9 @@
       guide = await api.getGuide(guideId);
       setCurrent(guide, null);
       tree = await api.tagTree(guideId);
+      tags = flattenTags(tree);
+      counts = await api.entryCounts(guideId);
+      if (selectedId && !findNode(tree, selectedId)) selectedId = null;
       error = "";
     } catch (e) {
       error = errorMessage(e);
@@ -52,29 +101,102 @@
     }
   }
 
-  function startRename(node: TagNode) {
-    editingId = node.tag.id;
-    editName = node.tag.name;
+  function toggle(id: string) {
+    expanded = expanded.includes(id) ? expanded.filter((x) => x !== id) : [...expanded, id];
+  }
+
+  function onTreeKey(event: KeyboardEvent) {
+    if (event.target !== event.currentTarget || rows.length === 0) return;
+    const index = rows.findIndex((r) => r.node.tag.id === selectedId);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      selectedId = rows[Math.min(index + 1, rows.length - 1)].node.tag.id;
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      selectedId = rows[Math.max(index - 1, 0)].node.tag.id;
+    } else if (event.key === "ArrowRight" && selected) {
+      event.preventDefault();
+      if (selected.children.length > 0 && !expandedSet.has(selected.tag.id)) toggle(selected.tag.id);
+    } else if (event.key === "ArrowLeft" && selected) {
+      event.preventDefault();
+      if (selected.children.length > 0 && expandedSet.has(selected.tag.id)) toggle(selected.tag.id);
+      else if (selected.tag.parent_id) selectedId = selected.tag.parent_id;
+    } else if (event.key === "F2" && selected) {
+      event.preventDefault();
+      nameInput?.focus();
+      nameInput?.select();
+    } else if (event.key === "Delete" && selected) {
+      event.preventDefault();
+      pendingDelete = selected;
+    }
   }
 
   function rename() {
-    const id = editingId;
-    const name = editName.trim();
-    editingId = null;
-    if (id && name) void run(() => api.renameTag(id, name));
+    const node = selected;
+    const name = nameDraft.trim();
+    if (!node || !name || name === node.tag.name) return;
+    void run(() => api.renameTag(node.tag.id, name));
   }
 
-  function add() {
-    const under = addingUnder;
+  function setParent(value: string) {
+    const node = selected;
+    if (!node) return;
+    const parent = value || null;
+    if (parent === node.tag.parent_id) return;
+    void run(async () => {
+      await api.moveTag(node.tag.id, parent);
+      if (parent) expanded = [...new Set([...expanded, parent])];
+    });
+  }
+
+  function setColor(value: string) {
+    const node = selected;
+    if (!node) return;
+    void run(() => api.setTagColor(node.tag.id, value || null));
+  }
+
+  async function create() {
     const name = newName.trim();
-    addingUnder = null;
+    const parent = creating?.parent ?? null;
+    if (!creating || !name) return;
+    creating = null;
     newName = "";
-    if (!under || !name) return;
-    void run(() => api.createTag(guideId, under === "root" ? null : under, name));
+    await run(async () => {
+      const tag = await api.createTag(guideId, parent, name);
+      if (parent) expanded = [...new Set([...expanded, parent])];
+      selectedId = tag.id;
+    });
   }
 
-  function remove(node: TagNode) {
-    pendingDelete = node;
+  function openMerge() {
+    mergeText = "";
+    merging = true;
+  }
+
+  function mergeInto(index: number) {
+    const node = selected;
+    const target = mergeItems[index];
+    if (!node || !target) return;
+    merging = false;
+    const sourcePath = node.path;
+    void run(async () => {
+      await api.mergeTags(node.tag.id, target.key);
+      selectedId = target.key;
+      notify(`Merged "${sourcePath}" into "${target.text}".`);
+    });
+  }
+
+  function onMergeKey(event: KeyboardEvent) {
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && mergeItems.length > 0) {
+      event.preventDefault();
+      mergeHighlight = moveHighlight(mergeHighlight, event.key === "ArrowDown" ? 1 : -1, mergeItems.length);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const key = mergeText.trim().toLowerCase();
+      const exact = mergeItems.findIndex((m) => m.text.toLowerCase() === key);
+      const index = pickIndex(exact, mergeHighlight, mergeItems.length);
+      if (index !== null) mergeInto(index);
+    }
   }
 
   function deleteBody(node: TagNode): string[] {
@@ -89,7 +211,9 @@
   async function confirmDelete() {
     const node = pendingDelete;
     pendingDelete = null;
-    if (node) await run(() => api.deleteTag(node.tag.id));
+    if (!node) return;
+    await run(() => api.deleteTag(node.tag.id));
+    if (selectedId === node.tag.id) selectedId = null;
   }
 
   function dragStart(event: DragEvent, id: string) {
@@ -117,116 +241,215 @@
     dragId = null;
     overId = null;
   }
-</script>
 
-{#snippet branch(nodes: TagNode[])}
-  <ul>
-    {#each nodes as node (node.tag.id)}
-      <li>
-        <div
-          class="tag-row"
-          class:over={overId === node.tag.id}
-          class:dragging={dragId === node.tag.id}
-          draggable="true"
-          role="treeitem"
-          aria-selected="false"
-          tabindex="0"
-          ondragstart={(e) => dragStart(e, node.tag.id)}
-          ondragover={(e) => dragOver(e, node.tag.id)}
-          ondrop={(e) => drop(e, node.tag.id)}
-          ondragend={dragEnd}
-        >
-          {#if editingId === node.tag.id}
-            <form
-              class="row"
-              onsubmit={(e) => {
-                e.preventDefault();
-                rename();
-              }}
-            >
-              <!-- svelte-ignore a11y_autofocus -->
-              <input type="text" bind:value={editName} autofocus onblur={rename} />
-            </form>
-          {:else}
-            <span class="name">{node.tag.name}</span>
-            <span class="actions">
-              <button class="link" onclick={() => startRename(node)}>Rename</button>
-              <button
-                class="link"
-                onclick={() => {
-                  addingUnder = node.tag.id;
-                  newName = "";
-                }}
-              >
-                Add child
-              </button>
-              <button class="link danger" onclick={() => remove(node)}>Delete</button>
-            </span>
-          {/if}
-        </div>
-        {#if addingUnder === node.tag.id}
-          <form
-            class="row add"
-            onsubmit={(e) => {
-              e.preventDefault();
-              add();
-            }}
-          >
-            <!-- svelte-ignore a11y_autofocus -->
-            <input type="text" placeholder="Child tag name" bind:value={newName} autofocus />
-            <button type="submit" class="primary">Add</button>
-            <button type="button" onclick={() => (addingUnder = null)}>Cancel</button>
-          </form>
-        {/if}
-        {#if node.children.length > 0}
-          {@render branch(node.children)}
-        {/if}
-      </li>
-    {/each}
-  </ul>
-{/snippet}
+  async function select(id: string) {
+    selectedId = id;
+    await tick();
+    treeEl?.focus();
+  }
+</script>
 
 <div class="page">
   {#if guide}
     <div class="row header">
-      <h1>Tags</h1>
+      <h1>Tag editor</h1>
       <span class="spacer"></span>
       <button
         class="primary"
         onclick={() => {
-          addingUnder = "root";
           newName = "";
+          creating = { parent: null };
         }}
       >
         New tag
       </button>
     </div>
-    <p class="muted">Drag a tag onto another to nest it. Drop on the bar below to make it top-level.</p>
-
-    {#if addingUnder === "root"}
-      <form
-        class="row add"
-        onsubmit={(e) => {
-          e.preventDefault();
-          add();
-        }}
-      >
-        <!-- svelte-ignore a11y_autofocus -->
-        <input type="text" placeholder="Tag name" bind:value={newName} autofocus />
-        <button type="submit" class="primary">Add</button>
-        <button type="button" onclick={() => (addingUnder = null)}>Cancel</button>
-      </form>
-    {/if}
-
     {#if error}<p class="error">{error}</p>{/if}
 
     {#if tree.length === 0}
-      <p class="muted">No tags yet.</p>
+      <p class="muted">No tags yet. Add a tag to an entry, or choose New tag.</p>
     {:else}
-      <div role="tree">
-        {@render branch(tree)}
+      <div class="editor">
+        <div class="tree-pane">
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <ul
+            class="tree"
+            role="tree"
+            tabindex="0"
+            aria-label="Tags"
+            aria-activedescendant={selectedId ? `${uid}-${selectedId}` : undefined}
+            bind:this={treeEl}
+            onkeydown={onTreeKey}
+          >
+            {#each rows as row (row.node.tag.id)}
+              {@const id = row.node.tag.id}
+              {@const open = expandedSet.has(id)}
+              {@const dot = colorVar(row.node.tag.color)}
+              <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+              <li
+                id={`${uid}-${id}`}
+                class="tree-line"
+                class:selected={id === selectedId}
+                class:over={overId === id}
+                class:dragging={dragId === id}
+                role="treeitem"
+                aria-selected={id === selectedId}
+                aria-expanded={row.node.children.length > 0 ? open : undefined}
+                aria-level={row.depth + 1}
+                draggable="true"
+                style:padding-left="{row.depth * 16}px"
+                onclick={() => void select(id)}
+                ondragstart={(e) => dragStart(e, id)}
+                ondragover={(e) => dragOver(e, id)}
+                ondrop={(e) => drop(e, id)}
+                ondragend={dragEnd}
+              >
+                {#if row.node.children.length > 0}
+                  <button
+                    class="tree-chev"
+                    tabindex="-1"
+                    aria-label={open ? `Collapse ${row.node.tag.name}` : `Expand ${row.node.tag.name}`}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      toggle(id);
+                    }}
+                  >
+                    {open ? "▾" : "▸"}
+                  </button>
+                {:else}
+                  <span class="tree-chev"></span>
+                {/if}
+                {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
+                <span class="tree-name">{row.node.tag.name}</span>
+                <span class="tree-count muted">{counts?.by_tag.find((c) => c.tag_id === id)?.subtree ?? 0}</span>
+              </li>
+            {/each}
+          </ul>
+          <div
+            class="root-drop"
+            class:over={overId === "root"}
+            role="region"
+            aria-label="Top level"
+            ondragover={(e) => dragOver(e, null)}
+            ondrop={(e) => drop(e, null)}
+          >
+            Top level: drop a tag here
+          </div>
+        </div>
+
+        <div class="detail">
+          {#if selected}
+            <h2 class="path">{selected.path}</h2>
+            <form
+              class="field"
+              onsubmit={(e) => {
+                e.preventDefault();
+                rename();
+              }}
+            >
+              <label for={`${uid}-name`}>Name</label>
+              <div class="row">
+                <input id={`${uid}-name`} type="text" bind:this={nameInput} bind:value={nameDraft} required />
+                <button type="submit" disabled={nameDraft.trim() === "" || nameDraft.trim() === selected.tag.name}>
+                  Rename
+                </button>
+              </div>
+            </form>
+            <div class="field">
+              <label for={`${uid}-parent`}>Parent</label>
+              <select
+                id={`${uid}-parent`}
+                value={selected.tag.parent_id ?? ""}
+                onchange={(e) => setParent((e.currentTarget as HTMLSelectElement).value)}
+              >
+                <option value="">Top level</option>
+                {#each others as t (t.id)}<option value={t.id}>{t.path}</option>{/each}
+              </select>
+            </div>
+            <div class="field">
+              <label for={`${uid}-color`}>Colour</label>
+              <div class="row">
+                <select
+                  id={`${uid}-color`}
+                  value={selected.tag.color ?? ""}
+                  onchange={(e) => setColor((e.currentTarget as HTMLSelectElement).value)}
+                >
+                  <option value="">None</option>
+                  {#each TAG_COLORS as color (color)}<option value={color}>{color}</option>{/each}
+                </select>
+                {#if colorVar(selected.tag.color)}
+                  <span class="tag-dot big" style:--dot={colorVar(selected.tag.color)}></span>
+                {/if}
+              </div>
+            </div>
+            <p class="muted">
+              Entries: {selectedCount?.direct ?? 0} with this tag, {selectedCount?.subtree ?? 0} including the tags under it.
+            </p>
+            <div class="actions">
+              <button
+                onclick={() => {
+                  newName = "";
+                  creating = { parent: selected.tag.id };
+                }}
+              >
+                Add child tag
+              </button>
+              <button onclick={openMerge} disabled={others.length === 0}>Merge into...</button>
+              <button class="danger" onclick={() => (pendingDelete = selected)}>Delete tag</button>
+            </div>
+          {:else}
+            <p class="muted">Select a tag to edit it. Up and Down move, Left and Right fold, F2 renames.</p>
+          {/if}
+        </div>
       </div>
     {/if}
+
+    <Modal
+      open={creating !== null}
+      title={creating?.parent ? `New tag under ${findNode(tree, creating.parent)?.path ?? ""}` : "New tag"}
+      onclose={() => (creating = null)}
+    >
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+          void create();
+        }}
+      >
+        <label class="field">
+          Name
+          <!-- svelte-ignore a11y_autofocus -->
+          <input type="text" bind:value={newName} required autofocus />
+        </label>
+      </form>
+      {#snippet actions()}
+        <button onclick={() => (creating = null)}>Cancel</button>
+        <button class="primary" onclick={create} disabled={!newName.trim()}>Add</button>
+      {/snippet}
+    </Modal>
+
+    <Modal open={merging} title={selected ? `Merge "${selected.path}" into...` : ""} onclose={() => (merging = false)}>
+      <p class="muted">
+        Entries with this tag get the target instead, its child tags move under the target, and
+        this tag is removed. There is no undo.
+      </p>
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        type="text"
+        bind:value={mergeText}
+        placeholder="Target tag path"
+        aria-label="Target tag"
+        role="combobox"
+        aria-expanded={mergeItems.length > 0}
+        aria-controls={`${uid}-merge`}
+        aria-activedescendant={mergeItems.length > 0 ? `${uid}-merge-${mergeHighlight}` : undefined}
+        autofocus
+        onkeydown={onMergeKey}
+      />
+      <Suggestions listId={`${uid}-merge`} items={mergeItems} highlight={mergeHighlight} onpick={mergeInto} />
+      {#snippet actions()}
+        <button onclick={() => (merging = false)}>Cancel</button>
+      {/snippet}
+    </Modal>
 
     <ConfirmDialog
       open={pendingDelete !== null}
@@ -236,17 +459,6 @@
       onconfirm={confirmDelete}
       oncancel={() => (pendingDelete = null)}
     />
-
-    <div
-      class="root-drop"
-      class:over={overId === "root"}
-      role="region"
-      aria-label="Top level"
-      ondragover={(e) => dragOver(e, null)}
-      ondrop={(e) => drop(e, null)}
-    >
-      Top level
-    </div>
   {:else if error}
     <p class="error">{error}</p>
   {/if}
@@ -254,51 +466,43 @@
 
 <style>
   .header {
-    margin-bottom: 4px;
+    margin-bottom: var(--space-3);
   }
   .spacer {
     flex: 1;
   }
-  ul {
+  .editor {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: var(--space-4);
+    align-items: start;
+  }
+  .tree-pane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .tree {
     list-style: none;
     margin: 0;
-    padding-left: 20px;
+    padding: 0;
+    border-radius: var(--radius);
   }
-  div[role="tree"] > ul {
-    padding-left: 0;
+  .tree:focus-visible {
+    outline-offset: 4px;
   }
-  .tag-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    border: 1px solid transparent;
-    border-radius: 4px;
+  .tree .tree-line {
     cursor: grab;
+    border-radius: var(--radius);
   }
-  .tag-row:hover {
-    background: var(--surface);
+  .tree .tree-line.over {
+    outline: 2px solid var(--accent);
   }
-  .tag-row.over {
-    border-color: var(--accent);
-    background: var(--chip-bg);
-  }
-  .tag-row.dragging {
+  .tree .tree-line.dragging {
     opacity: 0.5;
   }
-  .actions {
-    visibility: hidden;
-  }
-  .tag-row:hover .actions,
-  .tag-row:focus-within .actions {
-    visibility: visible;
-  }
-  .add {
-    margin: 4px 0 4px 28px;
-  }
   .root-drop {
-    margin-top: 16px;
-    padding: 12px;
+    padding: var(--space-3);
     text-align: center;
     border: 1px dashed var(--border);
     border-radius: 6px;
@@ -307,5 +511,38 @@
   .root-drop.over {
     border-color: var(--accent);
     background: var(--chip-bg);
+  }
+  .detail {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .detail .path {
+    font-size: 1.05rem;
+  }
+  .field {
+    display: grid;
+    gap: 2px;
+  }
+  .field label {
+    font-size: var(--small);
+    color: var(--muted);
+  }
+  .field input,
+  .field select {
+    min-width: 0;
+    flex: 1;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .tag-dot.big {
+    width: 14px;
+    height: 14px;
   }
 </style>

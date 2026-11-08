@@ -3,6 +3,8 @@
   // Contents selected on arrival when the body has a heading. The relation line sits at the top
   // of the Relations tab; Mentioned by and Unresolved links fold under the list. The panel folds
   // to a rail by choice, remembered, and while editing in Split unless a setting keeps it open.
+  import { tick } from "svelte";
+
   import type { Entry, EntrySummary, Guide, Rendered } from "../lib/api";
   import { outline } from "../lib/contents";
   import { startDrag } from "../lib/drag";
@@ -34,6 +36,7 @@
   let showUnresolved = $state(false);
   /** Opened by hand during an edit; cleared when the edit ends. */
   let editOverride = $state(false);
+  let builder = $state<ReturnType<typeof RelationBuilder> | null>(null);
   const uid = $props.id();
 
   const headings = $derived(outline(rendered?.headings ?? []));
@@ -69,6 +72,20 @@
   function collapse() {
     if (mode === "edit" && editOverride) editOverride = false;
     else void savePrefs({ panel_collapsed: true });
+  }
+
+  /** Show or hide, from the palette. */
+  export function toggle() {
+    if (open) collapse();
+    else expand();
+  }
+
+  /** Opens the Relations tab, unfolding the panel if needed, and puts the caret in the line. */
+  export async function focusRelation() {
+    chosen = "relations";
+    if (!open) expand();
+    await tick();
+    builder?.focusLine();
   }
 
   function onTabKey(event: KeyboardEvent) {
@@ -153,7 +170,7 @@
         role="tabpanel"
         aria-labelledby={`${uid}-tab-relations`}
       >
-        <RelationBuilder {entry} {guide} {onsaved} />
+        <RelationBuilder bind:this={builder} {entry} {guide} {onsaved} />
         <div class="scroll">
           <RelationList entryId={entry.id} guideId={guide.id} {version} />
           {#if mentionedBy.length > 0}

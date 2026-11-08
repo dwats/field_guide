@@ -6,12 +6,15 @@
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
+  import NewEntryDialog from "../components/NewEntryDialog.svelte";
   import TagPicker from "../components/TagPicker.svelte";
   import { api, errorMessage, type Guide } from "../lib/api";
+  import { register } from "../lib/actions";
+  import { displayKeys } from "../lib/keys";
   import { parseFilter } from "../lib/filter";
   import { when } from "../lib/format";
   import { navigate, routeHash } from "../lib/router";
-  import { freshSidebar, notify, session, setCurrent, touch } from "../lib/session.svelte";
+  import { freshSidebar, notify, session, setCurrent } from "../lib/session.svelte";
   import { scopeLabel, summaryLine } from "../lib/sidebar";
   import { flattenTags, type TagOption } from "../lib/tags";
 
@@ -28,8 +31,6 @@
   let nameDraft = $state("");
   let descriptionDraft = $state("");
   let creatingEntry = $state(false);
-  let newTitle = $state("");
-  let createError = $state("");
   let confirmingDelete = $state(false);
 
   /** The sidebar's state once it belongs to this guide. */
@@ -50,6 +51,8 @@
     void session.revision;
     untrack(() => void load());
   });
+
+  $effect(() => register("new", () => (creatingEntry = true)));
 
   async function load() {
     try {
@@ -108,20 +111,6 @@
     }
   }
 
-  async function createEntry() {
-    const title = newTitle.trim();
-    if (!title) return;
-    try {
-      const entry = await api.createEntry(guideId, title);
-      newTitle = "";
-      creatingEntry = false;
-      touch();
-      navigate({ view: "entry", entryId: entry.id });
-    } catch (e) {
-      createError = errorMessage(e);
-    }
-  }
-
   async function deleteGuide() {
     confirmingDelete = false;
     if (!guide) return;
@@ -141,14 +130,7 @@
     <div class="row header">
       <h1>{guide.name}</h1>
       <span class="spacer"></span>
-      <button
-        class="primary"
-        onclick={() => {
-          newTitle = "";
-          createError = "";
-          creatingEntry = true;
-        }}
-      >
+      <button class="primary" title={displayKeys("Mod+N")} onclick={() => (creatingEntry = true)}>
         New entry
       </button>
       <Menu>
@@ -187,7 +169,7 @@
 
     {#if !sidebar || sidebar.entries.length === 0}
       <p class="muted">
-        {#if filtering}No entries match this filter.{:else}No entries yet. Choose New entry.{/if}
+        {#if filtering}No entries match this filter.{:else}No entries yet. Press {displayKeys("Mod+N")} or choose New entry.{/if}
       </p>
     {:else}
       <table>
@@ -207,25 +189,7 @@
       </table>
     {/if}
 
-    <Modal open={creatingEntry} title="New entry" onclose={() => (creatingEntry = false)}>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void createEntry();
-        }}
-      >
-        <label class="field">
-          Title
-          <!-- svelte-ignore a11y_autofocus -->
-          <input type="text" bind:value={newTitle} required autofocus />
-        </label>
-        {#if createError}<p class="error">{createError}</p>{/if}
-      </form>
-      {#snippet actions()}
-        <button onclick={() => (creatingEntry = false)}>Cancel</button>
-        <button class="primary" onclick={createEntry} disabled={!newTitle.trim()}>Create</button>
-      {/snippet}
-    </Modal>
+    <NewEntryDialog {guideId} open={creatingEntry} onclose={() => (creatingEntry = false)} />
 
     <Modal open={editing} title="Edit guide" onclose={() => (editing = false)}>
       <form

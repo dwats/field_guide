@@ -45,6 +45,15 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Settings, Appearance: Compact and Roomy change type size and row heights everywhere; the two entry page toggles show their effect in their pictures and apply at once.
 - [ ] A quote (`> text`) shows a bar down its left and an opening quote mark; nested quotes add a bar each.
 
+## Palette, keys, and lists
+
+- [ ] Ctrl+K (Cmd+K on macOS) or the Search button opens the palette; typing lists matching entries with their tag paths, commands with their shortcuts, and guides; Enter opens the highlighted row; Escape closes; a typed name with no exact match offers "Create entry".
+- [ ] `>` in the palette limits the list to commands.
+- [ ] Ctrl+N opens New entry inside a guide and New guide on the guides list; Ctrl+E toggles Read and Edit; Ctrl+R puts the caret in the relation line (opening the panel if folded); Ctrl+T opens Add tag; Ctrl+F focuses the sidebar search; Ctrl+, opens Settings; Alt+Left and Alt+Right go back and forward; F2 opens Rename outside a text field.
+- [ ] Guides list: the name filter and the global tags sit in the sidebar with guide counts; the toolbar holds the view toggle and New guide; "No guides match." offers Clear filter.
+- [ ] Tag editor: selecting a row fills the detail pane; Rename, Parent, and Colour apply at once; Add child tag and New tag open a dialog; Merge into... lists target paths and merges on pick; Delete tag asks first; arrow keys, F2, and Delete work in the tree; a coloured tag shows a dot in the sidebar, chips, and cards.
+- [ ] Settings: the sidebar lists the sections and marks the one in view; a click scrolls to it.
+
 ## Guides
 
 - [ ] Create a guide; it appears in cards and table views; the view choice survives a restart.
