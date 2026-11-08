@@ -1,6 +1,8 @@
 <script lang="ts">
-  // An entry: title with rename and undo, aliases, tags, the relation line and list, the rendered
-  // body, and an editor with a live preview. Edits save on a short delay and when the page is left.
+  // An entry: title row with the mode toggle, the autosave slot and a More menu; tags and
+  // aliases; the relation line and list; the rendered body or the editor with a live preview.
+  // Edits save on a short delay and when the page is left. Moving to Trash does not confirm; it
+  // offers Undo in a notice instead.
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
@@ -18,7 +20,7 @@
     type EntrySummary,
     type Rendered,
   } from "../lib/api";
-  import { navigate, routeHash } from "../lib/router";
+  import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session } from "../lib/session.svelte";
 
   interface Props {
@@ -32,13 +34,16 @@
   let mentionedBy = $state<EntrySummary[]>([]);
   let mode = $state<"read" | "edit">("read");
   let draft = $state("");
-  let saveState = $state<"saved" | "dirty" | "saving" | "error">("saved");
+  /** "dirty" also covers a write in flight: the label never flickers through a third state. */
+  let saveState = $state<"saved" | "dirty" | "error">("saved");
   let error = $state("");
   let missing = $state(false);
   let relationsVersion = $state(0);
 
+  let menuOpen = $state(false);
   let renaming = $state(false);
   let titleDraft = $state("");
+  let editingAliases = $state(false);
   let aliasDraft = $state("");
 
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
@@ -51,15 +56,33 @@
     untrack(() => void load(id));
   });
 
+  // The More menu closes on a click anywhere else and on Escape.
+  $effect(() => {
+    if (!menuOpen) return;
+    const close = () => (menuOpen = false);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  });
+
   async function load(id: string) {
     await flush();
     mode = "read";
     renaming = false;
+    editingAliases = false;
+    menuOpen = false;
     missing = false;
     try {
       entry = await api.getEntry(id);
       guide = await api.getGuide(entry.guide_id);
       draft = entry.body_md;
+      saveState = "saved";
       await refresh();
       error = "";
     } catch (e) {
@@ -99,11 +122,11 @@
 
   async function save() {
     clearTimeout(saveTimer);
-    if (!entry || draft === entry.body_md) {
+    if (!entry) return;
+    if (draft === entry.body_md) {
       if (saveState === "dirty") saveState = "saved";
       return;
     }
-    saveState = "saving";
     try {
       entry = await api.updateEntryBody(entry.id, draft);
       saveState = "saved";
@@ -131,6 +154,7 @@
   function openRename() {
     if (!entry) return;
     titleDraft = entry.title;
+    menuOpen = false;
     renaming = true;
   }
 
@@ -141,12 +165,17 @@
       renaming = false;
       return;
     }
+    const id = entry.id;
+    const old = entry.title;
     try {
-      const record = await api.renameEntry(entry.id, title);
-      session.renames[entry.id] = record;
+      const record = await api.renameEntry(id, title);
+      session.renames[id] = record;
       renaming = false;
       error = "";
-      await load(entry.id);
+      await load(id);
+      notify(`Renamed "${old}" to "${title}".`, {
+        action: { label: "Undo", run: () => undoRename() },
+      });
     } catch (e) {
       error = errorMessage(e);
     }
@@ -154,6 +183,7 @@
 
   async function undoRename() {
     if (!entry || !undoable) return;
+    menuOpen = false;
     try {
       await api.undoRename(undoable);
       delete session.renames[entry.id];
@@ -194,26 +224,45 @@
     }
   }
 
-  async function trash() {
+  /** Reversible, so no confirmation: the notice carries Undo, and Back does not return here. */
+  async function moveToTrash() {
     if (!entry) return;
-    if (!confirm(`Move "${entry.title}" to the trash? It can be restored from Trash.`)) return;
+    menuOpen = false;
+    const { id, title, guide_id } = entry;
     try {
       await flush();
-      const guideId = entry.guide_id;
-      await api.trashEntry(entry.id);
-      navigate({ view: "guide", guideId });
+      await api.trashEntry(id);
+      replace({ view: "guide", guideId: guide_id });
+      notify(`Moved "${title}" to Trash.`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await api.restoreEntry(id);
+            navigate({ view: "entry", entryId: id });
+          },
+        },
+      });
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
+  /** Reversible too: the created entry can be sent to Trash from the notice. */
   async function createFromLink(title: string) {
     if (!entry) return;
-    if (!confirm(`Create an entry titled "${title}" in ${guide?.name ?? "this guide"}?`)) return;
     try {
       await flush();
       const created = await api.createEntry(entry.guide_id, title);
       navigate({ view: "entry", entryId: created.id });
+      notify(`Created "${title}".`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await api.trashEntry(created.id);
+            history.back();
+          },
+        },
+      });
     } catch (e) {
       error = errorMessage(e);
     }
@@ -234,7 +283,10 @@
     if (entry && saveState === "dirty") {
       const { id, title } = entry;
       api.updateEntryBody(id, draft).catch((e) => {
-        notify(`The body of "${title}" could not be saved: ${errorMessage(e)}`);
+        notify(`The body of "${title}" could not be saved: ${errorMessage(e)}`, {
+          kind: "error",
+          action: { label: "Open entry", run: () => navigate({ view: "entry", entryId: id }) },
+        });
       });
     }
   });
@@ -250,39 +302,63 @@
     <div class="row header">
       <h1>{entry.title}</h1>
       {#if entry.is_stub}<span class="chip">stub</span>{/if}
-      <button class="link" onclick={openRename}>Rename</button>
-      {#if undoable}
-        <button class="link" onclick={undoRename}>Undo rename from "{undoable.old_title}"</button>
-      {/if}
       <span class="spacer"></span>
       <div class="segmented" role="group" aria-label="Mode">
         <button class:on={mode === "read"} onclick={() => setMode("read")}>Read</button>
         <button class:on={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
       </div>
-      <button class="danger" onclick={trash}>Delete</button>
+      <span class="save-slot" aria-live="polite">
+        {#if mode === "edit"}
+          {#if saveState === "saved"}
+            <span class="muted">Saved</span>
+          {:else if saveState === "dirty"}
+            <span class="muted">Unsaved</span>
+          {:else}
+            <span class="error">Save failed</span>
+            <button class="link" onclick={() => void save()}>Retry</button>
+          {/if}
+        {/if}
+      </span>
+      <div class="more">
+        <button
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onclick={(e) => {
+            e.stopPropagation();
+            menuOpen = !menuOpen;
+          }}
+        >
+          More
+        </button>
+        {#if menuOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+          <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+            <button role="menuitem" onclick={openRename}>Rename...</button>
+            <button
+              role="menuitem"
+              onclick={() => {
+                menuOpen = false;
+                editingAliases = true;
+              }}
+            >
+              Edit aliases...
+            </button>
+            {#if undoable}
+              <button role="menuitem" onclick={undoRename}>Undo rename (from "{undoable.old_title}")</button>
+            {/if}
+            <div class="separator"></div>
+            <button role="menuitem" class="danger" onclick={moveToTrash}>Move to Trash</button>
+          </div>
+        {/if}
+      </div>
     </div>
 
     <div class="row meta">
-      <span class="muted">Aliases</span>
-      {#each entry.aliases as alias (alias)}
-        <span class="chip">
-          {alias}
-          <button onclick={() => removeAlias(alias)} aria-label="Remove alias">&times;</button>
-        </span>
-      {/each}
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void addAlias();
-        }}
-      >
-        <input type="text" placeholder="Add alias" bind:value={aliasDraft} />
-      </form>
+      <TagPicker scope={guide.id} selected={entry.tag_ids} onchange={setTags} compact />
     </div>
-    <div class="row meta">
-      <span class="muted">Tags</span>
-      <TagPicker scope={guide.id} selected={entry.tag_ids} onchange={setTags} />
-    </div>
+    {#if entry.aliases.length > 0}
+      <p class="muted aliases">Aliases: {entry.aliases.join(", ")}</p>
+    {/if}
 
     <RelationBuilder {entry} {guide} onsaved={relationSaved} />
 
@@ -292,9 +368,6 @@
       <div class="split">
         <div class="pane">
           <Editor value={draft} onchange={onEditorChange} onsave={() => void save()} />
-          <p class="muted status">
-            {#if saveState === "saved"}Saved{:else if saveState === "saving"}Saving{:else if saveState === "dirty"}Unsaved changes{:else}Save failed{/if}
-          </p>
         </div>
         <div class="pane">
           {#if rendered}
@@ -309,7 +382,7 @@
       </div>
     {:else if rendered}
       {#if entry.body_md.trim() === ""}
-        <p class="muted">This entry has no body yet. Choose Edit to write one.</p>
+        <p class="muted">No body yet. Choose Edit to write one.</p>
       {:else}
         <Preview
           html={rendered.html}
@@ -362,6 +435,33 @@
         <button class="primary" onclick={rename}>Rename</button>
       {/snippet}
     </Modal>
+
+    <Modal open={editingAliases} title="Edit aliases" onclose={() => (editingAliases = false)}>
+      <p class="muted">Other names this entry answers to. Links through an alias resolve to it.</p>
+      <div class="row">
+        {#each entry.aliases as alias (alias)}
+          <span class="chip">
+            {alias}
+            <button onclick={() => removeAlias(alias)} aria-label="Remove alias {alias}">&times;</button>
+          </span>
+        {/each}
+      </div>
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+          void addAlias();
+        }}
+      >
+        <label>
+          Add alias
+          <!-- svelte-ignore a11y_autofocus -->
+          <input type="text" bind:value={aliasDraft} autofocus placeholder="Press Enter to add" />
+        </label>
+      </form>
+      {#snippet actions()}
+        <button class="primary" onclick={() => (editingAliases = false)}>Done</button>
+      {/snippet}
+    </Modal>
   {:else if missing}
     <h1>This entry no longer exists</h1>
     <p class="muted">It was purged or the vault was restored from a backup.</p>
@@ -390,8 +490,9 @@
   .meta {
     margin-bottom: 6px;
   }
-  .meta form {
-    display: inline;
+  .aliases {
+    margin: 0 0 6px;
+    font-size: 0.95em;
   }
   .segmented button {
     border-radius: 0;
@@ -407,6 +508,46 @@
     background: var(--chip-bg);
     font-weight: 600;
   }
+  /* The slot exists in both modes so the More button never moves. */
+  .save-slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 8em;
+    font-size: 0.9em;
+  }
+  .more {
+    position: relative;
+  }
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 5;
+    min-width: 14em;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+  }
+  .menu button {
+    text-align: left;
+    border: none;
+    background: none;
+    padding: 6px 10px;
+    border-radius: 4px;
+  }
+  .menu button:hover {
+    background: var(--chip-bg);
+  }
+  .menu .separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--border);
+  }
   .split {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -418,10 +559,6 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-  }
-  .status {
-    margin-top: 4px;
-    font-size: 0.85em;
   }
   .mentions {
     margin-top: 24px;

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
 
   import { api, errorMessage } from "./lib/api";
-  import { HOME, parseRoute, routeHash, type Route } from "./lib/router";
+  import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
   import { dismiss, notify, session } from "./lib/session.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
@@ -49,6 +49,9 @@
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
 
+  /** The notice slot shows one notice at a time; the rest wait behind it. */
+  const current = $derived(session.notices[0]);
+
   onMount(() => {
     const onHash = () => {
       route = parseRoute(window.location.hash);
@@ -65,13 +68,19 @@
       if (!startup.fatal) {
         session.prefs = await api.getPrefs();
         if (startup.backup_error) {
-          notify(`Today's backup failed: ${startup.backup_error.message}`);
+          notify(`Today's backup failed: ${startup.backup_error.message}`, {
+            kind: "error",
+            action: { label: "Back up now", run: backUpNow },
+          });
         }
         if (startup.sync_warning) {
           notify(
-            `Your Field Guide data is inside a ${startup.sync_warning} folder. A sync client can ` +
-              `corrupt the database while Field Guide is open. Moving the data elsewhere is safer. ` +
-              `This warning shows once.`,
+            `Your data is in a ${startup.sync_warning} folder. A sync client can corrupt the ` +
+              `database while Field Guide is open. Move the data folder somewhere else.`,
+            {
+              kind: "warning",
+              action: { label: "Open Settings", run: () => navigate({ view: "settings" }) },
+            },
           );
         }
       }
@@ -93,6 +102,19 @@
     }
   }
 
+  async function backUpNow() {
+    try {
+      await api.backupNow();
+      notify("Backed up.", { kind: "info" });
+    } catch (e) {
+      notify(`Backup failed: ${errorMessage(e)}`, { kind: "error" });
+    }
+  }
+
+  async function runAction(id: number, run: () => void | Promise<void>) {
+    dismiss(id);
+    await run();
+  }
 </script>
 
 {#if loading}
@@ -119,12 +141,20 @@
       <a href={routeHash({ view: "settings" })} class:active={route.view === "settings"}>Settings</a>
     </nav>
   </header>
-  {#each session.notices as notice (notice.id)}
-    <div class="notice" role="status">
-      <span>{notice.text}</span>
-      <button class="link" onclick={() => dismiss(notice.id)} aria-label="Dismiss">&times;</button>
+  {#if current}
+    <div class="notice {current.kind}" role="status">
+      <span class="text">{current.text}</span>
+      {#if current.action}
+        <button onclick={() => runAction(current.id, current.action!.run)}>{current.action.label}</button>
+      {/if}
+      {#if session.notices.length > 1}
+        <span class="muted count">1 of {session.notices.length}</span>
+        <button onclick={() => dismiss(current.id)}>Next</button>
+      {:else}
+        <button onclick={() => dismiss(current.id)}>Dismiss</button>
+      {/if}
     </div>
-  {/each}
+  {/if}
   <main>
     {#if route.view === "guides"}
       <GuidesView />
@@ -165,11 +195,23 @@
   }
   .notice {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
     gap: 12px;
     padding: 8px 12px;
-    background: var(--warning-bg);
     border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .notice.warning {
+    background: var(--warning-bg);
+  }
+  .notice.error .text {
+    color: var(--danger);
+  }
+  .notice .text {
+    flex: 1;
+  }
+  .notice .count {
+    font-size: 0.9em;
   }
   main {
     flex: 1;

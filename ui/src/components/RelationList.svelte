@@ -11,6 +11,7 @@
     type Relation,
     type RelationView,
   } from "../lib/api";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import { verbSlot } from "../lib/format";
   import { routeHash } from "../lib/router";
 
@@ -33,6 +34,7 @@
   let labels = $state<QualifierLabel[]>([]);
   let includeExternal = $state(false);
   let editing = $state<{ relation: Relation; rows: QualifierRow[] } | null>(null);
+  let pendingDelete = $state<RelationView | null>(null);
   let error = $state("");
 
   $effect(() => {
@@ -121,8 +123,14 @@
     }
   }
 
-  async function remove(view: RelationView) {
-    if (!confirm(`Delete this relation?\n\n${view.text}`)) return;
+  function remove(view: RelationView) {
+    pendingDelete = view;
+  }
+
+  async function confirmDelete() {
+    const view = pendingDelete;
+    pendingDelete = null;
+    if (!view) return;
     try {
       await api.deleteRelation(view.relation.id);
       await load(includeExternal);
@@ -179,6 +187,15 @@
       {/each}
     </ul>
   {/if}
+
+  <ConfirmDialog
+    open={pendingDelete !== null}
+    title="Delete this relation?"
+    body={pendingDelete ? [pendingDelete.text, "Relations have no trash."] : []}
+    confirmLabel="Delete"
+    onconfirm={confirmDelete}
+    oncancel={() => (pendingDelete = null)}
+  />
 
   {#if editing}
     <div class="edit">

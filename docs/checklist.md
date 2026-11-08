@@ -42,7 +42,9 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Add and remove an alias; linking by alias resolves; the entry filter finds the entry by its alias.
 - [ ] Tag an entry by typing a new path such as `Blocks/Natural`; the path appears under Tags for the guide.
 - [ ] The guide entry list filters by text and by `#Tag/Path`, and "Stubs only" hides described entries.
-- [ ] Delete moves an entry to the trash after confirmation and leaves the guide page (Trash view arrives in phase 6).
+- [ ] More, Move to Trash moves the entry without a confirmation, returns to the guide page, and offers Undo in the notice; Back does not return to the trashed entry.
+- [ ] Rename shows a notice with Undo; Edit aliases opens a dialog; the aliases line appears only when there are aliases.
+- [ ] In Edit mode the status reads Unsaved, then Saved, with no third state; the More button does not move between modes.
 
 ## Relations
 
@@ -56,7 +58,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 
 ## Tags
 
-- [ ] Rename, add child, delete with children (children move up a level).
+- [ ] Rename, add child, delete with children (children move up a level) through the in-app confirm dialog, not the browser's.
 - [ ] Drag a tag onto another; it nests under it and entry tag paths follow.
 - [ ] Drop a nested tag on the top-level bar; it becomes top-level.
 - [ ] Dragging a tag onto its own child is refused with a message.
@@ -64,5 +66,6 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 ## Settings
 
 - [ ] "Back up now" adds a backup; a sixth removes the oldest.
-- [ ] Restore the oldest backup; it replaces the vault after taking one more backup; the guides list reflects the restored state.
+- [ ] Restore the oldest backup through the in-app confirm dialog; it replaces the vault after taking one more backup; the guides list reflects the restored state.
+- [ ] Notices show one at a time with "1 of n" and Next when several are queued; a warning stays until dismissed; an info notice is replaced by the next one.
 - [ ] "Check for updates" is present and looks disabled.

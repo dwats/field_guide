@@ -3,6 +3,7 @@
   // entries lose the tag, as core does), and drag a tag onto another to nest it under it.
   import { untrack } from "svelte";
 
+  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import { api, errorMessage, type Guide, type TagNode } from "../lib/api";
   import { routeHash } from "../lib/router";
 
@@ -20,6 +21,7 @@
   /** Tag id to add a child under, "root" for a new top-level tag, or null for no form. */
   let addingUnder = $state<string | null>(null);
   let newName = $state("");
+  let pendingDelete = $state<TagNode | null>(null);
   let dragId = $state<string | null>(null);
   let overId = $state<string | null>(null);
 
@@ -70,13 +72,22 @@
   }
 
   function remove(node: TagNode) {
+    pendingDelete = node;
+  }
+
+  function deleteBody(node: TagNode): string[] {
     const children = node.children.length;
-    const detail =
-      children > 0
-        ? ` Its ${children} child tag${children === 1 ? "" : "s"} move up one level.`
-        : "";
-    if (!confirm(`Delete the tag "${node.path}"? Entries keep everything else.${detail}`)) return;
-    void run(() => api.deleteTag(node.tag.id));
+    const lines = ["Entries tagged with it lose the tag. Nothing else changes."];
+    if (children > 0) {
+      lines.push(`${children} child tag${children === 1 ? "" : "s"} move up one level.`);
+    }
+    return lines;
+  }
+
+  async function confirmDelete() {
+    const node = pendingDelete;
+    pendingDelete = null;
+    if (node) await run(() => api.deleteTag(node.tag.id));
   }
 
   function dragStart(event: DragEvent, id: string) {
@@ -218,6 +229,15 @@
         {@render branch(tree)}
       </div>
     {/if}
+
+    <ConfirmDialog
+      open={pendingDelete !== null}
+      title={pendingDelete ? `Delete the tag "${pendingDelete.path}"?` : ""}
+      body={pendingDelete ? deleteBody(pendingDelete) : []}
+      confirmLabel="Delete tag"
+      onconfirm={confirmDelete}
+      oncancel={() => (pendingDelete = null)}
+    />
 
     <div
       class="root-drop"

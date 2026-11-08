@@ -38,6 +38,16 @@ export function routeHash(route: Route): string {
   }
 }
 
+/** Goes to a route, adding a history entry so Back returns here. */
 export function navigate(route: Route): void {
   window.location.hash = routeHash(route);
+}
+
+/**
+ * Goes to a route in place of the current history entry. Used after the thing the current
+ * route showed is gone (trashed, purged, restored over), so Back does not land on it.
+ */
+export function replace(route: Route): void {
+  history.replaceState(null, "", routeHash(route));
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
 }

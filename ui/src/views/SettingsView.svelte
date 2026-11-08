@@ -2,6 +2,7 @@
   // Where the data lives, the rolling backups with restore, and the update-check placeholder.
   import { untrack } from "svelte";
 
+  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import { api, errorMessage, type BackupInfo } from "../lib/api";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
@@ -9,6 +10,7 @@
 
   let backups = $state<BackupInfo[]>([]);
   let busy = $state(false);
+  let pendingRestore = $state<BackupInfo | null>(null);
   let message = $state("");
   let error = $state("");
 
@@ -40,12 +42,14 @@
     }
   }
 
-  async function restore(backup: BackupInfo) {
-    const ok = confirm(
-      `Replace the current vault with the backup from ${when(backup.created_at)}?\n\n` +
-        `The current vault is backed up first, so this can be undone from this list.`,
-    );
-    if (!ok) return;
+  function restore(backup: BackupInfo) {
+    pendingRestore = backup;
+  }
+
+  async function confirmRestore() {
+    const backup = pendingRestore;
+    pendingRestore = null;
+    if (!backup) return;
     busy = true;
     error = "";
     try {
@@ -131,6 +135,17 @@
       </table>
     {/if}
   </section>
+
+  <ConfirmDialog
+    open={pendingRestore !== null}
+    title={pendingRestore
+      ? `Replace the vault with the backup from ${when(pendingRestore.created_at)}?`
+      : ""}
+    body={["The current vault is backed up first, so this can be undone from the list."]}
+    confirmLabel="Restore"
+    onconfirm={confirmRestore}
+    oncancel={() => (pendingRestore = null)}
+  />
 
   <section>
     <h2>Updates</h2>
