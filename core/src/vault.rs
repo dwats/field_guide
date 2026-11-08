@@ -50,6 +50,11 @@ impl Vault {
         Ok(Vault { conn, path: None })
     }
 
+    /// Closes the connection, releasing the lock. Dropping does the same; this form reports errors.
+    pub fn close(self) -> Result<()> {
+        self.conn.close().map_err(|(_, e)| Error::Sqlite(e))
+    }
+
     /// The database file, or `None` for an in-memory vault.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()

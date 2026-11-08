@@ -18,5 +18,7 @@ export default defineConfig({
     target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
     minify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    // One bundle served from the binary; CodeMirror alone is past the default 500 kB warning.
+    chunkSizeWarningLimit: 1000,
   },
 });

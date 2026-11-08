@@ -1,7 +1,9 @@
 use std::fs;
 
 use fieldguide_core::Error;
-use fieldguide_core::datadir::{DataDir, Mode, PORTABLE_MARKER, Platform};
+use std::path::Path;
+
+use fieldguide_core::datadir::{DataDir, Mode, PORTABLE_MARKER, Platform, sync_client_in_path};
 use tempfile::tempdir;
 
 #[test]
@@ -179,5 +181,27 @@ fn an_unwritable_portable_directory_is_an_error_not_a_fallback() {
     match result {
         Err(Error::PortableDirNotWritable { path, .. }) => assert_eq!(path, app),
         other => panic!("expected PortableDirNotWritable, got {other:?}"),
+    }
+}
+
+#[test]
+fn known_sync_client_folders_are_recognised_and_plain_paths_are_not() {
+    let cases = [
+        (
+            "C:/Users/me/OneDrive - Contoso/FieldGuide",
+            Some("OneDrive"),
+        ),
+        ("/home/me/Dropbox/notes", Some("Dropbox")),
+        ("G:/My Drive/FieldGuide", Some("Google Drive")),
+        (
+            "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/FieldGuide",
+            Some("iCloud Drive"),
+        ),
+        ("C:/Users/me/iCloudDrive/FieldGuide", Some("iCloud Drive")),
+        ("C:/Users/me/AppData/Local/FieldGuide", None),
+        ("/home/me/.local/share/fieldguide", None),
+    ];
+    for (path, expected) in cases {
+        assert_eq!(sync_client_in_path(Path::new(path)), expected, "{path}");
     }
 }

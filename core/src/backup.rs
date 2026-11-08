@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::{NaiveDateTime, SecondsFormat, TimeDelta, Utc};
-use rusqlite::Connection;
 use rusqlite::backup::{Backup, StepResult};
+use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, Vault, fsutil};
+use crate::{Error, Result, SCHEMA_VERSION, Vault, fsutil};
 
 pub const BACKUPS_TO_KEEP: usize = 5;
 
@@ -57,6 +57,85 @@ impl Vault {
             source: io::Error::other("backup file missing after writing"),
         })
     }
+}
+
+impl Vault {
+    /// Replaces this vault's database with the backup at `backup_path`, after backing up the
+    /// current file once more so the restore itself can be undone. The backup is checked first: it
+    /// must be a Field Guide database at this build's schema or older, and pass SQLite's quick
+    /// check. Consumes the vault and returns it reopened on the restored file. If this fails after
+    /// the vault was closed, the caller reopens the vault at its path; the database file is either
+    /// the old one or the restored one, never a partial.
+    pub fn restore_from_backup(
+        self,
+        backup_path: &Path,
+        backups_dir: &Path,
+        keep: usize,
+    ) -> Result<Vault> {
+        let db_path = self
+            .path()
+            .ok_or_else(|| Error::Invalid("an in-memory vault cannot be restored".to_owned()))?
+            .to_path_buf();
+        validate_backup(backup_path)?;
+        self.backup(backups_dir, keep)?;
+        self.close()?;
+        swap_database(&db_path, backup_path)?;
+        Vault::open(&db_path)
+    }
+}
+
+/// Refuses files that are not a readable Field Guide database at a known schema.
+fn validate_backup(path: &Path) -> Result<()> {
+    let not_a_database = || Error::Invalid(format!("{} is not a database file", path.display()));
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|_| not_a_database())?;
+    let check: String = conn
+        .query_row("PRAGMA quick_check;", [], |row| row.get(0))
+        .map_err(|_| not_a_database())?;
+    if check != "ok" {
+        return Err(Error::Invalid(format!(
+            "{} failed SQLite's integrity check: {check}",
+            path.display()
+        )));
+    }
+    let version: u32 = conn.query_row("PRAGMA user_version;", [], |row| row.get(0))?;
+    if version > SCHEMA_VERSION {
+        return Err(Error::NewerSchema {
+            found: version,
+            supported: SCHEMA_VERSION,
+        });
+    }
+    conn.close().map_err(|(_, e)| Error::Sqlite(e))
+}
+
+/// Puts a copy of `source` at `db_path`: copied to a temporary sibling, stale WAL and shared-memory
+/// files removed, then renamed into place. The vault must be closed.
+fn swap_database(db_path: &Path, source: &Path) -> Result<()> {
+    let tmp = fsutil::temp_sibling(db_path);
+    let io_error = |context: &'static str, path: &Path, source: io::Error| Error::Io {
+        context,
+        path: path.to_path_buf(),
+        source,
+    };
+    fs::copy(source, &tmp).map_err(|e| io_error("copying", source, e))?;
+    for suffix in ["-wal", "-shm"] {
+        let mut name = db_path.as_os_str().to_owned();
+        name.push(suffix);
+        let sidecar = PathBuf::from(name);
+        if let Err(e) = fs::remove_file(&sidecar)
+            && e.kind() != io::ErrorKind::NotFound
+        {
+            let _ = fs::remove_file(&tmp);
+            return Err(io_error("removing", &sidecar, e));
+        }
+    }
+    fs::rename(&tmp, db_path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        io_error("writing", db_path, e)
+    })
 }
 
 /// Copies `source` into a fresh database at `tmp`, then renames it to `final_path`.

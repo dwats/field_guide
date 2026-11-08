@@ -18,6 +18,28 @@ pub struct Config {
     pub vault: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window: Option<WindowState>,
+    /// The data directory path the synced-folder warning was shown for. The warning is one-time:
+    /// it returns only when the path changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_warning_shown_for: Option<String>,
+    #[serde(default)]
+    pub ui: UiPrefs,
+}
+
+/// Presentation choices the UI asks the shell to keep. Everything has a default so an older
+/// `config.toml` still loads.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiPrefs {
+    #[serde(default)]
+    pub guide_view: GuideView,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GuideView {
+    #[default]
+    Cards,
+    Table,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +60,10 @@ struct ConfigFile {
     vault: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     window: Option<WindowState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sync_warning_shown_for: Option<String>,
+    #[serde(default)]
+    ui: UiPrefs,
 }
 
 impl Config {
@@ -45,6 +71,8 @@ impl Config {
         Config {
             vault: data_dir.vault_dir(),
             window: None,
+            sync_warning_shown_for: None,
+            ui: UiPrefs::default(),
         }
     }
 
@@ -69,6 +97,8 @@ impl Config {
         Ok(Config {
             vault: resolve_stored(&data_dir.root, &file.vault),
             window: file.window,
+            sync_warning_shown_for: file.sync_warning_shown_for,
+            ui: file.ui,
         })
     }
 
@@ -77,6 +107,8 @@ impl Config {
         let file = ConfigFile {
             vault: store(&data_dir.root, &self.vault),
             window: self.window.clone(),
+            sync_warning_shown_for: self.sync_warning_shown_for.clone(),
+            ui: self.ui.clone(),
         };
         let text = toml::to_string_pretty(&file)?;
         fsutil::atomic_write(&data_dir.config_path(), text.as_bytes())

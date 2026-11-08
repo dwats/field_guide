@@ -15,4 +15,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 anyhow = { workspace = true }
-tauri = { version = "2", features = [] }
+fieldguide-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# `protocol-asset` serves vault media to the webview; the scope is set at runtime to `media/`.
+tauri = { version = "2", features = ["protocol-asset"] }
+# A second launch focuses the running window instead of opening a second writer.
+tauri-plugin-single-instance = "2"

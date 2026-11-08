@@ -53,8 +53,8 @@ The vault path in `config.toml` may point elsewhere (another drive, for example)
 ### Safety
 
 - **Single writer.** The shell uses the single-instance plugin so a second launch focuses the running window. Core takes an exclusive lock on `vault.db` at open; a vault that is already open elsewhere produces a clear "vault is open in another Field Guide" error rather than a second writer.
-- **Synced folders.** If the data directory path contains a known sync root (Dropbox, OneDrive, Google Drive, iCloud Drive), show a one-time warning that SQLite under a sync client can corrupt. Do not block.
-- **Rolling backups.** On the first open of each day (UTC), copy `vault.db` into `backups/` with SQLite's online backup API. Files are named `vault-<date>_<time>-<ms>.db` in UTC so name order is time order. Keep the five most recent. Settings lists them with a "restore" action that swaps the current file after taking one more backup of it.
+- **Synced folders.** If the data directory path contains a known sync root (Dropbox, OneDrive, Google Drive, iCloud Drive), show a one-time warning that SQLite under a sync client can corrupt. Do not block. `config.toml` records the path the warning was shown for, so it returns only when the data directory moves.
+- **Rolling backups.** On the first open of each day (UTC), copy `vault.db` into `backups/` with SQLite's online backup API. Files are named `vault-<date>_<time>-<ms>.db` in UTC so name order is time order. Keep the five most recent. Settings lists them with a "restore" action that swaps the current file after taking one more backup of it. Restore first checks that the file is a SQLite database at this build's schema or older and passes `quick_check`, then backs up the current database, closes the vault, copies the backup beside `vault.db`, removes stale `-wal` and `-shm` files, renames the copy into place, and reopens. A refused file changes nothing.
 - **Atomic writes.** Media, exports, backups, and `config.toml` are written to a temporary name in the same directory and renamed into place. A yanked drive leaves either the old file or the new one, never a partial.
 - **Version gates.** The DB records its migration version and every archive records `format_version`. An older build opening a newer vault, or importing a newer archive, stops with "update Field Guide" instead of guessing.
 
@@ -100,7 +100,9 @@ Names are compared through the `*_norm` columns: trimmed, Unicode-lowercased cop
 - Body is CommonMark + GFM tables, strikethrough, task lists, plus:
   - `[[Title]]` and `[[Title|shown text]]` wikilinks
   - `![alt](media/<sha256>.<ext>)` for images and video; `.webm` renders as `<video controls>`
-- The same body text is stored in the DB and written to the export, unchanged. The preview renderer rewrites `media/...` to the asset-protocol URL at render time only.
+- The same body text is stored in the DB and written to the export, unchanged. `core` renders the body to HTML (`markdown::render`); the UI rewrites `media/...` sources to the asset-protocol URL in the rendered DOM, at render time only.
+- Raw HTML in a body is shown as text, never passed through. Bodies arrive from other people's archives, and the webview has no need for inline markup.
+- Rendered wikilinks carry the resolved note id (`data-note-id`) or the unresolved target text (`data-target`); the UI decides what a click does. The renderer and the mention scanner share one link parser, so a link inside a code span renders as code but still gets a mention row; that divergence is accepted.
 
 ### Links
 
@@ -239,7 +241,7 @@ Media is stored raw inside the zip. Base64 would be a third larger and harder to
 - An archive whose `format_version` is newer than the app understands is refused with a message to update.
 - **Mapping step, before anything is written.** For each incoming tag path, verb, and qualifier label:
   - exact match after normalization (case, whitespace, trailing `s`) maps automatically
-  - otherwise the top three local candidates by string similarity are offered, with "create new" and, for tags, "create under ..." as alternatives
+  - otherwise the top three local candidates by string similarity are offered, with "create new" and, for tags, "create under ..." as alternatives. The metric is the `similarity::Similarity` trait; the default is a normalized edit distance with no dependency, chosen until real archives show whether a prefix-weighted metric ranks better
   - the user can accept all suggestions at once or go through them
 - Note identity: same id updates in place if the incoming `updated` is newer. Different id with a title collision keeps both and renames the incoming note `Title (imported)`. Both cases appear in the import report. Imported notes keep their ids and timestamps; tags, vocabulary, and boards are matched by name and get new ids. A board is identified by its name within the target guide, so importing again replaces its saved filters and positions instead of adding a copy. Board filters travel as tag paths.
 - Wikilinks in imported bodies resolve first against the archive's own notes (by the title at export time), then against the target guide's titles and aliases.
@@ -261,3 +263,6 @@ A menu item, "Check for updates", fetches `latest.json` from the release URL, co
 ## 11. Open questions
 
 - Whether qualifier values should support dates as a distinct type.
+- Whether to convert pasted and dropped media to WebP and WebM on ingest to save space (phase 8). Lossless WebP encoding is available as a small pure-Rust dependency; video transcoding is not something the binary can carry.
+- Whether export should offer a hop-depth scope (a note plus everything within N edges) with a preview of what it will include (phase 9). The archive format needs no change for it.
+- Whether import into an existing guide should ask per field (cover, description, guide tags) before overwriting (phase 9). Today the cover is set only when the local guide has none and the description is left alone.

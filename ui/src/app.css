@@ -1,14 +1,205 @@
 :root {
   color-scheme: light dark;
   font-family: system-ui, sans-serif;
-  background: Canvas;
-  color: CanvasText;
+  font-size: 15px;
+  line-height: 1.45;
+
+  --bg: Canvas;
+  --fg: CanvasText;
+  --surface: color-mix(in srgb, Canvas 94%, CanvasText);
+  --border: color-mix(in srgb, Canvas 78%, CanvasText);
+  --muted: color-mix(in srgb, CanvasText 60%, Canvas);
+  --accent: LinkText;
+  --warning-bg: color-mix(in srgb, Canvas 80%, orange);
+  --error: color-mix(in srgb, CanvasText 40%, red);
+  --chip-bg: color-mix(in srgb, Canvas 88%, CanvasText);
+
+  background: var(--bg);
+  color: var(--fg);
 }
 
 html,
 body,
-#app,
-main {
+#app {
   margin: 0;
   height: 100%;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 8px;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+a {
+  color: var(--accent);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--muted);
+}
+
+button.primary {
+  background: var(--accent);
+  color: Canvas;
+  border-color: var(--accent);
+}
+
+button.link {
+  border: none;
+  background: none;
+  padding: 2px 6px;
+  color: var(--accent);
+}
+
+button.danger {
+  color: var(--error);
+}
+
+input[type="text"],
+input[type="search"],
+select,
+textarea {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--error);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.chip button {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.chip.selected {
+  outline: 2px solid var(--accent);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+/* Rendered note bodies, from core's renderer. */
+.preview {
+  max-width: 48em;
+}
+
+.preview img,
+.preview video {
+  max-width: 100%;
+}
+
+.preview pre {
+  padding: 8px;
+  overflow: auto;
+  background: var(--surface);
+  border-radius: 4px;
+}
+
+.preview code {
+  font-size: 0.92em;
+}
+
+.preview table {
+  width: auto;
+}
+
+.preview a.wikilink {
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent);
+}
+
+.preview a.wikilink-unresolved {
+  color: var(--muted);
+  border-bottom: 1px dashed var(--muted);
+}
+
+/* CodeMirror host */
+.cm-editor {
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+  border-color: var(--muted);
 }

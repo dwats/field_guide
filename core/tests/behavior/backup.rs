@@ -1,7 +1,8 @@
+use std::fs;
 use std::slice::from_ref;
 
-use fieldguide_core::Vault;
 use fieldguide_core::backup::{self, BACKUPS_TO_KEEP};
+use fieldguide_core::{Error, Vault};
 use tempfile::tempdir;
 
 use crate::common::*;
@@ -67,4 +68,50 @@ fn backups_run_while_the_vault_is_being_written() {
         browse(&Vault::open(&second.path).unwrap(), &g),
         ["First", "Second"]
     );
+}
+
+#[test]
+fn restoring_a_backup_swaps_the_database_after_backing_up_the_current_one() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault").join("vault.db");
+    let mut v = Vault::open(&db).unwrap();
+    let g = guide(&mut v, "G");
+    note(&mut v, &g, "First", "");
+    let backups = dir.path().join("backups");
+    let snapshot = v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
+    note(&mut v, &g, "Second", "");
+
+    let restored = v
+        .restore_from_backup(&snapshot.path, &backups, BACKUPS_TO_KEEP)
+        .unwrap();
+    assert_eq!(browse(&restored, &g), ["First"]);
+    assert_eq!(restored.path(), Some(db.as_path()));
+
+    let listed = backup::list_backups(&backups).unwrap();
+    assert_eq!(listed.len(), 2, "the pre-restore state was backed up first");
+    let pre_restore = Vault::open(&listed[0].path).unwrap();
+    assert_eq!(browse(&pre_restore, &g), ["First", "Second"]);
+}
+
+#[test]
+fn restoring_from_a_file_that_is_not_a_database_changes_nothing() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    let mut v = Vault::open(&db).unwrap();
+    let g = guide(&mut v, "G");
+    note(&mut v, &g, "First", "");
+    let bogus = dir.path().join("bogus.db");
+    fs::write(&bogus, b"not a database").unwrap();
+    let backups = dir.path().join("backups");
+
+    let err = v
+        .restore_from_backup(&bogus, &backups, BACKUPS_TO_KEEP)
+        .unwrap_err();
+    assert!(matches!(err, Error::Invalid(_)), "{err}");
+    assert!(
+        backup::list_backups(&backups).unwrap().is_empty(),
+        "nothing was backed up for a refused restore"
+    );
+    let reopened = Vault::open(&db).unwrap();
+    assert_eq!(browse(&reopened, &g), ["First"]);
 }

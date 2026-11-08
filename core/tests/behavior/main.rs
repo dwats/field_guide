@@ -10,6 +10,7 @@ mod datadir;
 mod export_import;
 mod guides;
 mod lock;
+mod markdown;
 mod media;
 mod media_files;
 mod notes;

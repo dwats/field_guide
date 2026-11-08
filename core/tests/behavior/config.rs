@@ -1,7 +1,7 @@
 use std::fs;
 
 use fieldguide_core::Error;
-use fieldguide_core::config::{Config, WindowState};
+use fieldguide_core::config::{Config, GuideView, WindowState};
 use fieldguide_core::datadir::{DataDir, Mode};
 use tempfile::tempdir;
 
@@ -23,6 +23,7 @@ fn a_vault_under_the_data_directory_is_stored_relative_and_survives_a_move() {
             y: None,
             maximized: false,
         }),
+        ..Config::default_for(&data)
     };
     config.save(&data).unwrap();
 
@@ -56,7 +57,7 @@ fn a_vault_outside_the_data_directory_is_stored_as_given() {
     };
     Config {
         vault: elsewhere.clone(),
-        window: None,
+        ..Config::default_for(&data)
     }
     .save(&data)
     .unwrap();
@@ -87,4 +88,31 @@ fn a_malformed_config_is_an_error_not_a_silent_default() {
         Config::load(&data),
         Err(Error::ConfigParse { .. })
     ));
+}
+
+#[test]
+fn ui_prefs_and_the_sync_warning_round_trip() {
+    let tmp = tempdir().unwrap();
+    let data = DataDir {
+        root: tmp.path().to_path_buf(),
+        mode: Mode::Default,
+    };
+    let mut config = Config::default_for(&data);
+    config.ui.guide_view = GuideView::Table;
+    config.sync_warning_shown_for = Some("D:/stick".to_owned());
+    config.save(&data).unwrap();
+    assert_eq!(Config::load(&data).unwrap(), config);
+}
+
+#[test]
+fn a_config_from_before_ui_prefs_existed_still_loads() {
+    let tmp = tempdir().unwrap();
+    let data = DataDir {
+        root: tmp.path().to_path_buf(),
+        mode: Mode::Default,
+    };
+    fs::write(data.config_path(), "vault = \"vault\"\n").unwrap();
+    let loaded = Config::load(&data).unwrap();
+    assert_eq!(loaded.ui.guide_view, GuideView::Cards);
+    assert!(loaded.sync_warning_shown_for.is_none());
 }

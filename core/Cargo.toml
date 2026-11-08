@@ -14,6 +14,8 @@ path = "src/lib.rs"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 deunicode = "1"
 dirs = "7"
+# Markdown parser used by rustdoc and mdBook. `html` is the renderer; `getopts` is only for its CLI.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 # The bundled SQLite is compiled with FTS5; there is no separate feature for it.
 rusqlite = { version = "0.41", features = ["bundled", "backup"] }
 serde = { workspace = true }

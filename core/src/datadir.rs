@@ -134,6 +134,31 @@ impl DataDir {
     }
 }
 
+/// The sync client whose folder `path` sits in, when it is a known one. SQLite under a sync
+/// client can corrupt (`docs/design.md` section 2), so the app warns once. Advisory only.
+pub fn sync_client_in_path(path: &Path) -> Option<&'static str> {
+    for component in path.components() {
+        let name = component.as_os_str().to_string_lossy().to_lowercase();
+        let client = if name.starts_with("dropbox") {
+            "Dropbox"
+        } else if name.starts_with("onedrive") {
+            "OneDrive"
+        } else if matches!(name.as_str(), "google drive" | "googledrive" | "my drive") {
+            "Google Drive"
+        } else if matches!(
+            name.as_str(),
+            "icloud drive" | "iclouddrive" | "mobile documents"
+        ) || name.starts_with("com~apple~clouddocs")
+        {
+            "iCloud Drive"
+        } else {
+            continue;
+        };
+        return Some(client);
+    }
+    None
+}
+
 /// The directory that counts as "beside the executable".
 fn portable_base(exe: &Path, appimage: Option<&Path>, platform: Platform) -> Option<PathBuf> {
     let dir = match platform {

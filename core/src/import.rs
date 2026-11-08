@@ -22,6 +22,7 @@ use crate::media::{self, NewMedia};
 use crate::names::normalize;
 use crate::note;
 use crate::relation::{self, NewQualifier, QualifierValue};
+use crate::similarity::{self, Similarity};
 use crate::vocabulary::{NewQualifierLabel, NewVerb};
 use crate::{
     Error, GuideId, NoteId, QualifierLabelId, RelationId, Result, TagId, Vault, VerbId, clock,
@@ -69,6 +70,49 @@ pub struct ArchiveMedia {
     pub sha256: String,
     pub ext: String,
     pub bytes: u64,
+}
+
+/// What a UI shows before anything is written: where the archive came from and what it holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveSummary {
+    pub path: PathBuf,
+    pub format_version: u32,
+    pub app_version: String,
+    pub exported_at: String,
+    pub guides: Vec<ArchiveGuideSummary>,
+    pub media: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveGuideSummary {
+    pub id: String,
+    pub name: String,
+    pub notes: usize,
+    pub relations: usize,
+    pub boards: usize,
+}
+
+impl Archive {
+    pub fn summary(&self) -> ArchiveSummary {
+        ArchiveSummary {
+            path: self.path.clone(),
+            format_version: self.manifest.format_version,
+            app_version: self.manifest.app_version.clone(),
+            exported_at: self.manifest.exported_at.clone(),
+            guides: self
+                .guides
+                .iter()
+                .map(|g| ArchiveGuideSummary {
+                    id: g.guide.id.clone(),
+                    name: g.guide.name.clone(),
+                    notes: g.notes.len(),
+                    relations: g.relations.len(),
+                    boards: g.boards.len(),
+                })
+                .collect(),
+            media: self.media.len(),
+        }
+    }
 }
 
 /// Reads and validates an archive without touching the vault. An archive written by a newer
@@ -312,6 +356,16 @@ impl Vault {
     /// automatically; everything else defaults to "create new" with up to three similar local
     /// candidates to pick from. Call again with `choices` when the user changes a guide's target.
     pub fn propose_import(&self, archive: &Archive, choices: &[GuideChoice]) -> Result<ImportPlan> {
+        self.propose_import_with(archive, choices, &similarity::default_metric())
+    }
+
+    /// [`Vault::propose_import`] with a caller-chosen similarity metric for the suggestions.
+    pub fn propose_import_with(
+        &self,
+        archive: &Archive,
+        choices: &[GuideChoice],
+        metric: &dyn Similarity,
+    ) -> Result<ImportPlan> {
         let local_guides = self.list_guides(&Default::default())?;
         let mut guides = Vec::new();
         for ag in &archive.guides {
@@ -365,18 +419,32 @@ impl Vault {
                     (
                         flatten_tags(&ag.tags, "")
                             .into_iter()
-                            .map(|(id, path)| map_item(id, path, &local_tags, mapping_key_path))
+                            .map(|(id, path)| {
+                                map_item(id, path, &local_tags, mapping_key_path, metric)
+                            })
                             .collect(),
                         ag.verbs
                             .iter()
                             .map(|v| {
-                                map_item(v.id.clone(), v.label.clone(), &local_verbs, mapping_key)
+                                map_item(
+                                    v.id.clone(),
+                                    v.label.clone(),
+                                    &local_verbs,
+                                    mapping_key,
+                                    metric,
+                                )
                             })
                             .collect(),
                         ag.qualifier_labels
                             .iter()
                             .map(|l| {
-                                map_item(l.id.clone(), l.label.clone(), &local_labels, mapping_key)
+                                map_item(
+                                    l.id.clone(),
+                                    l.label.clone(),
+                                    &local_labels,
+                                    mapping_key,
+                                    metric,
+                                )
                             })
                             .collect(),
                     )
@@ -453,6 +521,7 @@ fn map_item(
     name: String,
     local: &[(String, String)],
     key: fn(&str) -> String,
+    metric: &dyn Similarity,
 ) -> ItemMapping {
     let wanted = key(&name);
     if let Some((local_id, _)) = local
@@ -473,7 +542,7 @@ fn map_item(
         .map(|(local_id, local_name)| Suggestion {
             id: local_id.clone(),
             name: local_name.clone(),
-            score: similarity(&wanted, &key(local_name)),
+            score: metric.score(&wanted, &key(local_name)),
         })
         .filter(|s| s.score >= 0.5)
         .collect();
@@ -507,29 +576,6 @@ fn mapping_key_path(path: &str) -> String {
         .map(mapping_key)
         .collect::<Vec<_>>()
         .join("/")
-}
-
-/// Similarity in `0.0..=1.0`: one minus the normalized Levenshtein distance.
-fn similarity(a: &str, b: &str) -> f64 {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    let longest = a.len().max(b.len());
-    if longest == 0 {
-        return 1.0;
-    }
-    let mut previous: Vec<usize> = (0..=b.len()).collect();
-    let mut current = vec![0; b.len() + 1];
-    for (i, ca) in a.iter().enumerate() {
-        current[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let cost = usize::from(ca != cb);
-            current[j + 1] = (previous[j] + cost)
-                .min(previous[j + 1] + 1)
-                .min(current[j] + 1);
-        }
-        std::mem::swap(&mut previous, &mut current);
-    }
-    1.0 - previous[b.len()] as f64 / longest as f64
 }
 
 /// `(archive tag id, path)` for every tag in a tree, parents before children.

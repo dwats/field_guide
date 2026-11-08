@@ -74,7 +74,7 @@ Tests:
 
 Tauri commands for everything in phases 1 to 3. Single-instance plugin and vault lock with the "open elsewhere" message. Daily backup on first open. Synced-folder warning. Guide browse (card and table views with name and tag filter). Note page with CodeMirror editor, preview from `core`, tag picker. Tag editor with drag-to-nest. Settings page showing mode (portable or default), data path, backups with restore, and the update-check button placeholder.
 
-Tests: Vitest for any pure UI logic (filter string parsing, staged-input state machine). A short manual checklist in `docs/checklist.md` for the views.
+Tests: Vitest for any pure UI logic (filter string parsing, staged-input state machine). A short manual checklist in `docs/checklist.md` for the views. Markdown rendering, backup restore, and sync-folder detection are core behavior and get core tests.
 
 Done when: create a guide, write a note with a wikilink, nest a tag, and see the preview resolve the link; a second launch focuses the first window.
 
@@ -102,11 +102,15 @@ Drag-and-drop and clipboard paste of images, drag-and-drop of `.webm`, into the 
 
 Done when: a pasted screenshot appears inline, in the gallery, and in the export archive exactly once; cleanup lists and removes an orphaned file and nothing else.
 
+Decide first: whether images are converted to WebP on ingest (`docs/design.md` section 11). Video is stored as dropped.
+
 ## Phase 9: Import and export UI
 
 Scope picker for export. Import flow: file picker, target picker, mapping wizard with accept-all, report view with "create stubs" for unresolved relations.
 
 Done when: a friend's guide export imports into your vault with their tags mapped onto yours and nothing lost.
+
+Candidates raised during phase 3, to decide here: a hop-depth export scope with a preview; per-field overwrite choices (cover, description, guide tags) when importing into an existing guide.
 
 ## Phase 10: Packaging and update check
 

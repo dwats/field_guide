@@ -1,0 +1,81 @@
+<script lang="ts">
+  // CodeMirror 6 markdown editor. `value` flows in; every document change flows out through
+  // `onchange`. Changes that originate here are not echoed back into the editor.
+  import { onDestroy, onMount } from "svelte";
+  import { EditorState } from "@codemirror/state";
+  import {
+    EditorView,
+    drawSelection,
+    highlightActiveLine,
+    keymap,
+    lineNumbers,
+  } from "@codemirror/view";
+  import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+  import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+  import { markdown } from "@codemirror/lang-markdown";
+
+  interface Props {
+    value: string;
+    onchange: (value: string) => void;
+    onsave?: () => void;
+  }
+  let { value, onchange, onsave }: Props = $props();
+
+  let host: HTMLDivElement;
+  let view: EditorView | undefined;
+
+  onMount(() => {
+    view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: value,
+        extensions: [
+          lineNumbers(),
+          history(),
+          drawSelection(),
+          highlightActiveLine(),
+          EditorView.lineWrapping,
+          markdown(),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          keymap.of([
+            {
+              key: "Mod-s",
+              run: () => {
+                onsave?.();
+                return true;
+              },
+            },
+            indentWithTab,
+            ...defaultKeymap,
+            ...historyKeymap,
+          ]),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) onchange(update.state.doc.toString());
+          }),
+        ],
+      }),
+    });
+    view.focus();
+  });
+
+  // An external change to `value` (undo rename rewrote links, for example) replaces the document.
+  $effect(() => {
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (value !== current) {
+      view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+    }
+  });
+
+  onDestroy(() => view?.destroy());
+</script>
+
+<div class="editor" bind:this={host}></div>
+
+<style>
+  /* Fills whatever height the parent gives it; the parent is a flex column. */
+  .editor {
+    flex: 1;
+    min-height: 240px;
+  }
+</style>
