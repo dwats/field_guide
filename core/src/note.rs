@@ -71,26 +71,15 @@ pub struct RenameRecord {
 
 impl Vault {
     pub fn create_note(&mut self, new: NewNote) -> Result<Note> {
-        let title = names::clean_note_name("title", &new.title)?;
-        let title_norm = normalize(&title);
-        let id = NoteId::generate();
-        let now = clock::now();
         let tx = self.transaction()?;
-        guide::ensure_guide_exists(&tx, &new.guide_id)?;
-        if let Some(holder) = name_holder(&tx, &new.guide_id, &title_norm)? {
-            return Err(Error::NameTaken {
-                name: title,
-                note_id: holder,
-            });
-        }
-        tx.execute(
-            "INSERT INTO note (id, guide_id, title, title_norm, body_md, is_stub, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?6)",
-            params![id, new.guide_id, title, title_norm, new.body_md, now],
+        let id = insert_note(
+            &tx,
+            &new.guide_id,
+            &new.title,
+            &new.body_md,
+            false,
+            &new.tag_ids,
         )?;
-        replace_tags(&tx, &id, &new.guide_id, &new.tag_ids)?;
-        refresh_mentions(&tx, &id, &new.guide_id, &new.body_md)?;
-        adopt_mentions(&tx, &id, &new.guide_id, &title)?;
         tx.commit()?;
         load_note(self.conn(), &id)
     }
@@ -486,6 +475,47 @@ fn insert_alias(conn: &Connection, id: &NoteId, guide_id: &GuideId, alias: &str)
     )?;
     adopt_mentions(conn, id, guide_id, alias)?;
     Ok(())
+}
+
+/// Inserts a note with its tags and mention rows. The caller owns the transaction.
+pub(crate) fn insert_note(
+    conn: &Connection,
+    guide_id: &GuideId,
+    title: &str,
+    body_md: &str,
+    is_stub: bool,
+    tag_ids: &[TagId],
+) -> Result<NoteId> {
+    let title = names::clean_note_name("title", title)?;
+    let title_norm = normalize(&title);
+    guide::ensure_guide_exists(conn, guide_id)?;
+    if let Some(holder) = name_holder(conn, guide_id, &title_norm)? {
+        return Err(Error::NameTaken {
+            name: title,
+            note_id: holder,
+        });
+    }
+    let id = NoteId::generate();
+    conn.execute(
+        "INSERT INTO note (id, guide_id, title, title_norm, body_md, is_stub, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+        params![id, guide_id, title, title_norm, body_md, is_stub, clock::now()],
+    )?;
+    replace_tags(conn, &id, guide_id, tag_ids)?;
+    refresh_mentions(conn, &id, guide_id, body_md)?;
+    adopt_mentions(conn, &id, guide_id, &title)?;
+    Ok(id)
+}
+
+/// Creates a stub: an empty note standing in for a relation target nobody has written yet.
+pub(crate) fn create_stub(
+    conn: &Connection,
+    guide_id: &GuideId,
+    title: &str,
+    tag_id: Option<&TagId>,
+) -> Result<NoteId> {
+    let tags: Vec<TagId> = tag_id.cloned().into_iter().collect();
+    insert_note(conn, guide_id, title, "", true, &tags)
 }
 
 pub(crate) fn touch(conn: &Connection, id: &NoteId) -> Result<()> {

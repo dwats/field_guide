@@ -15,12 +15,14 @@ mod ids;
 pub mod media;
 pub mod names;
 pub mod note;
+pub mod relation;
 mod search;
 pub mod tag;
 mod vault;
+pub mod vocabulary;
 pub mod wikilink;
 
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, Result};
-pub use ids::{GuideId, MediaId, NoteId, TagId};
+pub use ids::{GuideId, MediaId, NoteId, QualifierId, QualifierLabelId, RelationId, TagId, VerbId};
 pub use vault::Vault;

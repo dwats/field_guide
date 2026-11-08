@@ -73,9 +73,9 @@ note_alias        note_id, guide_id, alias, alias_norm   unique (guide_id, alias
 note_tag          note_id, tag_id
 media             id, sha256, ext, mime, bytes, width, height, duration_ms, created_at
 note_media        note_id, media_id, sort      (gallery membership; inline use is derived from body)
-verb              id, guide_id, label, inverse_label (NULL ok), symmetric, subject_default_tag_id, object_default_tag_id
-                  unique (guide_id, lower(label)); inverse_label must not collide with any label or inverse in the guide
-qualifier_label   id, guide_id, label, inverse_label (NULL ok)
+verb              id, guide_id, label, label_norm, inverse_label (NULL ok), inverse_norm, symmetric, subject_default_tag_id, object_default_tag_id
+                  unique (guide_id, label_norm); labels and inverses share one pool per guide
+qualifier_label   id, guide_id, label, label_norm, inverse_label (NULL ok), inverse_norm   same pool rule, in a pool of its own
 relation          id, subject_note_id, verb_id, object_note_id, created_at
                   unique (subject_note_id, verb_id, object_note_id)
 relation_qualifier id, relation_id, qualifier_label_id, value_note_id | value_text | value_num, sort
@@ -132,7 +132,7 @@ This is the part that has to feel right, so the rules are spelled out.
 
 - **Verb:** per-guide, user-defined. `label` (`DROPS`), optional `inverse_label` (`DROPPED BY`), `symmetric` flag (`ADJACENT TO`, inverse = self). Optional default tags for the subject and object side, used only as a suggestion when creating stubs.
 - **Relation:** one stored edge `(subject, verb, object)` plus an ordered list of qualifiers. Direction is canonical: subject is the verb's grammatical subject.
-- **Qualifier:** `label + value` attached to an edge. Labels are a per-guide pool with their own optional inverse (`mined with` / `mines`). Values are a note reference, text, or number. The same label may appear more than once on one edge.
+- **Qualifier:** `label + value` attached to an edge. Labels are a per-guide pool with their own optional inverse (`mined with` / `mines`); labels and inverses must not collide within that pool, which is separate from the verb pool. Values are a note reference, text, or number. The same label may appear more than once on one edge.
 
 ### Reading an edge from each side
 
@@ -146,6 +146,8 @@ Stored: `Stone Block DROPS Cobblestone Block`, qualifiers `[mined with: Pickaxe]
 
 Without an inverse on the verb, the object side shows `← DROPS Stone Block`. Without an inverse on the qualifier label, Pickaxe shows `mined with · Stone Block DROPS Cobblestone Block` under a "Referenced by" section. Inverses are display rules applied at read time; nothing is stored twice.
 
+Whatever stands in the verb slot renders uppercase, as in these examples, so a verb typed as `drops` and a qualifier inverse typed as `mines` both read as verbs; qualifier labels in qualifier position render as typed. Further qualifiers on the edge follow the line, each separated by `·`. `core` builds these lines (`relations_for_note`) along with the structured parts, so the UI and the exported HTML render them the same way.
+
 ### Entry flow
 
 One input line on any note page, staged with autocomplete:
@@ -158,16 +160,16 @@ One input line on any note page, staged with autocomplete:
 
 ### Rules
 
-- Creating `(subject, verb, object)` that already exists merges qualifiers into the existing edge. No duplicates.
-- A relation whose verb is symmetric stores whichever direction it was entered from; both pages render the same label.
+- Creating `(subject, verb, object)` that already exists merges qualifiers into the existing edge. No duplicates: a qualifier identical in label and value to one already on the edge is not added again, and new ones keep their order after the existing ones.
+- A relation whose verb is symmetric stores whichever direction it was entered from; both pages render the same label, and the reverse edge counts as the same edge when merging.
 - Cross-guide edges are allowed. The verb belongs to the guide of the note the edge was created from. Both notes list the edge; views default to same-guide and have a "show external" toggle.
-- Trashing a note hides its edges and the qualifiers that point at it; restoring brings them back. Purging deletes them.
-- Renaming a verb or qualifier label is a label change on the definition. Deleting one that is in use is blocked; the UI offers merge-into-another.
+- Trashing a note hides its edges and the qualifiers that point at it; restoring brings them back. Purging deletes them. A trashed note cannot be the origin, target, or qualifier value of a new edge.
+- Renaming a verb or qualifier label is a label change on the definition. Deleting one that is in use is blocked; the UI offers merge-into-another. Merging verbs moves the edges, and an edge that would duplicate one the target verb already has merges its qualifiers into that edge instead. Merging qualifier labels relabels the qualifiers and drops exact duplicates that result.
 - Mentions (`[[wikilinks]]` in body text) are not relations. They are extracted on save into the `mention` table and shown as a thin, hideable "mentions" edge. They never appear in the relation list on a note page.
 
 ### Starter vocabulary
 
-None. A new guide has zero verbs and zero qualifier labels. Vocabulary arrives three ways: typing a new one at the input line, "copy verbs and qualifiers from guide X" when creating a guide, and import (verbs and qualifier labels travel with every export and go through the same mapping step as tags).
+None. A new guide has zero verbs and zero qualifier labels. Vocabulary arrives three ways: typing a new one at the input line, "copy verbs and qualifiers from guide X" when creating a guide, and import (verbs and qualifier labels travel with every export and go through the same mapping step as tags). Copying gives the words new ids, skips any whose label or inverse already exists in the target, and leaves default tags behind, since tags belong to a guide.
 
 ## 5. Browse views
 

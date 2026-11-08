@@ -71,3 +71,19 @@ id_type!(
     /// Identifies a media row. The file itself is content-addressed by its hash.
     MediaId
 );
+id_type!(
+    /// Identifies a verb in a guide's vocabulary.
+    VerbId
+);
+id_type!(
+    /// Identifies a qualifier label in a guide's vocabulary.
+    QualifierLabelId
+);
+id_type!(
+    /// Identifies a relation: one stored edge between two notes.
+    RelationId
+);
+id_type!(
+    /// Identifies one qualifier on a relation.
+    QualifierId
+);

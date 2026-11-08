@@ -1,7 +1,11 @@
 use fieldguide_core::guide::NewGuide;
 use fieldguide_core::media::NewMedia;
 use fieldguide_core::note::{NewNote, NoteQuery, NoteSummary};
-use fieldguide_core::{GuideId, MediaId, NoteId, TagId, Vault};
+use fieldguide_core::relation::{
+    CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, Target,
+};
+use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb};
+use fieldguide_core::{GuideId, MediaId, NoteId, QualifierLabelId, TagId, Vault, VerbId};
 
 pub fn vault() -> Vault {
     Vault::open_in_memory().expect("in-memory vault")
@@ -61,6 +65,89 @@ pub fn browse_tag(v: &Vault, guide_id: &GuideId, tag_id: &TagId) -> Vec<String> 
         ..NoteQuery::default()
     };
     titles(&v.list_notes(guide_id, &query).expect("list notes by tag"))
+}
+
+pub fn verb(v: &mut Vault, guide_id: &GuideId, label: &str, inverse: Option<&str>) -> VerbId {
+    v.create_verb(
+        guide_id,
+        NewVerb {
+            label: label.to_owned(),
+            inverse_label: inverse.map(str::to_owned),
+            ..NewVerb::default()
+        },
+    )
+    .expect("create verb")
+    .id
+}
+
+pub fn qualifier_label(
+    v: &mut Vault,
+    guide_id: &GuideId,
+    label: &str,
+    inverse: Option<&str>,
+) -> QualifierLabelId {
+    v.create_qualifier_label(
+        guide_id,
+        NewQualifierLabel {
+            label: label.to_owned(),
+            inverse_label: inverse.map(str::to_owned),
+        },
+    )
+    .expect("create qualifier label")
+    .id
+}
+
+/// `origin VERB target`, entered from the subject side, with no qualifiers.
+pub fn relate(v: &mut Vault, origin: &NoteId, verb_id: &VerbId, target: &NoteId) -> Relation {
+    relate_with(v, origin, verb_id, target, Vec::new())
+}
+
+/// `origin VERB target` with qualifiers, entered from the subject side.
+pub fn relate_with(
+    v: &mut Vault,
+    origin: &NoteId,
+    verb_id: &VerbId,
+    target: &NoteId,
+    qualifiers: Vec<NewQualifier>,
+) -> Relation {
+    v.create_relation(CreateRelation {
+        origin: origin.clone(),
+        verb_id: verb_id.clone(),
+        direction: Direction::Forward,
+        target: Target::Note { id: target.clone() },
+        qualifiers,
+    })
+    .expect("create relation")
+}
+
+pub fn q_note(label: &QualifierLabelId, note_id: &NoteId) -> NewQualifier {
+    NewQualifier {
+        label_id: label.clone(),
+        value: QualifierValue::Note(note_id.clone()),
+    }
+}
+
+pub fn q_text(label: &QualifierLabelId, text: &str) -> NewQualifier {
+    NewQualifier {
+        label_id: label.clone(),
+        value: QualifierValue::Text(text.to_owned()),
+    }
+}
+
+pub fn q_num(label: &QualifierLabelId, number: f64) -> NewQualifier {
+    NewQualifier {
+        label_id: label.clone(),
+        value: QualifierValue::Number(number),
+    }
+}
+
+/// The relation lines a note shows, same-guide scope, in display order.
+pub fn views(v: &Vault, note_id: &NoteId) -> Vec<String> {
+    v.relations_for_note(note_id, &RelationFilter::default())
+        .expect("relations for note")
+        .into_iter()
+        .map(|view| view.text)
+        .collect()
 }
 
 /// Live notes matching a free-text search, best match first.

@@ -1,0 +1,386 @@
+use fieldguide_core::Error;
+use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb, VocabularyCopy};
+
+use crate::common::*;
+
+#[test]
+fn verb_labels_and_inverses_share_one_pool_per_guide() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let h = guide(&mut v, "H");
+    let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+
+    for (label, inverse) in [
+        ("dropped by", None),
+        ("drops", None),
+        ("EATS", Some("drops")),
+        ("EATS", Some("Dropped By")),
+    ] {
+        assert!(
+            matches!(
+                v.create_verb(
+                    &g,
+                    NewVerb {
+                        label: label.to_owned(),
+                        inverse_label: inverse.map(str::to_owned),
+                        ..NewVerb::default()
+                    },
+                ),
+                Err(Error::LabelTaken { .. })
+            ),
+            "{label} / {inverse:?} was accepted"
+        );
+    }
+    assert!(matches!(
+        v.create_verb(
+            &g,
+            NewVerb {
+                label: "EATS".to_owned(),
+                inverse_label: Some("eats".to_owned()),
+                ..NewVerb::default()
+            },
+        ),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        v.create_verb(
+            &g,
+            NewVerb {
+                label: "NEAR".to_owned(),
+                inverse_label: Some("NEAR TO".to_owned()),
+                symmetric: true,
+                ..NewVerb::default()
+            },
+        ),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        v.create_verb(
+            &g,
+            NewVerb {
+                label: "   ".to_owned(),
+                ..NewVerb::default()
+            },
+        ),
+        Err(Error::InvalidName { .. })
+    ));
+
+    // Another guide has its own pool.
+    verb(&mut v, &h, "DROPS", Some("DROPPED BY"));
+
+    // Updating into a taken word fails; changing a verb's own casing is fine.
+    let eats = verb(&mut v, &g, "EATS", None);
+    assert!(matches!(
+        v.update_verb(
+            &eats,
+            NewVerb {
+                label: "Dropped By".to_owned(),
+                ..NewVerb::default()
+            },
+        ),
+        Err(Error::LabelTaken { .. })
+    ));
+    let renamed = v
+        .update_verb(
+            &drops,
+            NewVerb {
+                label: "Drops".to_owned(),
+                inverse_label: Some("Dropped by".to_owned()),
+                ..NewVerb::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(renamed.label, "Drops");
+    assert_eq!(renamed.inverse_label.as_deref(), Some("Dropped by"));
+    let labels: Vec<String> = v
+        .list_verbs(&g)
+        .unwrap()
+        .into_iter()
+        .map(|x| x.label)
+        .collect();
+    assert_eq!(labels, ["Drops", "EATS"]);
+}
+
+#[test]
+fn typed_text_resolves_to_a_verb_and_a_direction() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+    let adjacent = v
+        .create_verb(
+            &g,
+            NewVerb {
+                label: "ADJACENT TO".to_owned(),
+                symmetric: true,
+                ..NewVerb::default()
+            },
+        )
+        .unwrap()
+        .id;
+    let lookup = |v: &fieldguide_core::Vault, text: &str| {
+        v.lookup_verb(&g, text)
+            .unwrap()
+            .map(|m| (m.verb.id, m.direction))
+    };
+    assert_eq!(
+        lookup(&v, "drops"),
+        Some((drops.clone(), Direction::Forward))
+    );
+    assert_eq!(
+        lookup(&v, " DROPPED by "),
+        Some((drops.clone(), Direction::Inverse))
+    );
+    assert_eq!(
+        lookup(&v, "adjacent to"),
+        Some((adjacent.clone(), Direction::Forward))
+    );
+    assert_eq!(lookup(&v, "eats"), None);
+}
+
+#[test]
+fn qualifier_labels_follow_the_same_pool_rule_in_their_own_pool() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let mined = qualifier_label(&mut v, &g, "mined with", Some("mines"));
+    assert!(matches!(
+        v.create_qualifier_label(
+            &g,
+            NewQualifierLabel {
+                label: "Mines".to_owned(),
+                inverse_label: None,
+            },
+        ),
+        Err(Error::LabelTaken { .. })
+    ));
+    assert!(matches!(
+        v.create_qualifier_label(
+            &g,
+            NewQualifierLabel {
+                label: "found in".to_owned(),
+                inverse_label: Some("MINED WITH".to_owned()),
+            },
+        ),
+        Err(Error::LabelTaken { .. })
+    ));
+    assert_eq!(
+        v.lookup_qualifier_label(&g, " MINED WITH ")
+            .unwrap()
+            .map(|l| l.id),
+        Some(mined.clone())
+    );
+    assert!(
+        v.lookup_qualifier_label(&g, "mines").unwrap().is_none(),
+        "inverses are for display, not for entry"
+    );
+    let updated = v
+        .update_qualifier_label(
+            &mined,
+            NewQualifierLabel {
+                label: "mined with".to_owned(),
+                inverse_label: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(updated.inverse_label, None);
+
+    // Verbs and qualifier labels are separate pools.
+    verb(&mut v, &g, "mined with", None);
+}
+
+#[test]
+fn vocabulary_in_use_cannot_be_deleted_but_can_be_merged() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = note(&mut v, &g, "Stone", "");
+    let cobble = note(&mut v, &g, "Cobblestone", "");
+    let pickaxe = note(&mut v, &g, "Pickaxe", "");
+    let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+    let gives = verb(&mut v, &g, "GIVES", None);
+    let mined = qualifier_label(&mut v, &g, "mined with", Some("mines"));
+    let dug = qualifier_label(&mut v, &g, "dug with", None);
+    let edge = relate_with(
+        &mut v,
+        &stone,
+        &gives,
+        &cobble,
+        vec![q_note(&dug, &pickaxe)],
+    );
+
+    match v.delete_verb(&gives) {
+        Err(Error::InUse {
+            kind: "verb",
+            count: 1,
+        }) => {}
+        other => panic!("expected InUse, got {other:?}"),
+    }
+    match v.delete_qualifier_label(&dug) {
+        Err(Error::InUse {
+            kind: "qualifier label",
+            count: 1,
+        }) => {}
+        other => panic!("expected InUse, got {other:?}"),
+    }
+
+    // Merging the label relabels the qualifier.
+    v.merge_qualifier_labels(&dug, &mined).unwrap();
+    assert!(matches!(
+        v.get_qualifier_label(&dug),
+        Err(Error::NotFound { .. })
+    ));
+    assert_eq!(
+        views(&v, &stone),
+        ["GIVES Cobblestone · mined with Pickaxe"]
+    );
+    assert_eq!(views(&v, &pickaxe), ["MINES Stone → Cobblestone"]);
+
+    // Merging the verb moves the edge, which now reads with DROPS from both sides.
+    v.merge_verbs(&gives, &drops).unwrap();
+    assert!(matches!(v.get_verb(&gives), Err(Error::NotFound { .. })));
+    assert_eq!(v.get_relation(&edge.id).unwrap().verb.id, drops);
+    assert_eq!(
+        views(&v, &stone),
+        ["DROPS Cobblestone · mined with Pickaxe"]
+    );
+    assert_eq!(
+        views(&v, &cobble),
+        ["DROPPED BY Stone · mined with Pickaxe"]
+    );
+
+    // Once nothing uses them, deletion works.
+    v.delete_relation(&edge.id).unwrap();
+    v.delete_verb(&drops).unwrap();
+    v.delete_qualifier_label(&mined).unwrap();
+    assert!(v.list_verbs(&g).unwrap().is_empty());
+    assert!(v.list_qualifier_labels(&g).unwrap().is_empty());
+}
+
+#[test]
+fn merging_verbs_that_collide_on_an_edge_merges_the_edges() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let a = note(&mut v, &g, "A", "");
+    let b = note(&mut v, &g, "B", "");
+    let x = note(&mut v, &g, "X", "");
+    let y = note(&mut v, &g, "Y", "");
+    let drops = verb(&mut v, &g, "DROPS", None);
+    let gives = verb(&mut v, &g, "GIVES", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    relate_with(&mut v, &a, &drops, &b, vec![q_note(&with, &x)]);
+    let doomed = relate_with(
+        &mut v,
+        &a,
+        &gives,
+        &b,
+        vec![q_note(&with, &y), q_note(&with, &x)],
+    );
+
+    v.merge_verbs(&gives, &drops).unwrap();
+    assert!(matches!(
+        v.get_relation(&doomed.id),
+        Err(Error::NotFound { .. })
+    ));
+    assert_eq!(
+        views(&v, &a),
+        ["DROPS B · with X · with Y"],
+        "existing qualifiers first, exact duplicate skipped"
+    );
+    assert!(matches!(
+        v.merge_verbs(&drops, &drops),
+        Err(Error::Invalid(_))
+    ));
+}
+
+#[test]
+fn copy_vocabulary_duplicates_words_with_new_ids_and_skips_existing_ones() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let h = guide(&mut v, "Terraria");
+    let mobs = v.ensure_tag_path(Some(&g), "Mobs").unwrap();
+    let drops = v
+        .create_verb(
+            &g,
+            NewVerb {
+                label: "DROPS".to_owned(),
+                inverse_label: Some("DROPPED BY".to_owned()),
+                subject_default_tag_id: Some(mobs.id.clone()),
+                ..NewVerb::default()
+            },
+        )
+        .unwrap();
+    let adjacent = v
+        .create_verb(
+            &g,
+            NewVerb {
+                label: "ADJACENT TO".to_owned(),
+                symmetric: true,
+                ..NewVerb::default()
+            },
+        )
+        .unwrap();
+    let mined = qualifier_label(&mut v, &g, "mined with", Some("mines"));
+    let existing = verb(&mut v, &h, "drops", None);
+
+    let copied = v.copy_vocabulary(&g, &h).unwrap();
+    assert_eq!(
+        copied,
+        VocabularyCopy {
+            verbs: 1,
+            qualifier_labels: 1,
+        }
+    );
+    let verbs = v.list_verbs(&h).unwrap();
+    let labels: Vec<&str> = verbs.iter().map(|x| x.label.as_str()).collect();
+    assert_eq!(labels, ["ADJACENT TO", "drops"]);
+    let copy = verbs.iter().find(|x| x.label == "ADJACENT TO").unwrap();
+    assert_ne!(copy.id, adjacent.id);
+    assert!(copy.symmetric);
+    assert_eq!(copy.guide_id, h);
+    assert_eq!(
+        verbs.iter().find(|x| x.label == "drops").unwrap().id,
+        existing,
+        "a word already in the target is kept, not duplicated"
+    );
+    let copied_label = &v.list_qualifier_labels(&h).unwrap()[0];
+    assert_ne!(copied_label.id, mined);
+    assert_eq!(copied_label.label, "mined with");
+    assert_eq!(copied_label.inverse_label.as_deref(), Some("mines"));
+
+    // Default tags belong to their guide and stay behind.
+    assert_eq!(
+        v.get_verb(&drops.id).unwrap().subject_default_tag_id,
+        Some(mobs.id.clone())
+    );
+    assert!(matches!(v.copy_vocabulary(&g, &g), Err(Error::Invalid(_))));
+}
+
+#[test]
+fn default_tags_must_belong_to_the_verbs_guide() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let h = guide(&mut v, "H");
+    let foreign = v.ensure_tag_path(Some(&h), "Mobs").unwrap();
+    assert!(matches!(
+        v.create_verb(
+            &g,
+            NewVerb {
+                label: "DROPS".to_owned(),
+                object_default_tag_id: Some(foreign.id.clone()),
+                ..NewVerb::default()
+            },
+        ),
+        Err(Error::Invalid(_))
+    ));
+    let global = v.ensure_tag_path(None, "Games").unwrap();
+    assert!(matches!(
+        v.create_verb(
+            &g,
+            NewVerb {
+                label: "DROPS".to_owned(),
+                subject_default_tag_id: Some(global.id.clone()),
+                ..NewVerb::default()
+            },
+        ),
+        Err(Error::Invalid(_))
+    ));
+    assert!(v.list_verbs(&g).unwrap().is_empty());
+}

@@ -75,6 +75,14 @@ pub enum Error {
     #[error("a tag cannot be moved or merged into itself or one of its descendants")]
     TagCycle,
 
+    /// Verb labels and inverses share one pool per guide, and so do qualifier labels.
+    #[error("a {kind} label or inverse \"{label}\" already exists in this guide")]
+    LabelTaken { kind: &'static str, label: String },
+
+    /// Deleting vocabulary that relations still use is refused; the UI offers merge instead.
+    #[error("{kind} is used by {count} relation(s); merge it into another one first")]
+    InUse { kind: &'static str, count: usize },
+
     /// A rule violation with its own message, such as a tag from another guide.
     #[error("{0}")]
     Invalid(String),

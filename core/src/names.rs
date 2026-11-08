@@ -1,4 +1,4 @@
-//! Name rules shared by guides, tags, notes, and aliases.
+//! Name rules shared by guides, tags, notes, aliases, and vocabulary.
 
 use crate::{Error, Result};
 
@@ -45,4 +45,9 @@ pub(crate) fn clean_tag_name(raw: &str) -> Result<String> {
 
 pub(crate) fn clean_guide_name(raw: &str) -> Result<String> {
     single_line("guide name", raw).map(str::to_owned)
+}
+
+/// Verb and qualifier labels: one line, trimmed.
+pub(crate) fn clean_label(kind: &'static str, raw: &str) -> Result<String> {
+    single_line(kind, raw).map(str::to_owned)
 }

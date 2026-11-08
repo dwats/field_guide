@@ -1,0 +1,580 @@
+//! Per-guide vocabulary: verbs and qualifier labels. A new guide has none; words arrive by typing
+//! them at the relation input, by copying from another guide, or by import.
+//!
+//! Verb labels and inverse labels share one pool per guide, so typed text resolves to exactly one
+//! verb and one direction. Qualifier labels have their own pool with the same rule.
+
+use rusqlite::{Connection, OptionalExtension, Row, params};
+use serde::{Deserialize, Serialize};
+
+use crate::error::not_found;
+use crate::names::{self, normalize};
+use crate::{Error, GuideId, QualifierLabelId, Result, TagId, Vault, VerbId, guide, tag};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Verb {
+    pub id: VerbId,
+    pub guide_id: GuideId,
+    /// Read from the subject's side, e.g. `DROPS`.
+    pub label: String,
+    /// Read from the object's side, e.g. `DROPPED BY`. `None` renders as an arrow plus the label.
+    pub inverse_label: Option<String>,
+    /// Both sides read the same label, e.g. `ADJACENT TO`.
+    pub symmetric: bool,
+    /// Suggested tag for a stub created on the subject side.
+    pub subject_default_tag_id: Option<TagId>,
+    /// Suggested tag for a stub created on the object side.
+    pub object_default_tag_id: Option<TagId>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewVerb {
+    pub label: String,
+    #[serde(default)]
+    pub inverse_label: Option<String>,
+    #[serde(default)]
+    pub symmetric: bool,
+    #[serde(default)]
+    pub subject_default_tag_id: Option<TagId>,
+    #[serde(default)]
+    pub object_default_tag_id: Option<TagId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualifierLabel {
+    pub id: QualifierLabelId,
+    pub guide_id: GuideId,
+    /// Read from the edge, e.g. `mined with`.
+    pub label: String,
+    /// Read from the value's side, e.g. `mines`. `None` lists the edge under "Referenced by".
+    pub inverse_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewQualifierLabel {
+    pub label: String,
+    #[serde(default)]
+    pub inverse_label: Option<String>,
+}
+
+/// Which way a typed label points, relative to the note it was typed on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    /// The origin note is the subject.
+    #[default]
+    Forward,
+    /// The origin note is the object: the text typed was the verb's inverse label.
+    Inverse,
+}
+
+/// Typed text resolved against a guide's verbs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerbMatch {
+    pub verb: Verb,
+    pub direction: Direction,
+}
+
+/// What `copy_vocabulary` added to the target guide.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VocabularyCopy {
+    pub verbs: usize,
+    pub qualifier_labels: usize,
+}
+
+impl Vault {
+    pub fn create_verb(&mut self, guide_id: &GuideId, new: NewVerb) -> Result<Verb> {
+        let tx = self.transaction()?;
+        guide::ensure_guide_exists(&tx, guide_id)?;
+        let id = VerbId::generate();
+        let def = validate_verb(&tx, guide_id, &new, None)?;
+        tx.execute(
+            "INSERT INTO verb (id, guide_id, label, label_norm, inverse_label, inverse_norm, symmetric,
+                               subject_default_tag_id, object_default_tag_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                id,
+                guide_id,
+                def.label,
+                normalize(&def.label),
+                def.inverse,
+                def.inverse.as_deref().map(normalize),
+                new.symmetric,
+                new.subject_default_tag_id,
+                new.object_default_tag_id,
+            ],
+        )?;
+        tx.commit()?;
+        load_verb(self.conn(), &id)
+    }
+
+    pub fn get_verb(&self, id: &VerbId) -> Result<Verb> {
+        load_verb(self.conn(), id)
+    }
+
+    /// A guide's verbs, ordered by label.
+    pub fn list_verbs(&self, guide_id: &GuideId) -> Result<Vec<Verb>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {VERB_COLUMNS} FROM verb WHERE guide_id = ?1 ORDER BY label_norm, id"
+        ))?;
+        let rows = stmt.query_map(params![guide_id], verb_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Replaces a verb's definition. Renaming is a label change; existing edges keep their ids.
+    pub fn update_verb(&mut self, id: &VerbId, new: NewVerb) -> Result<Verb> {
+        let tx = self.transaction()?;
+        let current = load_verb(&tx, id)?;
+        let def = validate_verb(&tx, &current.guide_id, &new, Some(id))?;
+        tx.execute(
+            "UPDATE verb SET label = ?2, label_norm = ?3, inverse_label = ?4, inverse_norm = ?5,
+                             symmetric = ?6, subject_default_tag_id = ?7, object_default_tag_id = ?8
+             WHERE id = ?1",
+            params![
+                id,
+                def.label,
+                normalize(&def.label),
+                def.inverse,
+                def.inverse.as_deref().map(normalize),
+                new.symmetric,
+                new.subject_default_tag_id,
+                new.object_default_tag_id,
+            ],
+        )?;
+        tx.commit()?;
+        load_verb(self.conn(), id)
+    }
+
+    /// Deletes a verb no relation uses. A verb in use is refused; merge it instead.
+    pub fn delete_verb(&mut self, id: &VerbId) -> Result<()> {
+        let tx = self.transaction()?;
+        load_verb(&tx, id)?;
+        let count: i64 = tx.query_row(
+            "SELECT count(*) FROM relation WHERE verb_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if count > 0 {
+            return Err(Error::InUse {
+                kind: "verb",
+                count: count as usize,
+            });
+        }
+        tx.execute("DELETE FROM verb WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Moves every edge of `source` onto `target`, then deletes `source`. An edge that would
+    /// duplicate an existing `target` edge merges its qualifiers into that edge instead.
+    pub fn merge_verbs(&mut self, source: &VerbId, target: &VerbId) -> Result<()> {
+        if source == target {
+            return Err(Error::Invalid("cannot merge a verb into itself".to_owned()));
+        }
+        let tx = self.transaction()?;
+        let from = load_verb(&tx, source)?;
+        let into = load_verb(&tx, target)?;
+        if from.guide_id != into.guide_id {
+            return Err(Error::Invalid("verbs are in different guides".to_owned()));
+        }
+        let edges: Vec<(crate::RelationId, crate::NoteId, crate::NoteId)> = {
+            let mut stmt = tx.prepare(
+                "SELECT id, subject_note_id, object_note_id FROM relation WHERE verb_id = ?1 ORDER BY created_at, id",
+            )?;
+            stmt.query_map(params![source], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<rusqlite::Result<_>>()?
+        };
+        for (edge, subject, object) in edges {
+            match crate::relation::find_edge(&tx, &subject, target, &object, into.symmetric)? {
+                Some(existing) => {
+                    crate::relation::move_qualifiers(&tx, &edge, &existing)?;
+                    tx.execute("DELETE FROM relation WHERE id = ?1", params![edge])?;
+                }
+                None => {
+                    tx.execute(
+                        "UPDATE relation SET verb_id = ?2 WHERE id = ?1",
+                        params![edge, target],
+                    )?;
+                }
+            }
+        }
+        tx.execute("DELETE FROM verb WHERE id = ?1", params![source])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Resolves typed text to a verb and the direction it implies: a label reads forward, an
+    /// inverse label reads from the object side. Case-insensitive.
+    pub fn lookup_verb(&self, guide_id: &GuideId, text: &str) -> Result<Option<VerbMatch>> {
+        let key = normalize(text);
+        let found = self
+            .conn()
+            .query_row(
+                &format!(
+                    "SELECT {VERB_COLUMNS}, (label_norm = ?2) AS forward FROM verb
+                     WHERE guide_id = ?1 AND (label_norm = ?2 OR inverse_norm = ?2)"
+                ),
+                params![guide_id, key],
+                |row| Ok((verb_from_row(row)?, row.get::<_, bool>(7)?)),
+            )
+            .optional()?;
+        Ok(found.map(|(verb, forward)| VerbMatch {
+            direction: if forward || verb.symmetric {
+                Direction::Forward
+            } else {
+                Direction::Inverse
+            },
+            verb,
+        }))
+    }
+
+    pub fn create_qualifier_label(
+        &mut self,
+        guide_id: &GuideId,
+        new: NewQualifierLabel,
+    ) -> Result<QualifierLabel> {
+        let tx = self.transaction()?;
+        guide::ensure_guide_exists(&tx, guide_id)?;
+        let id = QualifierLabelId::generate();
+        let def = validate_qualifier_label(&tx, guide_id, &new, None)?;
+        tx.execute(
+            "INSERT INTO qualifier_label (id, guide_id, label, label_norm, inverse_label, inverse_norm)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                id,
+                guide_id,
+                def.label,
+                normalize(&def.label),
+                def.inverse,
+                def.inverse.as_deref().map(normalize),
+            ],
+        )?;
+        tx.commit()?;
+        load_qualifier_label(self.conn(), &id)
+    }
+
+    pub fn get_qualifier_label(&self, id: &QualifierLabelId) -> Result<QualifierLabel> {
+        load_qualifier_label(self.conn(), id)
+    }
+
+    /// A guide's qualifier labels, ordered by label.
+    pub fn list_qualifier_labels(&self, guide_id: &GuideId) -> Result<Vec<QualifierLabel>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {LABEL_COLUMNS} FROM qualifier_label WHERE guide_id = ?1 ORDER BY label_norm, id"
+        ))?;
+        let rows = stmt.query_map(params![guide_id], label_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn update_qualifier_label(
+        &mut self,
+        id: &QualifierLabelId,
+        new: NewQualifierLabel,
+    ) -> Result<QualifierLabel> {
+        let tx = self.transaction()?;
+        let current = load_qualifier_label(&tx, id)?;
+        let def = validate_qualifier_label(&tx, &current.guide_id, &new, Some(id))?;
+        tx.execute(
+            "UPDATE qualifier_label SET label = ?2, label_norm = ?3, inverse_label = ?4, inverse_norm = ?5
+             WHERE id = ?1",
+            params![
+                id,
+                def.label,
+                normalize(&def.label),
+                def.inverse,
+                def.inverse.as_deref().map(normalize),
+            ],
+        )?;
+        tx.commit()?;
+        load_qualifier_label(self.conn(), id)
+    }
+
+    /// Deletes a qualifier label no qualifier uses. One in use is refused; merge it instead.
+    pub fn delete_qualifier_label(&mut self, id: &QualifierLabelId) -> Result<()> {
+        let tx = self.transaction()?;
+        load_qualifier_label(&tx, id)?;
+        let count: i64 = tx.query_row(
+            "SELECT count(DISTINCT relation_id) FROM relation_qualifier WHERE qualifier_label_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if count > 0 {
+            return Err(Error::InUse {
+                kind: "qualifier label",
+                count: count as usize,
+            });
+        }
+        tx.execute("DELETE FROM qualifier_label WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Relabels every qualifier using `source` to `target`, drops qualifiers that become exact
+    /// duplicates on their edge, then deletes `source`.
+    pub fn merge_qualifier_labels(
+        &mut self,
+        source: &QualifierLabelId,
+        target: &QualifierLabelId,
+    ) -> Result<()> {
+        if source == target {
+            return Err(Error::Invalid(
+                "cannot merge a qualifier label into itself".to_owned(),
+            ));
+        }
+        let tx = self.transaction()?;
+        let from = load_qualifier_label(&tx, source)?;
+        let into = load_qualifier_label(&tx, target)?;
+        if from.guide_id != into.guide_id {
+            return Err(Error::Invalid(
+                "qualifier labels are in different guides".to_owned(),
+            ));
+        }
+        tx.execute(
+            "UPDATE relation_qualifier SET qualifier_label_id = ?2 WHERE qualifier_label_id = ?1",
+            params![source, target],
+        )?;
+        crate::relation::drop_duplicate_qualifiers(&tx, target)?;
+        tx.execute("DELETE FROM qualifier_label WHERE id = ?1", params![source])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Resolves typed text to a qualifier label by its label, case-insensitively.
+    pub fn lookup_qualifier_label(
+        &self,
+        guide_id: &GuideId,
+        text: &str,
+    ) -> Result<Option<QualifierLabel>> {
+        Ok(self
+            .conn()
+            .query_row(
+                &format!(
+                    "SELECT {LABEL_COLUMNS} FROM qualifier_label WHERE guide_id = ?1 AND label_norm = ?2"
+                ),
+                params![guide_id, normalize(text)],
+                label_from_row,
+            )
+            .optional()?)
+    }
+
+    /// Copies `from`'s verbs and qualifier labels into `to` with new ids. Words whose label or
+    /// inverse already exist in `to` are skipped. Default tags are not copied, since tags belong
+    /// to a guide.
+    pub fn copy_vocabulary(&mut self, from: &GuideId, to: &GuideId) -> Result<VocabularyCopy> {
+        if from == to {
+            return Err(Error::Invalid(
+                "cannot copy a guide's vocabulary onto itself".to_owned(),
+            ));
+        }
+        let verbs = self.list_verbs(from)?;
+        let labels = self.list_qualifier_labels(from)?;
+        let tx = self.transaction()?;
+        guide::ensure_guide_exists(&tx, to)?;
+        let mut copied = VocabularyCopy::default();
+        for verb in verbs {
+            let new = NewVerb {
+                label: verb.label,
+                inverse_label: verb.inverse_label,
+                symmetric: verb.symmetric,
+                subject_default_tag_id: None,
+                object_default_tag_id: None,
+            };
+            let Ok(def) = validate_verb(&tx, to, &new, None) else {
+                continue;
+            };
+            tx.execute(
+                "INSERT INTO verb (id, guide_id, label, label_norm, inverse_label, inverse_norm, symmetric)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    VerbId::generate(),
+                    to,
+                    def.label,
+                    normalize(&def.label),
+                    def.inverse,
+                    def.inverse.as_deref().map(normalize),
+                    new.symmetric,
+                ],
+            )?;
+            copied.verbs += 1;
+        }
+        for label in labels {
+            let new = NewQualifierLabel {
+                label: label.label,
+                inverse_label: label.inverse_label,
+            };
+            let Ok(def) = validate_qualifier_label(&tx, to, &new, None) else {
+                continue;
+            };
+            tx.execute(
+                "INSERT INTO qualifier_label (id, guide_id, label, label_norm, inverse_label, inverse_norm)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    QualifierLabelId::generate(),
+                    to,
+                    def.label,
+                    normalize(&def.label),
+                    def.inverse,
+                    def.inverse.as_deref().map(normalize),
+                ],
+            )?;
+            copied.qualifier_labels += 1;
+        }
+        tx.commit()?;
+        Ok(copied)
+    }
+}
+
+const VERB_COLUMNS: &str =
+    "id, guide_id, label, inverse_label, symmetric, subject_default_tag_id, object_default_tag_id";
+const LABEL_COLUMNS: &str = "id, guide_id, label, inverse_label";
+
+/// Cleaned label and inverse, ready to store.
+struct Definition {
+    label: String,
+    inverse: Option<String>,
+}
+
+fn verb_from_row(row: &Row<'_>) -> rusqlite::Result<Verb> {
+    Ok(Verb {
+        id: row.get(0)?,
+        guide_id: row.get(1)?,
+        label: row.get(2)?,
+        inverse_label: row.get(3)?,
+        symmetric: row.get(4)?,
+        subject_default_tag_id: row.get(5)?,
+        object_default_tag_id: row.get(6)?,
+    })
+}
+
+fn label_from_row(row: &Row<'_>) -> rusqlite::Result<QualifierLabel> {
+    Ok(QualifierLabel {
+        id: row.get(0)?,
+        guide_id: row.get(1)?,
+        label: row.get(2)?,
+        inverse_label: row.get(3)?,
+    })
+}
+
+pub(crate) fn load_verb(conn: &Connection, id: &VerbId) -> Result<Verb> {
+    conn.query_row(
+        &format!("SELECT {VERB_COLUMNS} FROM verb WHERE id = ?1"),
+        params![id],
+        verb_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| not_found("verb", id))
+}
+
+pub(crate) fn load_qualifier_label(
+    conn: &Connection,
+    id: &QualifierLabelId,
+) -> Result<QualifierLabel> {
+    conn.query_row(
+        &format!("SELECT {LABEL_COLUMNS} FROM qualifier_label WHERE id = ?1"),
+        params![id],
+        label_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| not_found("qualifier label", id))
+}
+
+/// Cleans a label and optional inverse and checks both against the pool, ignoring `except`.
+fn clean_pair(
+    kind: &'static str,
+    label: &str,
+    inverse: Option<&str>,
+    symmetric: bool,
+) -> Result<Definition> {
+    let label = names::clean_label(kind, label)?;
+    let inverse = match inverse {
+        Some(raw) if !raw.trim().is_empty() => Some(names::clean_label(kind, raw)?),
+        _ => None,
+    };
+    if symmetric && inverse.is_some() {
+        return Err(Error::Invalid(
+            "a symmetric verb reads the same from both sides and has no separate inverse"
+                .to_owned(),
+        ));
+    }
+    if let Some(inverse) = &inverse
+        && normalize(inverse) == normalize(&label)
+    {
+        return Err(Error::Invalid(format!(
+            "the inverse of \"{label}\" must differ from the label; use a symmetric verb instead"
+        )));
+    }
+    Ok(Definition { label, inverse })
+}
+
+fn validate_verb(
+    conn: &Connection,
+    guide_id: &GuideId,
+    new: &NewVerb,
+    except: Option<&VerbId>,
+) -> Result<Definition> {
+    let def = clean_pair(
+        "verb label",
+        &new.label,
+        new.inverse_label.as_deref(),
+        new.symmetric,
+    )?;
+    for word in std::iter::once(&def.label).chain(def.inverse.iter()) {
+        let taken: Option<String> = conn
+            .query_row(
+                "SELECT label FROM verb WHERE guide_id = ?1 AND (label_norm = ?2 OR inverse_norm = ?2) AND id IS NOT ?3",
+                params![guide_id, normalize(word), except],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if taken.is_some() {
+            return Err(Error::LabelTaken {
+                kind: "verb",
+                label: word.clone(),
+            });
+        }
+    }
+    for tag_id in [&new.subject_default_tag_id, &new.object_default_tag_id]
+        .into_iter()
+        .flatten()
+    {
+        let tag = tag::load_tag(conn, tag_id)?;
+        if tag.scope_guide_id.as_ref() != Some(guide_id) {
+            return Err(Error::Invalid(format!(
+                "default tag {tag_id} does not belong to this guide"
+            )));
+        }
+    }
+    Ok(def)
+}
+
+fn validate_qualifier_label(
+    conn: &Connection,
+    guide_id: &GuideId,
+    new: &NewQualifierLabel,
+    except: Option<&QualifierLabelId>,
+) -> Result<Definition> {
+    let def = clean_pair(
+        "qualifier label",
+        &new.label,
+        new.inverse_label.as_deref(),
+        false,
+    )?;
+    for word in std::iter::once(&def.label).chain(def.inverse.iter()) {
+        let taken: Option<String> = conn
+            .query_row(
+                "SELECT label FROM qualifier_label WHERE guide_id = ?1 AND (label_norm = ?2 OR inverse_norm = ?2) AND id IS NOT ?3",
+                params![guide_id, normalize(word), except],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if taken.is_some() {
+            return Err(Error::LabelTaken {
+                kind: "qualifier",
+                label: word.clone(),
+            });
+        }
+    }
+    Ok(def)
+}
