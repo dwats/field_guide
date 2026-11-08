@@ -84,7 +84,7 @@ pub struct VocabularyCopy {
 
 impl Vault {
     pub fn create_verb(&mut self, guide_id: &GuideId, new: NewVerb) -> Result<Verb> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         guide::ensure_guide_exists(&tx, guide_id)?;
         let id = VerbId::generate();
         let def = validate_verb(&tx, guide_id, &new, None)?;
@@ -123,7 +123,7 @@ impl Vault {
 
     /// Replaces a verb's definition. Renaming is a label change; existing edges keep their ids.
     pub fn update_verb(&mut self, id: &VerbId, new: NewVerb) -> Result<Verb> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let current = load_verb(&tx, id)?;
         let def = validate_verb(&tx, &current.guide_id, &new, Some(id))?;
         tx.execute(
@@ -147,7 +147,7 @@ impl Vault {
 
     /// Deletes a verb no relation uses. A verb in use is refused; merge it instead.
     pub fn delete_verb(&mut self, id: &VerbId) -> Result<()> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         load_verb(&tx, id)?;
         let count: i64 = tx.query_row(
             "SELECT count(*) FROM relation WHERE verb_id = ?1",
@@ -171,7 +171,7 @@ impl Vault {
         if source == target {
             return Err(Error::Invalid("cannot merge a verb into itself".to_owned()));
         }
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let from = load_verb(&tx, source)?;
         let into = load_verb(&tx, target)?;
         if from.guide_id != into.guide_id {
@@ -235,7 +235,7 @@ impl Vault {
         guide_id: &GuideId,
         new: NewQualifierLabel,
     ) -> Result<QualifierLabel> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         guide::ensure_guide_exists(&tx, guide_id)?;
         let id = QualifierLabelId::generate();
         let def = validate_qualifier_label(&tx, guide_id, &new, None)?;
@@ -273,7 +273,7 @@ impl Vault {
         id: &QualifierLabelId,
         new: NewQualifierLabel,
     ) -> Result<QualifierLabel> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let current = load_qualifier_label(&tx, id)?;
         let def = validate_qualifier_label(&tx, &current.guide_id, &new, Some(id))?;
         tx.execute(
@@ -293,7 +293,7 @@ impl Vault {
 
     /// Deletes a qualifier label no qualifier uses. One in use is refused; merge it instead.
     pub fn delete_qualifier_label(&mut self, id: &QualifierLabelId) -> Result<()> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         load_qualifier_label(&tx, id)?;
         let count: i64 = tx.query_row(
             "SELECT count(DISTINCT relation_id) FROM relation_qualifier WHERE qualifier_label_id = ?1",
@@ -323,7 +323,7 @@ impl Vault {
                 "cannot merge a qualifier label into itself".to_owned(),
             ));
         }
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let from = load_qualifier_label(&tx, source)?;
         let into = load_qualifier_label(&tx, target)?;
         if from.guide_id != into.guide_id {
@@ -370,7 +370,7 @@ impl Vault {
         }
         let verbs = self.list_verbs(from)?;
         let labels = self.list_qualifier_labels(from)?;
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         guide::ensure_guide_exists(&tx, to)?;
         let mut copied = VocabularyCopy::default();
         for verb in verbs {

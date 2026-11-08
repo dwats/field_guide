@@ -42,7 +42,7 @@ impl Vault {
         parent: Option<&TagId>,
         name: &str,
     ) -> Result<Tag> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let tag = insert_tag(&tx, scope, parent, name)?;
         tx.commit()?;
         Ok(tag)
@@ -51,7 +51,7 @@ impl Vault {
     /// Finds or creates every level of `path` (`A/B/C`) and returns the leaf. Existing levels match
     /// case-insensitively and keep their casing.
     pub fn ensure_tag_path(&mut self, scope: Option<&GuideId>, path: &str) -> Result<Tag> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let mut current: Option<Tag> = None;
         for segment in path.split(PATH_SEPARATOR) {
             let name = names::clean_tag_name(segment)?;
@@ -110,7 +110,7 @@ impl Vault {
 
     pub fn rename_tag(&mut self, id: &TagId, name: &str) -> Result<Tag> {
         let name = names::clean_tag_name(name)?;
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let tag = load_tag(&tx, id)?;
         if let Some(other) = find_child(
             &tx,
@@ -131,7 +131,7 @@ impl Vault {
 
     /// Moves a tag with its subtree under `new_parent`, or to the root with `None`.
     pub fn move_tag(&mut self, id: &TagId, new_parent: Option<&TagId>) -> Result<Tag> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let tag = load_tag(&tx, id)?;
         if let Some(parent_id) = new_parent {
             let parent = load_tag(&tx, parent_id)?;
@@ -177,7 +177,7 @@ impl Vault {
 
     /// Deletes a tag. Its children move up to its parent; its notes and guides lose the tag.
     pub fn delete_tag(&mut self, id: &TagId) -> Result<()> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let tag = load_tag(&tx, id)?;
         release_name(&tx, id)?;
         reparent_children(&tx, &tag, tag.parent_id.as_ref())?;
@@ -192,7 +192,7 @@ impl Vault {
         if source == target {
             return Err(Error::TagCycle);
         }
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let from = load_tag(&tx, source)?;
         let into = load_tag(&tx, target)?;
         if from.scope_guide_id != into.scope_guide_id {

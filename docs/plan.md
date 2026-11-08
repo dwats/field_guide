@@ -58,7 +58,7 @@ Archive writer, archive reader, mapping suggestions, import report, transactiona
 
 Tests:
 - Round trip at every scope (vault, guide, tag subtree, note): export, import into an empty vault, compare entity by entity including qualifier order, board layouts, aliases, and media hashes.
-- Golden test: the archive for a fixture vault matches the layout in `docs/design.md` section 7, every `.md` and `.json` file parses with standard tools, and exporting twice yields identical bytes.
+- Golden test: the archive for a fixture vault matches the layout in `docs/design.md` section 7, every `.md` and `.json` file parses with standard tools, and exporting twice yields identical entries apart from `exported_at` in the manifest.
 - Slugs: titles differing only by case or accents get distinct slugs; a 200-character title produces a slug within the cap; slugs contain only `[a-z0-9-]`.
 - Trashed notes are absent from the archive, and relations that touch them are absent too.
 - Media deduplication: two notes using the same image produce one file in the archive and one `media` row after import.
@@ -67,7 +67,7 @@ Tests:
 - Wikilinks in imported bodies resolve against the archive's own notes before the target guide.
 - External endpoints resolve by id, then by guide name and title; unresolved ones are reported and not created unless the caller asks for stubs.
 - An archive with a newer `format_version` is refused before anything is written.
-- A failing import (corrupt file mid-archive) leaves the vault byte-identical to before.
+- A failing import (a damaged media file, or a note that fails validation after earlier notes were written) leaves the vault's content and media directory unchanged, compared through a second export, since WAL files make a byte comparison of `vault.db` meaningless.
 - Importing into a tag target adds that tag to every imported note.
 
 ## Phase 4: Shell and UI skeleton

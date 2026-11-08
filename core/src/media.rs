@@ -1,11 +1,23 @@
-//! Media rows: content-addressed files referenced by notes. File handling (hashing, copying,
-//! cleanup) arrives in a later phase; this module owns the catalogue and gallery membership.
+//! Media: content-addressed files referenced by notes, stored as `media/<sha256>.<ext>` beside
+//! `vault.db`, plus the catalogue rows and gallery membership. Cleanup of unreferenced files and
+//! reading image dimensions arrive in a later phase.
+
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
-use crate::{Error, MediaId, NoteId, Result, Vault, clock, note};
+use crate::{Error, MediaId, NoteId, Result, Vault, clock, fsutil, note};
+
+/// Width, height, and duration where the caller knows them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaDimensions {
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub duration_ms: Option<i64>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Media {
@@ -70,6 +82,65 @@ impl Vault {
         load_media(self.conn(), &id)
     }
 
+    /// The vault's media directory: `media/` beside `vault.db`. An in-memory vault has none.
+    pub fn media_dir(&self) -> Option<PathBuf> {
+        self.path()
+            .and_then(Path::parent)
+            .map(|dir| dir.join("media"))
+    }
+
+    /// Stores a file under its content hash and registers it. The same bytes stored twice yield
+    /// the existing row and write nothing. The file is written to a temporary name and renamed.
+    pub fn store_media(
+        &mut self,
+        bytes: &[u8],
+        ext: &str,
+        mime: &str,
+        dimensions: MediaDimensions,
+    ) -> Result<Media> {
+        let dir = self
+            .media_dir()
+            .ok_or_else(|| Error::Invalid("this vault has no media directory".to_owned()))?;
+        let ext = ext.trim().trim_start_matches('.').to_ascii_lowercase();
+        if ext.is_empty() {
+            return Err(Error::Invalid("media needs a file extension".to_owned()));
+        }
+        let sha256 = sha256_hex(bytes);
+        let existing = self.find_media_by_hash(&sha256)?;
+        let path = dir.join(format!(
+            "{sha256}.{}",
+            existing.as_ref().map_or(ext.as_str(), |m| m.ext.as_str())
+        ));
+        if !path.exists() {
+            fs::create_dir_all(&dir).map_err(|source| Error::Io {
+                context: "creating",
+                path: dir.clone(),
+                source,
+            })?;
+            fsutil::atomic_write(&path, bytes)?;
+        }
+        if let Some(media) = existing {
+            return Ok(media);
+        }
+        self.add_media(NewMedia {
+            sha256,
+            ext,
+            mime: mime.to_owned(),
+            bytes: bytes.len() as i64,
+            width: dimensions.width,
+            height: dimensions.height,
+            duration_ms: dimensions.duration_ms,
+        })
+    }
+
+    /// Where a media row's file lives.
+    pub fn media_file_path(&self, media: &Media) -> Result<PathBuf> {
+        let dir = self
+            .media_dir()
+            .ok_or_else(|| Error::Invalid("this vault has no media directory".to_owned()))?;
+        Ok(dir.join(format!("{}.{}", media.sha256, media.ext)))
+    }
+
     pub fn get_media(&self, id: &MediaId) -> Result<Media> {
         load_media(self.conn(), id)
     }
@@ -92,7 +163,7 @@ impl Vault {
         media_id: &MediaId,
         sort: Option<i64>,
     ) -> Result<()> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         note::load_summary(&tx, note_id)?;
         load_media(&tx, media_id)?;
         let sort = match sort {
@@ -116,7 +187,7 @@ impl Vault {
     /// Removes a file from a note's gallery. The media row and file stay; cleanup is a separate,
     /// explicit action.
     pub fn detach_media(&mut self, note_id: &NoteId, media_id: &MediaId) -> Result<()> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         note::load_summary(&tx, note_id)?;
         let removed = tx.execute(
             "DELETE FROM note_media WHERE note_id = ?1 AND media_id = ?2",
@@ -139,6 +210,15 @@ impl Vault {
         let rows = stmt.query_map(params![note_id], media_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+}
+
+/// Lowercase hex SHA-256 of `bytes`, the name a media file is stored under.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 const COLUMNS: &str =

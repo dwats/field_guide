@@ -4,7 +4,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, Transaction};
+use rusqlite::{Connection, Savepoint};
 
 use crate::{Error, Result, db};
 
@@ -65,8 +65,8 @@ impl Vault {
         &self.conn
     }
 
-    pub(crate) fn transaction(&mut self) -> Result<Transaction<'_>> {
-        Ok(self.conn.transaction()?)
+    pub(crate) fn savepoint(&mut self) -> Result<Savepoint<'_>> {
+        Ok(self.conn.savepoint()?)
     }
 }
 
@@ -82,5 +82,28 @@ fn as_locked(err: Error, path: &Path) -> Error {
             Error::VaultLocked(path.to_path_buf())
         }
         other => other,
+    }
+}
+
+impl Vault {
+    /// Runs `work` as one unit: every public call inside it opens a nested savepoint, and an error
+    /// anywhere rolls the whole thing back. Used by import so a failure leaves the vault untouched.
+    pub(crate) fn atomically<T>(
+        &mut self,
+        work: impl FnOnce(&mut Vault) -> Result<T>,
+    ) -> Result<T> {
+        self.conn.execute_batch("SAVEPOINT fieldguide_outer;")?;
+        match work(self) {
+            Ok(value) => {
+                self.conn.execute_batch("RELEASE fieldguide_outer;")?;
+                Ok(value)
+            }
+            Err(e) => {
+                let _ = self
+                    .conn
+                    .execute_batch("ROLLBACK TO fieldguide_outer; RELEASE fieldguide_outer;");
+                Err(e)
+            }
+        }
     }
 }

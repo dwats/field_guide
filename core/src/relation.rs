@@ -144,7 +144,7 @@ impl Vault {
     /// Stores a relation entered on `origin`. An existing `(subject, verb, object)` edge is reused
     /// and the qualifiers merge into it; exact duplicate qualifiers are not added twice.
     pub fn create_relation(&mut self, request: CreateRelation) -> Result<Relation> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let origin = load_note_ref(&tx, &request.origin)?;
         if origin.deleted_at.is_some() {
             return Err(Error::Invalid(
@@ -211,7 +211,7 @@ impl Vault {
 
     /// Appends a qualifier to an edge. An exact duplicate of an existing qualifier is ignored.
     pub fn add_qualifier(&mut self, id: &RelationId, qualifier: NewQualifier) -> Result<Relation> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let guide_id = relation_guide(&tx, id)?;
         insert_qualifiers(&tx, id, &guide_id, &[qualifier])?;
         tx.commit()?;
@@ -239,7 +239,7 @@ impl Vault {
         id: &RelationId,
         qualifiers: &[NewQualifier],
     ) -> Result<Relation> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let guide_id = relation_guide(&tx, id)?;
         tx.execute(
             "DELETE FROM relation_qualifier WHERE relation_id = ?1",
@@ -597,7 +597,7 @@ pub(crate) fn find_edge(
 }
 
 /// Appends qualifiers to an edge in order, skipping exact duplicates of what is already there.
-fn insert_qualifiers(
+pub(crate) fn insert_qualifiers(
     conn: &Connection,
     relation_id: &RelationId,
     guide_id: &GuideId,

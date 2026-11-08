@@ -203,7 +203,9 @@ guides/<slug>/
 media/<sha256>.<ext>              raw files, no base64
 ```
 
-Slugs are lowercase ASCII, `[a-z0-9-]`, capped at 64 characters, with a numeric suffix on collision. Two notes whose titles differ only by case or accents get distinct slugs. This keeps archives usable on case-insensitive and case-sensitive filesystems alike and inside Windows path limits. The archive writer uses ZIP64 so exports over 4 GB work on FAT32 thumb drives. Entries are written in a stable order (sorted by id) so two exports of the same vault are byte-comparable.
+Slugs are lowercase ASCII, `[a-z0-9-]`, capped at 64 characters, with a numeric suffix on collision. Other scripts are transliterated (`Café` to `cafe`, Cyrillic and CJK to Latin approximations) so file names stay readable; a title with nothing printable falls back to `note-<id prefix>`. Two notes whose titles differ only by case or accents get distinct slugs. This keeps archives usable on case-insensitive and case-sensitive filesystems alike and inside Windows path limits. The archive writer uses ZIP64 so exports over 4 GB work on FAT32 thumb drives. Entries are written in a stable order (sorted by id) with a fixed timestamp, so two exports of the same vault differ only in the manifest's `exported_at`. Text entries are deflated; media entries are stored uncompressed, since those formats are already compressed.
+
+A relation is written in the guide that owns its verb; an edge whose verb belongs to a guide outside the scope is not in the archive. Full guide and vault exports carry the whole tag tree, vocabulary, and boards. A tag or note export carries only the tags its notes use (with their ancestors) and the vocabulary its relations use, and no boards, since a board's notes may lie outside the scope. Trashed notes, and edges and qualifiers that touch them, are left out.
 
 Note front matter:
 
@@ -226,7 +228,7 @@ Relation line, ids for machines and titles for people:
 {"id":"018f...","subject":{"id":"...","title":"Stone Block"},"verb":{"id":"...","label":"DROPS"},"object":{"id":"...","title":"Cobblestone Block"},"qualifiers":[{"label":"mined with","note":{"id":"...","title":"Pickaxe"}}]}
 ```
 
-Endpoints outside the exported scope are written as `{"external": true, "guide": "<name>", "title": "..."}` with the id when known.
+Endpoints outside the exported scope are written as `{"external": true, "guide": "<name>", "title": "..."}` with the id when known; qualifier note values use the same shape. Qualifier lines carry `label_id` beside the label so import can match by id before falling back to the label.
 
 Media is stored raw inside the zip. Base64 would be a third larger and harder to open; a zip already handles binary.
 
@@ -239,10 +241,11 @@ Media is stored raw inside the zip. Base64 would be a third larger and harder to
   - exact match after normalization (case, whitespace, trailing `s`) maps automatically
   - otherwise the top three local candidates by string similarity are offered, with "create new" and, for tags, "create under ..." as alternatives
   - the user can accept all suggestions at once or go through them
-- Note identity: same id updates in place if the incoming `updated` is newer. Different id with a title collision keeps both and renames the incoming note `Title (imported)`. Both cases appear in the import report.
+- Note identity: same id updates in place if the incoming `updated` is newer. Different id with a title collision keeps both and renames the incoming note `Title (imported)`. Both cases appear in the import report. Imported notes keep their ids and timestamps; tags, vocabulary, and boards are matched by name and get new ids. A board is identified by its name within the target guide, so importing again replaces its saved filters and positions instead of adding a copy. Board filters travel as tag paths.
 - Wikilinks in imported bodies resolve first against the archive's own notes (by the title at export time), then against the target guide's titles and aliases.
-- Relations whose external endpoint resolves (by id, or by guide name and title) are created. Unresolved ones are listed in the report with an option to create stubs for them.
-- The whole import is one transaction. Any failure leaves the vault untouched.
+- Relations whose external endpoint resolves (by id, or by guide name and title) are created. Unresolved ones are listed in the report with an option to create stubs for them. With stubs requested, qualifier values that point at missing notes become stubs too; without, they are kept as the title text and counted in the report. Every guide's notes are imported before any relation, so edges between two archive guides resolve.
+- A word that collides on import reuses the local word when the label matches; when only its inverse collides, it is created without the inverse. Both are rare, since the mapping step has already matched labels.
+- The whole import is one transaction. Media files are extracted to a staging folder beside `media/`, checked against their hashes, and moved into place only as the transaction commits; a failure removes what was moved. Any failure leaves the vault and its media untouched.
 
 ## 9. Update check
 

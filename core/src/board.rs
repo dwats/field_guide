@@ -52,7 +52,7 @@ impl Vault {
     /// Creates a board with empty filters. Names are unique per guide, case-insensitively.
     pub fn create_board(&mut self, guide_id: &GuideId, name: &str) -> Result<Board> {
         let name = names::clean_label("board name", name)?;
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         guide::ensure_guide_exists(&tx, guide_id)?;
         ensure_name_free(&tx, guide_id, &name, None)?;
         let id = BoardId::generate();
@@ -82,7 +82,7 @@ impl Vault {
 
     pub fn rename_board(&mut self, id: &BoardId, name: &str) -> Result<Board> {
         let name = names::clean_label("board name", name)?;
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let board = load_board(&tx, id)?;
         ensure_name_free(&tx, &board.guide_id, &name, Some(id))?;
         tx.execute(
@@ -153,7 +153,7 @@ impl Vault {
 
     /// Saves several positions at once, for example after a force layout settles.
     pub fn set_board_positions(&mut self, id: &BoardId, nodes: &[BoardNode]) -> Result<()> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         load_board(&tx, id)?;
         for node in nodes {
             if !node.x.is_finite() || !node.y.is_finite() {

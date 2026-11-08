@@ -60,6 +60,16 @@ pub enum Error {
     #[error("invalid JSON: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// An export archive that cannot be read or written as `docs/design.md` section 7 describes.
+    #[error("archive: {0}")]
+    Archive(String),
+
+    /// The archive was written by a build with a newer format. Guessing is worse than stopping.
+    #[error(
+        "this archive was written by a newer Field Guide (format {found}, this build reads {supported}); update Field Guide"
+    )]
+    NewerArchive { found: u32, supported: u32 },
+
     #[error("{kind} {id} not found")]
     NotFound { kind: &'static str, id: String },
 

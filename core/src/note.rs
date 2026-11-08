@@ -71,7 +71,7 @@ pub struct RenameRecord {
 
 impl Vault {
     pub fn create_note(&mut self, new: NewNote) -> Result<Note> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let id = insert_note(
             &tx,
             &new.guide_id,
@@ -90,7 +90,7 @@ impl Vault {
 
     /// Replaces the body verbatim, clears the stub flag, and re-derives mentions.
     pub fn update_note_body(&mut self, id: &NoteId, body_md: &str) -> Result<Note> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let (guide_id, _) = guide_and_title(&tx, id)?;
         tx.execute(
             "UPDATE note SET body_md = ?2, is_stub = 0, updated_at = ?3 WHERE id = ?1",
@@ -105,7 +105,7 @@ impl Vault {
     /// in every note that mentions it (only the target changes), and keeps the old title as an alias.
     pub fn rename_note(&mut self, id: &NoteId, new_title: &str) -> Result<RenameRecord> {
         let new_title = names::clean_note_name("title", new_title)?;
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let (guide_id, old_title) = guide_and_title(&tx, id)?;
         let same_key = normalize(&old_title) == normalize(&new_title);
         if !same_key && let Some(holder) = name_holder(&tx, &guide_id, &normalize(&new_title))? {
@@ -133,7 +133,7 @@ impl Vault {
     /// current bodies rather than restoring snapshots, so edits made since the rename survive.
     /// Only the most recent rename of a note can be undone.
     pub fn undo_rename(&mut self, record: &RenameRecord) -> Result<Note> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let (guide_id, current_title) = guide_and_title(&tx, &record.note_id)?;
         if current_title != record.new_title {
             return Err(Error::UndoFailed(format!(
@@ -170,7 +170,7 @@ impl Vault {
 
     pub fn add_alias(&mut self, id: &NoteId, alias: &str) -> Result<Note> {
         let alias = names::clean_note_name("alias", alias)?;
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let (guide_id, _) = guide_and_title(&tx, id)?;
         insert_alias(&tx, id, &guide_id, &alias)?;
         touch(&tx, id)?;
@@ -179,7 +179,7 @@ impl Vault {
     }
 
     pub fn remove_alias(&mut self, id: &NoteId, alias: &str) -> Result<Note> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         guide_and_title(&tx, id)?;
         let removed = tx.execute(
             "DELETE FROM note_alias WHERE note_id = ?1 AND alias_norm = ?2",
@@ -196,7 +196,7 @@ impl Vault {
 
     /// Replaces the note's tags. Every tag must belong to the note's guide.
     pub fn set_note_tags(&mut self, id: &NoteId, tag_ids: &[TagId]) -> Result<Note> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let (guide_id, _) = guide_and_title(&tx, id)?;
         replace_tags(&tx, id, &guide_id, tag_ids)?;
         touch(&tx, id)?;
@@ -426,7 +426,11 @@ fn guide_and_title(conn: &Connection, id: &NoteId) -> Result<(GuideId, String)> 
 }
 
 /// The note holding `key` as its title or an alias in the guide, trashed or not.
-fn name_holder(conn: &Connection, guide_id: &GuideId, key: &str) -> Result<Option<NoteId>> {
+pub(crate) fn name_holder(
+    conn: &Connection,
+    guide_id: &GuideId,
+    key: &str,
+) -> Result<Option<NoteId>> {
     Ok(conn
         .query_row(
             "SELECT id FROM note WHERE guide_id = ?1 AND title_norm = ?2
@@ -461,7 +465,12 @@ fn resolve_name(
         .optional()?)
 }
 
-fn insert_alias(conn: &Connection, id: &NoteId, guide_id: &GuideId, alias: &str) -> Result<()> {
+pub(crate) fn insert_alias(
+    conn: &Connection,
+    id: &NoteId,
+    guide_id: &GuideId,
+    alias: &str,
+) -> Result<()> {
     let key = normalize(alias);
     if let Some(holder) = name_holder(conn, guide_id, &key)? {
         return Err(Error::NameTaken {
@@ -518,6 +527,110 @@ pub(crate) fn create_stub(
     insert_note(conn, guide_id, title, "", true, &tags)
 }
 
+/// A note arriving from an archive, with its own id and timestamps.
+pub(crate) struct ImportedNote<'a> {
+    pub id: &'a NoteId,
+    pub guide_id: &'a GuideId,
+    pub title: &'a str,
+    pub body_md: &'a str,
+    pub is_stub: bool,
+    pub created_at: &'a str,
+    pub updated_at: &'a str,
+}
+
+/// Inserts a note from an archive. The caller has already settled the title against the guide's
+/// namespace and owns the transaction.
+pub(crate) fn insert_imported(conn: &Connection, note: &ImportedNote<'_>) -> Result<()> {
+    let title = names::clean_note_name("title", note.title)?;
+    let title_norm = normalize(&title);
+    if let Some(holder) = name_holder(conn, note.guide_id, &title_norm)? {
+        return Err(Error::NameTaken {
+            name: title,
+            note_id: holder,
+        });
+    }
+    conn.execute(
+        "INSERT INTO note (id, guide_id, title, title_norm, body_md, is_stub, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            note.id,
+            note.guide_id,
+            title,
+            title_norm,
+            note.body_md,
+            note.is_stub,
+            note.created_at,
+            note.updated_at
+        ],
+    )?;
+    refresh_mentions(conn, note.id, note.guide_id, note.body_md)?;
+    adopt_mentions(conn, note.id, note.guide_id, &title)?;
+    Ok(())
+}
+
+/// Replaces an existing note's content from an archive: body, stub flag, and updated time. A
+/// changed title is applied like a rename without adding an alias; the archive's alias list
+/// carries whatever the other side kept.
+pub(crate) fn overwrite_imported(
+    conn: &Connection,
+    id: &NoteId,
+    title: &str,
+    body_md: &str,
+    is_stub: bool,
+    updated_at: &str,
+) -> Result<()> {
+    let (guide_id, current_title) = guide_and_title(conn, id)?;
+    let title = names::clean_note_name("title", title)?;
+    if current_title != title {
+        retitle(conn, id, &guide_id, &current_title, &title, false)?;
+    }
+    conn.execute(
+        "UPDATE note SET body_md = ?2, is_stub = ?3, updated_at = ?4 WHERE id = ?1",
+        params![id, body_md, is_stub, updated_at],
+    )?;
+    refresh_mentions(conn, id, &guide_id, body_md)?;
+    Ok(())
+}
+
+/// Replaces a note's aliases. Aliases another note already holds are skipped and returned.
+pub(crate) fn replace_aliases(
+    conn: &Connection,
+    id: &NoteId,
+    aliases: &[String],
+) -> Result<Vec<String>> {
+    let (guide_id, _) = guide_and_title(conn, id)?;
+    let existing = aliases_of(conn, id)?;
+    for alias in &existing {
+        conn.execute(
+            "DELETE FROM note_alias WHERE note_id = ?1 AND alias_norm = ?2",
+            params![id, normalize(alias)],
+        )?;
+        release_mentions(conn, id, alias)?;
+    }
+    let mut skipped = Vec::new();
+    for alias in aliases {
+        let Ok(alias) = names::clean_note_name("alias", alias) else {
+            skipped.push(alias.clone());
+            continue;
+        };
+        match insert_alias(conn, id, &guide_id, &alias) {
+            Ok(()) => {}
+            Err(Error::NameTaken { .. }) => skipped.push(alias),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(skipped)
+}
+
+/// Pins `updated_at` to a value from an archive after the tag and gallery calls have bumped it.
+pub(crate) fn set_updated_at(conn: &Connection, id: &NoteId, updated_at: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE note SET updated_at = ?2 WHERE id = ?1",
+        params![id, updated_at],
+    )?;
+    Ok(())
+}
+
 pub(crate) fn touch(conn: &Connection, id: &NoteId) -> Result<()> {
     conn.execute(
         "UPDATE note SET updated_at = ?2 WHERE id = ?1",
@@ -552,7 +665,12 @@ fn replace_tags(
 
 /// Re-derives the mention rows for a note from its body: one row per distinct link text, resolved
 /// when something in the guide carries that name and left unresolved otherwise.
-fn refresh_mentions(conn: &Connection, id: &NoteId, guide_id: &GuideId, body: &str) -> Result<()> {
+pub(crate) fn refresh_mentions(
+    conn: &Connection,
+    id: &NoteId,
+    guide_id: &GuideId,
+    body: &str,
+) -> Result<()> {
     conn.execute("DELETE FROM mention WHERE note_id = ?1", params![id])?;
     let mut seen = HashSet::new();
     for link in wikilink::find_wikilinks(body) {
@@ -591,7 +709,7 @@ fn release_mentions(conn: &Connection, id: &NoteId, name: &str) -> Result<()> {
 
 /// Changes the title and rewrites links in every note the mention cache says references it.
 /// With `keep_old_name` false the old title stops resolving. Returns the notes whose bodies changed.
-fn retitle(
+pub(crate) fn retitle(
     conn: &Connection,
     id: &NoteId,
     guide_id: &GuideId,

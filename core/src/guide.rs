@@ -47,7 +47,7 @@ impl Vault {
         let name = names::clean_guide_name(&new.name)?;
         let id = GuideId::generate();
         let now = clock::now();
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         ensure_name_free(&tx, &name, None)?;
         tx.execute(
             "INSERT INTO guide (id, name, name_norm, description, created_at, updated_at)
@@ -90,7 +90,7 @@ impl Vault {
     }
 
     pub fn update_guide(&mut self, id: &GuideId, update: GuideUpdate) -> Result<Guide> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         let current = load_guide(&tx, id)?;
         let name = match update.name {
             Some(name) => names::clean_guide_name(&name)?,
@@ -134,7 +134,7 @@ impl Vault {
 
     /// Applies a global tag to a guide.
     pub fn add_guide_tag(&mut self, id: &GuideId, tag_id: &TagId) -> Result<Guide> {
-        let tx = self.transaction()?;
+        let tx = self.savepoint()?;
         ensure_guide_exists(&tx, id)?;
         let tag = tag::load_tag(&tx, tag_id)?;
         if tag.scope_guide_id.is_some() {
