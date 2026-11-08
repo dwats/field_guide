@@ -1,6 +1,6 @@
 <script lang="ts">
   // The tag tree of one guide. Rename inline, add a child, delete (children move up a level and
-  // notes lose the tag, as core does), and drag a tag onto another to nest it under it.
+  // entries lose the tag, as core does), and drag a tag onto another to nest it under it.
   import { untrack } from "svelte";
 
   import { api, errorMessage, type Guide, type TagNode } from "../lib/api";
@@ -75,7 +75,7 @@
       children > 0
         ? ` Its ${children} child tag${children === 1 ? "" : "s"} move up one level.`
         : "";
-    if (!confirm(`Delete the tag "${node.path}"? Notes keep everything else.${detail}`)) return;
+    if (!confirm(`Delete the tag "${node.path}"? Entries keep everything else.${detail}`)) return;
     void run(() => api.deleteTag(node.tag.id));
   }
 

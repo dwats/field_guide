@@ -64,8 +64,8 @@ id_type!(
     TagId
 );
 id_type!(
-    /// Identifies a note.
-    NoteId
+    /// Identifies an entry.
+    EntryId
 );
 id_type!(
     /// Identifies a media row. The file itself is content-addressed by its hash.
@@ -80,7 +80,7 @@ id_type!(
     QualifierLabelId
 );
 id_type!(
-    /// Identifies a relation: one stored edge between two notes.
+    /// Identifies a relation: one stored edge between two entries.
     RelationId
 );
 id_type!(

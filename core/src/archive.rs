@@ -8,7 +8,7 @@
 //! guides/<slug>/tags.json
 //! guides/<slug>/verbs.json
 //! guides/<slug>/qualifiers.json
-//! guides/<slug>/notes/<slug>.md
+//! guides/<slug>/entries/<slug>.md
 //! guides/<slug>/relations.jsonl
 //! guides/<slug>/boards/<slug>.json
 //! media/<sha256>.<ext>
@@ -40,7 +40,7 @@ pub enum ScopeRecord {
         id: String,
         path: String,
     },
-    Note {
+    Entry {
         guide_id: String,
         id: String,
         title: String,
@@ -94,7 +94,7 @@ pub struct QualifierLabelFile {
     pub inverse_label: Option<String>,
 }
 
-/// A note at either end of an edge or behind a qualifier. Inside the exported scope it carries
+/// An entry at either end of an edge or behind a qualifier. Inside the exported scope it carries
 /// its id and title; outside, `external` is set and the guide name travels along for resolution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Endpoint {
@@ -118,7 +118,7 @@ pub struct QualifierLine {
     pub label_id: String,
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub note: Option<Endpoint>,
+    pub entry: Option<Endpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -154,7 +154,7 @@ pub struct BoardFiltersFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(default)]
-    pub topic_note_ids: Vec<String>,
+    pub topic_entry_ids: Vec<String>,
     #[serde(default)]
     pub hops: u32,
     #[serde(default)]
@@ -165,7 +165,7 @@ pub struct BoardFiltersFile {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardNodeFile {
-    pub note_id: String,
+    pub entry_id: String,
     pub x: f64,
     pub y: f64,
 }

@@ -7,7 +7,7 @@
   interface Props {
     html: string;
     mediaDir: string | null;
-    onnavigate: (noteId: string) => void;
+    onnavigate: (entryId: string) => void;
     oncreate: (title: string) => void;
   }
   let { html, mediaDir, onnavigate, oncreate }: Props = $props();
@@ -40,9 +40,9 @@
     if (!anchor) return;
     event.preventDefault();
     if (anchor.classList.contains("wikilink")) {
-      const noteId = anchor.dataset.noteId;
+      const entryId = anchor.dataset.entryId;
       const target = anchor.dataset.target;
-      if (noteId) onnavigate(noteId);
+      if (entryId) onnavigate(entryId);
       else if (target) oncreate(target);
     }
   }

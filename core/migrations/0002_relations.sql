@@ -33,29 +33,29 @@ CREATE UNIQUE INDEX qualifier_label_inverse_unique
 
 -- verb_id has no cascade on purpose: deleting a verb that is in use is refused (core checks first,
 -- the foreign key is the backstop), while deleting a guide removes its verbs and their edges in
--- one statement. Endpoints cascade, so purging a note takes its edges with it.
+-- one statement. Endpoints cascade, so purging an entry takes its edges with it.
 CREATE TABLE relation (
     id              TEXT PRIMARY KEY,
-    subject_note_id TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+    subject_entry_id TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
     verb_id         TEXT NOT NULL REFERENCES verb(id),
-    object_note_id  TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+    object_entry_id  TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
     created_at      TEXT NOT NULL,
-    UNIQUE (subject_note_id, verb_id, object_note_id)
+    UNIQUE (subject_entry_id, verb_id, object_entry_id)
 );
-CREATE INDEX relation_object ON relation (object_note_id);
+CREATE INDEX relation_object ON relation (object_entry_id);
 CREATE INDEX relation_verb ON relation (verb_id);
 
--- Exactly one value column is set. A purged value note takes its qualifier with it.
+-- Exactly one value column is set. A purged value entry takes its qualifier with it.
 CREATE TABLE relation_qualifier (
     id                 TEXT PRIMARY KEY,
     relation_id        TEXT NOT NULL REFERENCES relation(id) ON DELETE CASCADE,
     qualifier_label_id TEXT NOT NULL REFERENCES qualifier_label(id),
-    value_note_id      TEXT REFERENCES note(id) ON DELETE CASCADE,
+    value_entry_id      TEXT REFERENCES entry(id) ON DELETE CASCADE,
     value_text         TEXT,
     value_num          REAL,
     sort               INTEGER NOT NULL,
-    CHECK ((value_note_id IS NOT NULL) + (value_text IS NOT NULL) + (value_num IS NOT NULL) = 1)
+    CHECK ((value_entry_id IS NOT NULL) + (value_text IS NOT NULL) + (value_num IS NOT NULL) = 1)
 );
 CREATE INDEX relation_qualifier_relation ON relation_qualifier (relation_id, sort);
-CREATE INDEX relation_qualifier_value_note ON relation_qualifier (value_note_id);
+CREATE INDEX relation_qualifier_value_entry ON relation_qualifier (value_entry_id);
 CREATE INDEX relation_qualifier_label ON relation_qualifier (qualifier_label_id);

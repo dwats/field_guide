@@ -1,4 +1,4 @@
-//! Full-text search helpers. The index is the `notes_fts` table, kept current by triggers.
+//! Full-text search helpers. The index is the `entries_fts` table, kept current by triggers.
 
 /// Turns free text into an FTS5 expression: each whitespace-separated token becomes a quoted
 /// prefix query and the tokens are ANDed. Tokens without a letter or digit are dropped, since the

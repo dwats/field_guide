@@ -15,7 +15,7 @@ import {
 } from "./staged";
 
 const drops = { id: "v1", label: "DROPS", direction: "forward" as const };
-const cobble = { kind: "note" as const, id: "n2", title: "Cobblestone Block" };
+const cobble = { kind: "entry" as const, id: "n2", title: "Cobblestone Block" };
 const minedWith = { id: "q1", label: "mined with" };
 
 function full(): Staged {

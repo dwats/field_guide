@@ -81,9 +81,9 @@ export interface TagNode {
   children: TagNode[];
 }
 
-// ---- notes ----
+// ---- entries ----
 
-export interface Note {
+export interface Entry {
   id: Id;
   guide_id: Id;
   title: string;
@@ -96,7 +96,7 @@ export interface Note {
   tag_ids: Id[];
 }
 
-export interface NoteSummary {
+export interface EntrySummary {
   id: Id;
   guide_id: Id;
   title: string;
@@ -106,23 +106,23 @@ export interface NoteSummary {
   updated_at: string;
 }
 
-export interface NoteQuery {
+export interface EntryQuery {
   tag_id: Id | null;
   text: string | null;
   stubs_only: boolean;
 }
 
 export interface RenameRecord {
-  note_id: Id;
+  entry_id: Id;
   old_title: string;
   new_title: string;
   alias_added: boolean;
   alias_promoted: string | null;
-  rewritten_note_ids: Id[];
+  rewritten_entry_ids: Id[];
 }
 
 export interface NameMatch {
-  note_id: Id;
+  entry_id: Id;
   title: string;
   matched: string;
   is_alias: boolean;
@@ -132,7 +132,7 @@ export interface NameMatch {
 export interface Rendered {
   html: string;
   unresolved_links: string[];
-  linked_note_ids: Id[];
+  linked_entry_ids: Id[];
 }
 
 // ---- relations and vocabulary (used from phase 5 on) ----
@@ -154,7 +154,7 @@ export interface QualifierLabel {
   inverse_label: string | null;
 }
 
-export interface NoteRef {
+export interface EntryRef {
   id: Id;
   guide_id: Id;
   title: string;
@@ -163,7 +163,7 @@ export interface NoteRef {
 }
 
 export type QualifierValueView =
-  | { kind: "note"; value: NoteRef }
+  | { kind: "entry"; value: EntryRef }
   | { kind: "text"; value: string }
   | { kind: "number"; value: number };
 
@@ -176,16 +176,16 @@ export interface Qualifier {
 
 export interface Relation {
   id: Id;
-  subject: NoteRef;
+  subject: EntryRef;
   verb: Verb;
-  object: NoteRef;
+  object: EntryRef;
   qualifiers: Qualifier[];
   created_at: string;
 }
 
 export interface Segment {
   text: string;
-  note_id?: Id;
+  entry_id?: Id;
 }
 
 export interface RelationView {
@@ -221,7 +221,7 @@ export interface NewQualifierLabel {
 }
 
 export type QualifierValue =
-  | { kind: "note"; value: Id }
+  | { kind: "entry"; value: Id }
   | { kind: "text"; value: string }
   | { kind: "number"; value: number };
 
@@ -230,7 +230,7 @@ export interface NewQualifier {
   value: QualifierValue;
 }
 
-export type Target = { kind: "note"; id: Id } | { kind: "stub"; title: string; tag_id: Id | null };
+export type Target = { kind: "entry"; id: Id } | { kind: "stub"; title: string; tag_id: Id | null };
 
 export interface CreateRelation {
   origin: Id;
@@ -280,23 +280,23 @@ export const api = {
   deleteTag: (id: Id) => invoke<void>("delete_tag", { id }),
   mergeTags: (source: Id, target: Id) => invoke<void>("merge_tags", { source, target }),
 
-  createNote: (guide_id: Id, title: string, body_md = "", tag_ids: Id[] = []) =>
-    invoke<Note>("create_note", { new: { guide_id, title, body_md, tag_ids } }),
+  createEntry: (guide_id: Id, title: string, body_md = "", tag_ids: Id[] = []) =>
+    invoke<Entry>("create_entry", { new: { guide_id, title, body_md, tag_ids } }),
   createStub: (guide_id: Id, title: string, tag_id: Id | null = null) =>
-    invoke<Note>("create_stub", { guide_id, title, tag_id }),
-  getNote: (id: Id) => invoke<Note>("get_note", { id }),
-  updateNoteBody: (id: Id, body_md: string) =>
-    invoke<Note>("update_note_body", { id, body_md }),
-  renameNote: (id: Id, new_title: string) =>
-    invoke<RenameRecord>("rename_note", { id, new_title }),
-  undoRename: (record: RenameRecord) => invoke<Note>("undo_rename", { record }),
-  addAlias: (id: Id, alias: string) => invoke<Note>("add_alias", { id, alias }),
-  removeAlias: (id: Id, alias: string) => invoke<Note>("remove_alias", { id, alias }),
-  setNoteTags: (id: Id, tag_ids: Id[]) => invoke<Note>("set_note_tags", { id, tag_ids }),
-  addNoteTag: (id: Id, tag_id: Id) => invoke<Note>("add_note_tag", { id, tag_id }),
-  removeNoteTag: (id: Id, tag_id: Id) => invoke<Note>("remove_note_tag", { id, tag_id }),
-  listNotes: (guide_id: Id, query: Partial<NoteQuery> = {}) =>
-    invoke<NoteSummary[]>("list_notes", {
+    invoke<Entry>("create_stub", { guide_id, title, tag_id }),
+  getEntry: (id: Id) => invoke<Entry>("get_entry", { id }),
+  updateEntryBody: (id: Id, body_md: string) =>
+    invoke<Entry>("update_entry_body", { id, body_md }),
+  renameEntry: (id: Id, new_title: string) =>
+    invoke<RenameRecord>("rename_entry", { id, new_title }),
+  undoRename: (record: RenameRecord) => invoke<Entry>("undo_rename", { record }),
+  addAlias: (id: Id, alias: string) => invoke<Entry>("add_alias", { id, alias }),
+  removeAlias: (id: Id, alias: string) => invoke<Entry>("remove_alias", { id, alias }),
+  setEntryTags: (id: Id, tag_ids: Id[]) => invoke<Entry>("set_entry_tags", { id, tag_ids }),
+  addEntryTag: (id: Id, tag_id: Id) => invoke<Entry>("add_entry_tag", { id, tag_id }),
+  removeEntryTag: (id: Id, tag_id: Id) => invoke<Entry>("remove_entry_tag", { id, tag_id }),
+  listEntries: (guide_id: Id, query: Partial<EntryQuery> = {}) =>
+    invoke<EntrySummary[]>("list_entries", {
       guide_id,
       query: {
         tag_id: query.tag_id ?? null,
@@ -304,25 +304,25 @@ export const api = {
         stubs_only: query.stubs_only ?? false,
       },
     }),
-  lookupNote: (guide_id: Id, text: string) =>
-    invoke<NoteSummary | null>("lookup_note", { guide_id, text }),
-  mentionedBy: (id: Id) => invoke<NoteSummary[]>("mentioned_by", { id }),
-  mentionsFrom: (id: Id) => invoke<NoteSummary[]>("mentions_from", { id }),
-  trashNote: (id: Id) => invoke<NoteSummary>("trash_note", { id }),
-  restoreNote: (id: Id) => invoke<NoteSummary>("restore_note", { id }),
-  purgeNote: (id: Id) => invoke<void>("purge_note", { id }),
-  listTrash: (guide_id: Id) => invoke<NoteSummary[]>("list_trash", { guide_id }),
+  lookupEntry: (guide_id: Id, text: string) =>
+    invoke<EntrySummary | null>("lookup_entry", { guide_id, text }),
+  mentionedBy: (id: Id) => invoke<EntrySummary[]>("mentioned_by", { id }),
+  mentionsFrom: (id: Id) => invoke<EntrySummary[]>("mentions_from", { id }),
+  trashEntry: (id: Id) => invoke<EntrySummary>("trash_entry", { id }),
+  restoreEntry: (id: Id) => invoke<EntrySummary>("restore_entry", { id }),
+  purgeEntry: (id: Id) => invoke<void>("purge_entry", { id }),
+  listTrash: (guide_id: Id) => invoke<EntrySummary[]>("list_trash", { guide_id }),
   emptyTrash: (guide_id: Id) => invoke<number>("empty_trash", { guide_id }),
 
-  renderNote: (id: Id) => invoke<Rendered>("render_note", { id }),
+  renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>
     invoke<Rendered>("render_markdown", { guide_id, body }),
 
   suggestNames: (guide_id: Id, prefix: string, limit = 8) =>
     invoke<NameMatch[]>("suggest_names", { guide_id, prefix, limit }),
 
-  relationsForNote: (id: Id, include_external = false) =>
-    invoke<RelationView[]>("relations_for_note", { id, filter: { include_external } }),
+  relationsForEntry: (id: Id, include_external = false) =>
+    invoke<RelationView[]>("relations_for_entry", { id, filter: { include_external } }),
   createRelation: (request: CreateRelation) =>
     invoke<Relation>("create_relation", { request }),
   deleteRelation: (id: Id) => invoke<void>("delete_relation", { id }),

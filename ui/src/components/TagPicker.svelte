@@ -4,7 +4,7 @@
   import { untrack } from "svelte";
 
   import { api, errorMessage, type Id } from "../lib/api";
-  import { findByPath, flattenTags, type TagEntry } from "../lib/tags";
+  import { findByPath, flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
     /** Guide id for that guide's tags; null for the global tags applied to guides. */
@@ -15,7 +15,7 @@
   }
   let { scope, selected, onchange, placeholder = "Add tag, e.g. Blocks/Natural" }: Props = $props();
 
-  let entries = $state<TagEntry[]>([]);
+  let entries = $state<TagOption[]>([]);
   let text = $state("");
   let error = $state("");
   const listId = `tags-${Math.random().toString(36).slice(2)}`;

@@ -6,7 +6,7 @@
   import { session } from "./lib/session.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
-  import NoteView from "./views/NoteView.svelte";
+  import EntryView from "./views/EntryView.svelte";
   import SettingsView from "./views/SettingsView.svelte";
   import TagsView from "./views/TagsView.svelte";
 
@@ -105,8 +105,8 @@
       <GuideView guideId={route.guideId} />
     {:else if route.view === "tags"}
       <TagsView guideId={route.guideId} />
-    {:else if route.view === "note"}
-      <NoteView noteId={route.noteId} />
+    {:else if route.view === "entry"}
+      <EntryView entryId={route.entryId} />
     {:else if route.view === "settings"}
       <SettingsView />
     {/if}

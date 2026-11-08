@@ -135,18 +135,18 @@ fn only_global_tags_apply_to_guides() {
 }
 
 #[test]
-fn deleting_a_guide_removes_its_notes_and_tags_and_nothing_else() {
+fn deleting_a_guide_removes_its_entries_and_tags_and_nothing_else() {
     let mut v = vault();
     let g = guide(&mut v, "Minecraft");
     let keep = guide(&mut v, "Keep");
     let t = v.ensure_tag_path(Some(&g), "Blocks").unwrap();
-    let n = note(&mut v, &g, "Stone", "");
-    let kept = note(&mut v, &keep, "Stone", "");
-    v.add_note_tag(&n, &t.id).unwrap();
+    let n = entry(&mut v, &g, "Stone", "");
+    let kept = entry(&mut v, &keep, "Stone", "");
+    v.add_entry_tag(&n, &t.id).unwrap();
     v.delete_guide(&g).unwrap();
     assert!(matches!(v.get_guide(&g), Err(Error::NotFound { .. })));
-    assert!(matches!(v.get_note(&n), Err(Error::NotFound { .. })));
+    assert!(matches!(v.get_entry(&n), Err(Error::NotFound { .. })));
     assert!(matches!(v.get_tag(&t.id), Err(Error::NotFound { .. })));
-    assert_eq!(v.get_note(&kept).unwrap().title, "Stone");
+    assert_eq!(v.get_entry(&kept).unwrap().title, "Stone");
     assert!(matches!(v.delete_guide(&g), Err(Error::NotFound { .. })));
 }

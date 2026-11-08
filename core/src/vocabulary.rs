@@ -57,14 +57,14 @@ pub struct NewQualifierLabel {
     pub inverse_label: Option<String>,
 }
 
-/// Which way a typed label points, relative to the note it was typed on.
+/// Which way a typed label points, relative to the entry it was typed on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
-    /// The origin note is the subject.
+    /// The origin entry is the subject.
     #[default]
     Forward,
-    /// The origin note is the object: the text typed was the verb's inverse label.
+    /// The origin entry is the object: the text typed was the verb's inverse label.
     Inverse,
 }
 
@@ -177,9 +177,9 @@ impl Vault {
         if from.guide_id != into.guide_id {
             return Err(Error::Invalid("verbs are in different guides".to_owned()));
         }
-        let edges: Vec<(crate::RelationId, crate::NoteId, crate::NoteId)> = {
+        let edges: Vec<(crate::RelationId, crate::EntryId, crate::EntryId)> = {
             let mut stmt = tx.prepare(
-                "SELECT id, subject_note_id, object_note_id FROM relation WHERE verb_id = ?1 ORDER BY created_at, id",
+                "SELECT id, subject_entry_id, object_entry_id FROM relation WHERE verb_id = ?1 ORDER BY created_at, id",
             )?;
             stmt.query_map(params![source], |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))

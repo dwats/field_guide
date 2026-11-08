@@ -1,4 +1,4 @@
-// The one-line filter used by note lists: free text plus `#Tag/Path` chips typed inline.
+// The one-line filter used by entry lists: free text plus `#Tag/Path` chips typed inline.
 // `#"Quoted Tag/With spaces"` keeps spaces. Everything else is text for the prefix search.
 
 export interface ParsedFilter {

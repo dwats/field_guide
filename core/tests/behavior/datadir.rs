@@ -191,7 +191,7 @@ fn known_sync_client_folders_are_recognised_and_plain_paths_are_not() {
             "C:/Users/me/OneDrive - Contoso/FieldGuide",
             Some("OneDrive"),
         ),
-        ("/home/me/Dropbox/notes", Some("Dropbox")),
+        ("/home/me/Dropbox/entries", Some("Dropbox")),
         ("G:/My Drive/FieldGuide", Some("Google Drive")),
         (
             "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/FieldGuide",

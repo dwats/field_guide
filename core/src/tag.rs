@@ -1,7 +1,7 @@
 //! Tags: a tree per guide, plus a global tree whose tags are applied to guides.
 //!
 //! Browsing a tag includes everything under it. Rename and move work by id, so display paths
-//! follow. Delete reparents children to the deleted tag's parent and untags its notes. Merge
+//! follow. Delete reparents children to the deleted tag's parent and untags its entries. Merge
 //! retags, carries the source's children along, and deletes the source. In both cases a child
 //! whose name is already taken at its new level is merged into that tag rather than lost.
 
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
 use crate::names::{self, normalize};
-use crate::{Error, GuideId, NoteId, Result, TagId, Vault, guide};
+use crate::{EntryId, Error, GuideId, Result, TagId, Vault, guide};
 
 pub const PATH_SEPARATOR: char = '/';
 
@@ -175,7 +175,7 @@ impl Vault {
         load_tag(self.conn(), id)
     }
 
-    /// Deletes a tag. Its children move up to its parent; its notes and guides lose the tag.
+    /// Deletes a tag. Its children move up to its parent; its entries and guides lose the tag.
     pub fn delete_tag(&mut self, id: &TagId) -> Result<()> {
         let tx = self.savepoint()?;
         let tag = load_tag(&tx, id)?;
@@ -388,10 +388,13 @@ fn reparent_children(conn: &Connection, tag: &Tag, new_parent: Option<&TagId>) -
 
 fn merge_into(conn: &Connection, source: &Tag, target: &Tag) -> Result<()> {
     conn.execute(
-        "INSERT OR IGNORE INTO note_tag (note_id, tag_id) SELECT note_id, ?2 FROM note_tag WHERE tag_id = ?1",
+        "INSERT OR IGNORE INTO entry_tag (entry_id, tag_id) SELECT entry_id, ?2 FROM entry_tag WHERE tag_id = ?1",
         params![source.id, target.id],
     )?;
-    conn.execute("DELETE FROM note_tag WHERE tag_id = ?1", params![source.id])?;
+    conn.execute(
+        "DELETE FROM entry_tag WHERE tag_id = ?1",
+        params![source.id],
+    )?;
     conn.execute(
         "INSERT OR IGNORE INTO guide_tag (guide_id, tag_id) SELECT guide_id, ?2 FROM guide_tag WHERE tag_id = ?1",
         params![source.id, target.id],
@@ -406,12 +409,12 @@ fn merge_into(conn: &Connection, source: &Tag, target: &Tag) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn tags_of_note(conn: &Connection, note_id: &NoteId) -> Result<Vec<TagId>> {
+pub(crate) fn tags_of_entry(conn: &Connection, entry_id: &EntryId) -> Result<Vec<TagId>> {
     let mut stmt = conn.prepare(
-        "SELECT nt.tag_id FROM note_tag nt JOIN tag t ON t.id = nt.tag_id
-         WHERE nt.note_id = ?1 ORDER BY t.name_norm, t.id",
+        "SELECT nt.tag_id FROM entry_tag nt JOIN tag t ON t.id = nt.tag_id
+         WHERE nt.entry_id = ?1 ORDER BY t.name_norm, t.id",
     )?;
-    let rows = stmt.query_map(params![note_id], |row| row.get(0))?;
+    let rows = stmt.query_map(params![entry_id], |row| row.get(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 

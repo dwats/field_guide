@@ -161,7 +161,7 @@ td {
   vertical-align: top;
 }
 
-/* Rendered note bodies, from core's renderer. */
+/* Rendered entry bodies, from core's renderer. */
 .preview {
   max-width: 48em;
 }

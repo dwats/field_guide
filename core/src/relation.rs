@@ -1,9 +1,9 @@
-//! Relations: typed edges between notes with ordered qualifiers, and the read-side rendering
+//! Relations: typed edges between entries with ordered qualifiers, and the read-side rendering
 //! from `docs/design.md` section 4.
 //!
-//! One edge is stored once, in canonical direction. Each note that takes part sees it from its
+//! One edge is stored once, in canonical direction. Each entry that takes part sees it from its
 //! own side: the subject reads the verb label, the object reads the inverse label (or an arrow
-//! plus the label when there is none), and a note used as a qualifier value reads the qualifier's
+//! plus the label when there is none), and an entry used as a qualifier value reads the qualifier's
 //! inverse label (or finds the edge under "Referenced by" when there is none).
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -12,14 +12,14 @@ use serde::{Deserialize, Serialize};
 use crate::error::not_found;
 use crate::vocabulary::{self, Direction, QualifierLabel, Verb};
 use crate::{
-    Error, GuideId, NoteId, QualifierId, QualifierLabelId, RelationId, Result, TagId, Vault,
-    VerbId, clock, note,
+    EntryId, Error, GuideId, QualifierId, QualifierLabelId, RelationId, Result, TagId, Vault,
+    VerbId, clock, entry,
 };
 
-/// The other end of an edge, or a qualifier's note value.
+/// The other end of an edge, or a qualifier's entry value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NoteRef {
-    pub id: NoteId,
+pub struct EntryRef {
+    pub id: EntryId,
     pub guide_id: GuideId,
     pub title: String,
     pub is_stub: bool,
@@ -29,7 +29,7 @@ pub struct NoteRef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum QualifierValue {
-    Note(NoteId),
+    Entry(EntryId),
     Text(String),
     Number(f64),
 }
@@ -37,7 +37,7 @@ pub enum QualifierValue {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum QualifierValueView {
-    Note(NoteRef),
+    Entry(EntryRef),
     Text(String),
     Number(f64),
 }
@@ -56,12 +56,12 @@ pub struct Qualifier {
     pub sort: i64,
 }
 
-/// The target of a new relation: an existing note, or a stub to create in the origin's guide.
+/// The target of a new relation: an existing entry, or a stub to create in the origin's guide.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Target {
-    Note {
-        id: NoteId,
+    Entry {
+        id: EntryId,
     },
     Stub {
         title: String,
@@ -70,12 +70,12 @@ pub enum Target {
     },
 }
 
-/// A relation as entered on a note page. The UI resolves the verb and target; core validates,
+/// A relation as entered on an entry page. The UI resolves the verb and target; core validates,
 /// creates a stub when asked, stores the canonical edge, and merges into an existing one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateRelation {
-    /// The note the relation was entered on.
-    pub origin: NoteId,
+    /// The entry the relation was entered on.
+    pub origin: EntryId,
     pub verb_id: VerbId,
     #[serde(default)]
     pub direction: Direction,
@@ -88,14 +88,14 @@ pub struct CreateRelation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Relation {
     pub id: RelationId,
-    pub subject: NoteRef,
+    pub subject: EntryRef,
     pub verb: Verb,
-    pub object: NoteRef,
+    pub object: EntryRef,
     pub qualifiers: Vec<Qualifier>,
     pub created_at: String,
 }
 
-/// Which role the viewing note plays in the edge.
+/// Which role the viewing entry plays in the edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Perspective {
@@ -104,23 +104,23 @@ pub enum Perspective {
     QualifierValue,
 }
 
-/// Where a line belongs on the note page.
+/// Where a line belongs on the entry page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Section {
     /// The relation list, grouped by the label shown.
     Relations,
-    /// Edges that only mention the note through a qualifier whose label has no inverse.
+    /// Edges that only mention the entry through a qualifier whose label has no inverse.
     ReferencedBy,
 }
 
-/// An edge as seen from one note, with the display form from design section 4.
+/// An edge as seen from one entry, with the display form from design section 4.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelationView {
-    /// The edge, with qualifiers whose value note is in the trash left out.
+    /// The edge, with qualifiers whose value entry is in the trash left out.
     pub relation: Relation,
     pub perspective: Perspective,
-    /// Set when the viewing note is a qualifier value: which qualifier.
+    /// Set when the viewing entry is a qualifier value: which qualifier.
     pub qualifier_id: Option<QualifierId>,
     pub section: Section,
     /// The words in the verb slot (or the qualifier label under "Referenced by").
@@ -131,16 +131,16 @@ pub struct RelationView {
     pub external: bool,
     /// The whole line, e.g. `DROPS Cobblestone Block · mined with Pickaxe`.
     pub text: String,
-    /// The same line split so a UI can link the note titles. Concatenated, equals `text`.
+    /// The same line split so a UI can link the entry titles. Concatenated, equals `text`.
     pub segments: Vec<Segment>,
 }
 
-/// A run of the display line: plain words, or a note title with the note it names.
+/// A run of the display line: plain words, or an entry title with the entry it names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Segment {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub note_id: Option<NoteId>,
+    pub entry_id: Option<EntryId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,10 +155,10 @@ impl Vault {
     /// and the qualifiers merge into it; exact duplicate qualifiers are not added twice.
     pub fn create_relation(&mut self, request: CreateRelation) -> Result<Relation> {
         let tx = self.savepoint()?;
-        let origin = load_note_ref(&tx, &request.origin)?;
+        let origin = load_entry_ref(&tx, &request.origin)?;
         if origin.deleted_at.is_some() {
             return Err(Error::Invalid(
-                "the note is in the trash; restore it first".to_owned(),
+                "the entry is in the trash; restore it first".to_owned(),
             ));
         }
         let verb = vocabulary::load_verb(&tx, &request.verb_id)?;
@@ -169,8 +169,8 @@ impl Vault {
             )));
         }
         let target_id = match request.target {
-            Target::Note { id } => {
-                let target = load_note_ref(&tx, &id)?;
+            Target::Entry { id } => {
+                let target = load_entry_ref(&tx, &id)?;
                 if target.deleted_at.is_some() {
                     return Err(Error::Invalid(format!(
                         "\"{}\" is in the trash; restore it first",
@@ -180,7 +180,7 @@ impl Vault {
                 id
             }
             Target::Stub { title, tag_id } => {
-                note::create_stub(&tx, &origin.guide_id, &title, tag_id.as_ref())?
+                entry::create_stub(&tx, &origin.guide_id, &title, tag_id.as_ref())?
             }
         };
         let (subject, object) = match request.direction {
@@ -192,7 +192,7 @@ impl Vault {
             None => {
                 let id = RelationId::generate();
                 tx.execute(
-                    "INSERT INTO relation (id, subject_note_id, verb_id, object_note_id, created_at)
+                    "INSERT INTO relation (id, subject_entry_id, verb_id, object_entry_id, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                     params![id, subject, verb.id, object, clock::now()],
                 )?;
@@ -260,25 +260,25 @@ impl Vault {
         load_relation(self.conn(), id)
     }
 
-    /// Every edge that involves the note, as the note sees it. Edges with a trashed endpoint are
-    /// hidden, qualifiers pointing at a trashed note are left out, and edges into another guide
+    /// Every edge that involves the entry, as the entry sees it. Edges with a trashed endpoint are
+    /// hidden, qualifiers pointing at a trashed entry are left out, and edges into another guide
     /// appear only with `include_external`. Ordered by section, label, then the other title.
-    pub fn relations_for_note(
+    pub fn relations_for_entry(
         &self,
-        note_id: &NoteId,
+        entry_id: &EntryId,
         filter: &RelationFilter,
     ) -> Result<Vec<RelationView>> {
         let conn = self.conn();
-        let viewer = load_note_ref(conn, note_id)?;
+        let viewer = load_entry_ref(conn, entry_id)?;
         let ids: Vec<RelationId> = {
             let mut stmt = conn.prepare(
-                "SELECT id FROM relation WHERE subject_note_id = ?1 OR object_note_id = ?1
+                "SELECT id FROM relation WHERE subject_entry_id = ?1 OR object_entry_id = ?1
                  UNION
                  SELECT r.id FROM relation r JOIN relation_qualifier q ON q.relation_id = r.id
-                 WHERE q.value_note_id = ?1
+                 WHERE q.value_entry_id = ?1
                  ORDER BY 1",
             )?;
-            stmt.query_map(params![note_id], |row| row.get(0))?
+            stmt.query_map(params![entry_id], |row| row.get(0))?
                 .collect::<rusqlite::Result<_>>()?
         };
         let mut views = Vec::new();
@@ -288,7 +288,7 @@ impl Vault {
                 continue;
             }
             relation.qualifiers.retain(|q| match &q.value {
-                QualifierValueView::Note(value) => value.deleted_at.is_none(),
+                QualifierValueView::Entry(value) => value.deleted_at.is_none(),
                 _ => true,
             });
             let external = relation.subject.guide_id != viewer.guide_id
@@ -305,7 +305,7 @@ impl Vault {
             let via: Vec<QualifierId> = relation
                 .qualifiers
                 .iter()
-                .filter(|q| matches!(&q.value, QualifierValueView::Note(value) if value.id == viewer.id))
+                .filter(|q| matches!(&q.value, QualifierValueView::Entry(value) if value.id == viewer.id))
                 .map(|q| q.id.clone())
                 .collect();
             for qualifier_id in via {
@@ -348,15 +348,15 @@ impl Vault {
         })
     }
 
-    /// Turns typed qualifier text into a value: a live note in the guide by title or alias, else a
+    /// Turns typed qualifier text into a value: a live entry in the guide by title or alias, else a
     /// number when it parses as one, else text.
     pub fn resolve_qualifier_value(
         &self,
         guide_id: &GuideId,
         text: &str,
     ) -> Result<QualifierValue> {
-        if let Some(found) = self.lookup_note(guide_id, text)? {
-            return Ok(QualifierValue::Note(found.id));
+        if let Some(found) = self.lookup_entry(guide_id, text)? {
+            return Ok(QualifierValue::Entry(found.id));
         }
         let trimmed = text.trim();
         Ok(match trimmed.parse::<f64>() {
@@ -388,7 +388,7 @@ fn render(
     let (section, label, inverted) = match perspective {
         Perspective::Subject => {
             let label = verb_slot(&verb.label);
-            line.plain(format!("{label} ")).note(&relation.object);
+            line.plain(format!("{label} ")).entry(&relation.object);
             line.qualifiers(&relation.qualifiers, None);
             (Section::Relations, label, false)
         }
@@ -400,7 +400,7 @@ fn render(
             } else {
                 (format!("← {}", verb_slot(&verb.label)), true)
             };
-            line.plain(format!("{label} ")).note(&relation.subject);
+            line.plain(format!("{label} ")).entry(&relation.subject);
             line.qualifiers(&relation.qualifiers, None);
             (Section::Relations, label, inverted)
         }
@@ -414,18 +414,18 @@ fn render(
                 Some(inverse) => {
                     let label = verb_slot(inverse);
                     line.plain(format!("{label} "))
-                        .note(&relation.subject)
+                        .entry(&relation.subject)
                         .plain(" → ")
-                        .note(&relation.object);
+                        .entry(&relation.object);
                     line.qualifiers(&relation.qualifiers, Some(&qualifier.id));
                     (Section::Relations, label, false)
                 }
                 None => {
                     let label = qualifier.label.label.clone();
                     line.plain(format!("{label} · "))
-                        .note(&relation.subject)
+                        .entry(&relation.subject)
                         .plain(format!(" {} ", verb_slot(&verb.label)))
-                        .note(&relation.object);
+                        .entry(&relation.object);
                     (Section::ReferencedBy, label, false)
                 }
             }
@@ -454,26 +454,26 @@ impl Line {
     fn plain(&mut self, text: impl Into<String>) -> &mut Self {
         self.segments.push(Segment {
             text: text.into(),
-            note_id: None,
+            entry_id: None,
         });
         self
     }
 
-    fn note(&mut self, note: &NoteRef) -> &mut Self {
+    fn entry(&mut self, entry: &EntryRef) -> &mut Self {
         self.segments.push(Segment {
-            text: note.title.clone(),
-            note_id: Some(note.id.clone()),
+            text: entry.title.clone(),
+            entry_id: Some(entry.id.clone()),
         });
         self
     }
 
-    /// ` · label value` for every qualifier except `skip`, note values linked.
+    /// ` · label value` for every qualifier except `skip`, entry values linked.
     fn qualifiers(&mut self, qualifiers: &[Qualifier], skip: Option<&QualifierId>) {
         for q in qualifiers.iter().filter(|q| Some(&q.id) != skip) {
             self.plain(format!(" · {} ", q.label.label));
             match &q.value {
-                QualifierValueView::Note(note) => {
-                    self.note(note);
+                QualifierValueView::Entry(entry) => {
+                    self.entry(entry);
                 }
                 other => {
                     self.plain(value_text(other));
@@ -493,7 +493,7 @@ fn verb_slot(label: &str) -> String {
 
 fn value_text(value: &QualifierValueView) -> String {
     match value {
-        QualifierValueView::Note(note) => note.title.clone(),
+        QualifierValueView::Entry(entry) => entry.title.clone(),
         QualifierValueView::Text(text) => text.clone(),
         QualifierValueView::Number(number) => number_text(*number),
     }
@@ -507,12 +507,12 @@ fn number_text(number: f64) -> String {
     }
 }
 
-pub(crate) fn load_note_ref(conn: &Connection, id: &NoteId) -> Result<NoteRef> {
+pub(crate) fn load_entry_ref(conn: &Connection, id: &EntryId) -> Result<EntryRef> {
     conn.query_row(
-        "SELECT id, guide_id, title, is_stub, deleted_at FROM note WHERE id = ?1",
+        "SELECT id, guide_id, title, is_stub, deleted_at FROM entry WHERE id = ?1",
         params![id],
         |row| {
-            Ok(NoteRef {
+            Ok(EntryRef {
                 id: row.get(0)?,
                 guide_id: row.get(1)?,
                 title: row.get(2)?,
@@ -522,20 +522,20 @@ pub(crate) fn load_note_ref(conn: &Connection, id: &NoteId) -> Result<NoteRef> {
         },
     )
     .optional()?
-    .ok_or_else(|| not_found("note", id))
+    .ok_or_else(|| not_found("entry", id))
 }
 
 pub(crate) fn load_relation(conn: &Connection, id: &RelationId) -> Result<Relation> {
-    let (subject_id, verb_id, object_id, created_at): (NoteId, VerbId, NoteId, String) = conn
+    let (subject_id, verb_id, object_id, created_at): (EntryId, VerbId, EntryId, String) = conn
         .query_row(
-            "SELECT subject_note_id, verb_id, object_note_id, created_at FROM relation WHERE id = ?1",
+            "SELECT subject_entry_id, verb_id, object_entry_id, created_at FROM relation WHERE id = ?1",
             params![id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .optional()?
         .ok_or_else(|| not_found("relation", id))?;
     let mut stmt = conn.prepare(
-        "SELECT id, qualifier_label_id, value_note_id, value_text, value_num, sort
+        "SELECT id, qualifier_label_id, value_entry_id, value_text, value_num, sort
          FROM relation_qualifier WHERE relation_id = ?1 ORDER BY sort, id",
     )?;
     let raw: Vec<QualifierRow> = stmt
@@ -543,7 +543,7 @@ pub(crate) fn load_relation(conn: &Connection, id: &RelationId) -> Result<Relati
             Ok(QualifierRow {
                 id: row.get(0)?,
                 label_id: row.get(1)?,
-                note_id: row.get(2)?,
+                entry_id: row.get(2)?,
                 text: row.get(3)?,
                 number: row.get(4)?,
                 sort: row.get(5)?,
@@ -552,8 +552,8 @@ pub(crate) fn load_relation(conn: &Connection, id: &RelationId) -> Result<Relati
         .collect::<rusqlite::Result<_>>()?;
     let mut qualifiers = Vec::with_capacity(raw.len());
     for row in raw {
-        let value = match (row.note_id, row.text, row.number) {
-            (Some(note_id), _, _) => QualifierValueView::Note(load_note_ref(conn, &note_id)?),
+        let value = match (row.entry_id, row.text, row.number) {
+            (Some(entry_id), _, _) => QualifierValueView::Entry(load_entry_ref(conn, &entry_id)?),
             (None, Some(text), _) => QualifierValueView::Text(text),
             (None, None, Some(number)) => QualifierValueView::Number(number),
             (None, None, None) => {
@@ -569,9 +569,9 @@ pub(crate) fn load_relation(conn: &Connection, id: &RelationId) -> Result<Relati
     }
     Ok(Relation {
         id: id.clone(),
-        subject: load_note_ref(conn, &subject_id)?,
+        subject: load_entry_ref(conn, &subject_id)?,
         verb: vocabulary::load_verb(conn, &verb_id)?,
-        object: load_note_ref(conn, &object_id)?,
+        object: load_entry_ref(conn, &object_id)?,
         qualifiers,
         created_at,
     })
@@ -581,7 +581,7 @@ pub(crate) fn load_relation(conn: &Connection, id: &RelationId) -> Result<Relati
 struct QualifierRow {
     id: QualifierId,
     label_id: QualifierLabelId,
-    note_id: Option<NoteId>,
+    entry_id: Option<EntryId>,
     text: Option<String>,
     number: Option<f64>,
     sort: i64,
@@ -601,17 +601,17 @@ fn relation_guide(conn: &Connection, id: &RelationId) -> Result<GuideId> {
 /// The stored edge for `(subject, verb, object)`, also matching the reverse for symmetric verbs.
 pub(crate) fn find_edge(
     conn: &Connection,
-    subject: &NoteId,
+    subject: &EntryId,
     verb_id: &VerbId,
-    object: &NoteId,
+    object: &EntryId,
     symmetric: bool,
 ) -> Result<Option<RelationId>> {
     Ok(conn
         .query_row(
             "SELECT id FROM relation
              WHERE verb_id = ?1
-               AND ((subject_note_id = ?2 AND object_note_id = ?3)
-                    OR (?4 AND subject_note_id = ?3 AND object_note_id = ?2))
+               AND ((subject_entry_id = ?2 AND object_entry_id = ?3)
+                    OR (?4 AND subject_entry_id = ?3 AND object_entry_id = ?2))
              LIMIT 1",
             params![verb_id, subject, object, symmetric],
             |row| row.get(0),
@@ -634,9 +634,9 @@ pub(crate) fn insert_qualifiers(
                 label.label
             )));
         }
-        let (note_id, text, number) = match &qualifier.value {
-            QualifierValue::Note(id) => {
-                let value = load_note_ref(conn, id)?;
+        let (entry_id, text, number) = match &qualifier.value {
+            QualifierValue::Entry(id) => {
+                let value = load_entry_ref(conn, id)?;
                 if value.deleted_at.is_some() {
                     return Err(Error::Invalid(format!(
                         "\"{}\" is in the trash; restore it first",
@@ -658,8 +658,8 @@ pub(crate) fn insert_qualifiers(
         let exists: bool = conn.query_row(
             "SELECT EXISTS (SELECT 1 FROM relation_qualifier
                             WHERE relation_id = ?1 AND qualifier_label_id = ?2
-                              AND value_note_id IS ?3 AND value_text IS ?4 AND value_num IS ?5)",
-            params![relation_id, label.id, note_id, text, number],
+                              AND value_entry_id IS ?3 AND value_text IS ?4 AND value_num IS ?5)",
+            params![relation_id, label.id, entry_id, text, number],
             |row| row.get(0),
         )?;
         if exists {
@@ -671,9 +671,9 @@ pub(crate) fn insert_qualifiers(
             |row| row.get(0),
         )?;
         conn.execute(
-            "INSERT INTO relation_qualifier (id, relation_id, qualifier_label_id, value_note_id, value_text, value_num, sort)
+            "INSERT INTO relation_qualifier (id, relation_id, qualifier_label_id, value_entry_id, value_text, value_num, sort)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![QualifierId::generate(), relation_id, label.id, note_id, text, number, sort],
+            params![QualifierId::generate(), relation_id, label.id, entry_id, text, number, sort],
         )?;
     }
     Ok(())
@@ -694,7 +694,7 @@ pub(crate) fn move_qualifiers(
         .map(|q| NewQualifier {
             label_id: q.label.id,
             value: match q.value {
-                QualifierValueView::Note(note) => QualifierValue::Note(note.id),
+                QualifierValueView::Entry(entry) => QualifierValue::Entry(entry.id),
                 QualifierValueView::Text(text) => QualifierValue::Text(text),
                 QualifierValueView::Number(number) => QualifierValue::Number(number),
             },
@@ -711,7 +711,7 @@ pub(crate) fn drop_duplicate_qualifiers(conn: &Connection, label: &QualifierLabe
              JOIN relation_qualifier earlier
                ON earlier.relation_id = later.relation_id
               AND earlier.qualifier_label_id = later.qualifier_label_id
-              AND earlier.value_note_id IS later.value_note_id
+              AND earlier.value_entry_id IS later.value_entry_id
               AND earlier.value_text IS later.value_text
               AND earlier.value_num IS later.value_num
               AND (earlier.sort < later.sort OR (earlier.sort = later.sort AND earlier.id < later.id))

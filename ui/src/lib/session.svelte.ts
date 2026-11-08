@@ -7,6 +7,6 @@ import type { RenameRecord, Startup, UiPrefs } from "./api";
 export const session = $state({
   startup: null as Startup | null,
   prefs: { guide_view: "cards" } as UiPrefs,
-  /** Most recent rename per note id. */
+  /** Most recent rename per entry id. */
   renames: {} as Record<string, RenameRecord>,
 });

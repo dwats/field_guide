@@ -1,6 +1,6 @@
 # Field Guide
 
-Local-only wiki for building up knowledge of a subject as you learn it: notes, nested tags, typed relations between notes, and an optional board view of those relations. Desktop app: Tauri 2 shell, Rust core, Svelte UI. No cloud. MIT licensed.
+Local-only wiki for building up knowledge of a subject as you learn it: entries, nested tags, typed relations between entries, and an optional board view of those relations. Desktop app: Tauri 2 shell, Rust core, Svelte UI. No cloud. MIT licensed.
 
 Read `docs/design.md` before touching the data model, relations, storage, or export code. `docs/plan.md` has the build order and the tests that gate each phase. Work phases in order unless told otherwise.
 
@@ -8,6 +8,7 @@ Read `docs/design.md` before touching the data model, relations, storage, or exp
 
 - Product and window title: "Field Guide" (two words, always).
 - Top-level unit the user creates: a guide. "Minecraft guide", "export this guide". Never "bucket" or "vault" in UI copy; the vault is the on-disk container and only appears in Settings.
+- Unit inside a guide: an entry. "New entry", "this entry has no body yet". Never "note", "article", or "page" in UI copy or code; a future scratchpad feature gets its own name.
 - Crate, binary, and config: `fieldguide`. If the crate name is taken on crates.io, use `fieldguide-app` for the published name and keep the binary `fieldguide`.
 - Bundle identifier: set in `tauri.conf.json`; use the owner's reverse-domain handle plus `.fieldguide`.
 
@@ -17,7 +18,7 @@ Read `docs/design.md` before touching the data model, relations, storage, or exp
 - No network access except the user-triggered "Check for updates" menu item, scoped to one release URL in the Tauri capability file. Nothing else may make a request, and nothing runs on startup.
 - No telemetry, no accounts, no background sync, no auto-update.
 - Data lives in the platform data directory by default. A file named `portable` next to the executable (next to the `.app` bundle on macOS, next to the AppImage on Linux) switches to portable mode, where everything including the webview profile lives beside the executable. Nothing is written outside the data directory in either mode. Never write inside a macOS `.app` bundle. See `docs/design.md` section 2.
-- Destructive actions are reversible or explicit: deleted notes go to Trash; media cleanup is a user action that shows what it will remove; renames rewrite links and keep the old title as an alias.
+- Destructive actions are reversible or explicit: deleted entries go to Trash; media cleanup is a user action that shows what it will remove; renames rewrite links and keep the old title as an alias.
 - Everything the user creates must round-trip through export and import without loss.
 
 ## Layout
@@ -49,7 +50,7 @@ Core tests run against in-memory SQLite. Export, import, backup, and data-direct
 ## Documentation style
 
 - Lead with the essential fact. Details follow.
-- No emojis in docs, comments, or UI copy. Note content must render them.
+- No emojis in docs, comments, or UI copy. Entry content must render them.
 - No filler words, no marketing voice, no restating what the code already says.
 - Record decisions and their reasons in `docs/design.md`.
 

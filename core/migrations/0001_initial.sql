@@ -1,4 +1,4 @@
--- Field Guide schema, version 1: guides, tags, notes, aliases, media, mentions, search.
+-- Field Guide schema, version 1: guides, tags, entries, aliases, media, mentions, search.
 -- Relations and boards arrive in later migrations.
 --
 -- *_norm columns hold the trimmed, Unicode-lowercased form of a name. They carry the
@@ -49,7 +49,7 @@ CREATE TABLE guide_tag (
     PRIMARY KEY (guide_id, tag_id)
 );
 
-CREATE TABLE note (
+CREATE TABLE entry (
     id         TEXT PRIMARY KEY,
     guide_id   TEXT NOT NULL REFERENCES guide(id) ON DELETE CASCADE,
     title      TEXT NOT NULL,
@@ -61,101 +61,101 @@ CREATE TABLE note (
     updated_at TEXT NOT NULL,
     UNIQUE (guide_id, title_norm)
 );
-CREATE INDEX note_guide_live ON note (guide_id, deleted_at);
+CREATE INDEX entry_guide_live ON entry (guide_id, deleted_at);
 
--- guide_id is copied from the note so the per-guide uniqueness can be a plain index.
-CREATE TABLE note_alias (
-    note_id    TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+-- guide_id is copied from the entry so the per-guide uniqueness can be a plain index.
+CREATE TABLE entry_alias (
+    entry_id    TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
     guide_id   TEXT NOT NULL REFERENCES guide(id) ON DELETE CASCADE,
     alias      TEXT NOT NULL,
     alias_norm TEXT NOT NULL,
-    PRIMARY KEY (note_id, alias_norm),
+    PRIMARY KEY (entry_id, alias_norm),
     UNIQUE (guide_id, alias_norm)
 );
 
 -- Titles and aliases share one namespace per guide. Core checks this before writing and
--- reports which note holds the name; these triggers are the backstop.
-CREATE TRIGGER note_alias_namespace BEFORE INSERT ON note_alias
+-- reports which entry holds the name; these triggers are the backstop.
+CREATE TRIGGER entry_alias_namespace BEFORE INSERT ON entry_alias
 BEGIN
-    SELECT RAISE(ABORT, 'alias collides with a note title')
-    WHERE EXISTS (SELECT 1 FROM note WHERE guide_id = NEW.guide_id AND title_norm = NEW.alias_norm);
+    SELECT RAISE(ABORT, 'alias collides with an entry title')
+    WHERE EXISTS (SELECT 1 FROM entry WHERE guide_id = NEW.guide_id AND title_norm = NEW.alias_norm);
 END;
 
-CREATE TRIGGER note_title_namespace_insert BEFORE INSERT ON note
+CREATE TRIGGER entry_title_namespace_insert BEFORE INSERT ON entry
 BEGIN
-    SELECT RAISE(ABORT, 'title collides with a note alias')
-    WHERE EXISTS (SELECT 1 FROM note_alias WHERE guide_id = NEW.guide_id AND alias_norm = NEW.title_norm);
+    SELECT RAISE(ABORT, 'title collides with an entry alias')
+    WHERE EXISTS (SELECT 1 FROM entry_alias WHERE guide_id = NEW.guide_id AND alias_norm = NEW.title_norm);
 END;
 
-CREATE TRIGGER note_title_namespace_update BEFORE UPDATE OF title_norm ON note
+CREATE TRIGGER entry_title_namespace_update BEFORE UPDATE OF title_norm ON entry
 BEGIN
-    SELECT RAISE(ABORT, 'title collides with a note alias')
-    WHERE EXISTS (SELECT 1 FROM note_alias WHERE guide_id = NEW.guide_id AND alias_norm = NEW.title_norm);
+    SELECT RAISE(ABORT, 'title collides with an entry alias')
+    WHERE EXISTS (SELECT 1 FROM entry_alias WHERE guide_id = NEW.guide_id AND alias_norm = NEW.title_norm);
 END;
 
-CREATE TABLE note_tag (
-    note_id TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+CREATE TABLE entry_tag (
+    entry_id TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
     tag_id  TEXT NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
-    PRIMARY KEY (note_id, tag_id)
+    PRIMARY KEY (entry_id, tag_id)
 );
-CREATE INDEX note_tag_tag ON note_tag (tag_id);
+CREATE INDEX entry_tag_tag ON entry_tag (tag_id);
 
 -- Gallery membership. Inline use is derived from the body.
-CREATE TABLE note_media (
-    note_id  TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+CREATE TABLE entry_media (
+    entry_id  TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
     media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
     sort     INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (note_id, media_id)
+    PRIMARY KEY (entry_id, media_id)
 );
 
--- Cache of [[wikilinks]] found in bodies: one row per distinct link text per note. target_note_id
--- is NULL while the text names nothing yet. It fills in when a note with that title or alias
+-- Cache of [[wikilinks]] found in bodies: one row per distinct link text per entry. target_entry_id
+-- is NULL while the text names nothing yet. It fills in when an entry with that title or alias
 -- appears, and empties again when the name goes away or the target is purged. Trashed targets
 -- stay linked so restore and rename keep working.
 CREATE TABLE mention (
-    note_id        TEXT NOT NULL REFERENCES note(id) ON DELETE CASCADE,
+    entry_id        TEXT NOT NULL REFERENCES entry(id) ON DELETE CASCADE,
     target_norm    TEXT NOT NULL,
-    target_note_id TEXT REFERENCES note(id) ON DELETE SET NULL,
-    PRIMARY KEY (note_id, target_norm)
+    target_entry_id TEXT REFERENCES entry(id) ON DELETE SET NULL,
+    PRIMARY KEY (entry_id, target_norm)
 );
-CREATE INDEX mention_target ON mention (target_note_id);
-CREATE INDEX mention_unresolved ON mention (target_norm) WHERE target_note_id IS NULL;
+CREATE INDEX mention_target ON mention (target_entry_id);
+CREATE INDEX mention_unresolved ON mention (target_norm) WHERE target_entry_id IS NULL;
 
--- Full-text index over title, aliases, and body. Kept in step by triggers; trashed notes are
--- filtered at query time by joining note.deleted_at.
-CREATE VIRTUAL TABLE notes_fts USING fts5(
-    note_id UNINDEXED,
+-- Full-text index over title, aliases, and body. Kept in step by triggers; trashed entries are
+-- filtered at query time by joining entry.deleted_at.
+CREATE VIRTUAL TABLE entries_fts USING fts5(
+    entry_id UNINDEXED,
     title,
     aliases,
     body,
     tokenize = 'unicode61 remove_diacritics 2'
 );
 
-CREATE TRIGGER notes_fts_insert AFTER INSERT ON note
+CREATE TRIGGER entries_fts_insert AFTER INSERT ON entry
 BEGIN
-    INSERT INTO notes_fts (note_id, title, aliases, body) VALUES (NEW.id, NEW.title, '', NEW.body_md);
+    INSERT INTO entries_fts (entry_id, title, aliases, body) VALUES (NEW.id, NEW.title, '', NEW.body_md);
 END;
 
-CREATE TRIGGER notes_fts_update AFTER UPDATE OF title, body_md ON note
+CREATE TRIGGER entries_fts_update AFTER UPDATE OF title, body_md ON entry
 BEGIN
-    UPDATE notes_fts SET title = NEW.title, body = NEW.body_md WHERE note_id = NEW.id;
+    UPDATE entries_fts SET title = NEW.title, body = NEW.body_md WHERE entry_id = NEW.id;
 END;
 
-CREATE TRIGGER notes_fts_delete AFTER DELETE ON note
+CREATE TRIGGER entries_fts_delete AFTER DELETE ON entry
 BEGIN
-    DELETE FROM notes_fts WHERE note_id = OLD.id;
+    DELETE FROM entries_fts WHERE entry_id = OLD.id;
 END;
 
-CREATE TRIGGER notes_fts_alias_insert AFTER INSERT ON note_alias
+CREATE TRIGGER entries_fts_alias_insert AFTER INSERT ON entry_alias
 BEGIN
-    UPDATE notes_fts
-    SET aliases = (SELECT coalesce(group_concat(alias, ' '), '') FROM note_alias WHERE note_id = NEW.note_id)
-    WHERE note_id = NEW.note_id;
+    UPDATE entries_fts
+    SET aliases = (SELECT coalesce(group_concat(alias, ' '), '') FROM entry_alias WHERE entry_id = NEW.entry_id)
+    WHERE entry_id = NEW.entry_id;
 END;
 
-CREATE TRIGGER notes_fts_alias_delete AFTER DELETE ON note_alias
+CREATE TRIGGER entries_fts_alias_delete AFTER DELETE ON entry_alias
 BEGIN
-    UPDATE notes_fts
-    SET aliases = (SELECT coalesce(group_concat(alias, ' '), '') FROM note_alias WHERE note_id = OLD.note_id)
-    WHERE note_id = OLD.note_id;
+    UPDATE entries_fts
+    SET aliases = (SELECT coalesce(group_concat(alias, ' '), '') FROM entry_alias WHERE entry_id = OLD.entry_id)
+    WHERE entry_id = OLD.entry_id;
 END;

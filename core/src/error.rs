@@ -3,7 +3,7 @@
 use std::fmt::Display;
 use std::path::PathBuf;
 
-use crate::NoteId;
+use crate::EntryId;
 
 /// Every failure the core can report. Variants carry what the UI needs to say something useful.
 #[derive(Debug, thiserror::Error)]
@@ -77,8 +77,8 @@ pub enum Error {
     InvalidName { kind: &'static str, reason: String },
 
     /// Titles and aliases share one namespace per guide.
-    #[error("\"{name}\" is already used by note {note_id} in this guide")]
-    NameTaken { name: String, note_id: NoteId },
+    #[error("\"{name}\" is already used by entry {entry_id} in this guide")]
+    NameTaken { name: String, entry_id: EntryId },
 
     #[error("a guide named \"{0}\" already exists")]
     GuideNameTaken(String),
@@ -104,7 +104,7 @@ pub enum Error {
     #[error("{0}")]
     Invalid(String),
 
-    #[error("note is not in the trash")]
+    #[error("entry is not in the trash")]
     NotTrashed,
 
     #[error("rename cannot be undone: {0}")]

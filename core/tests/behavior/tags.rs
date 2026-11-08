@@ -124,27 +124,27 @@ fn a_tag_from_another_guide_cannot_be_applied() {
     let g = guide(&mut v, "G");
     let h = guide(&mut v, "H");
     let foreign = v.ensure_tag_path(Some(&g), "Blocks").unwrap();
-    let n = note(&mut v, &h, "Note", "");
+    let n = entry(&mut v, &h, "Entry", "");
     assert!(matches!(
-        v.add_note_tag(&n, &foreign.id),
+        v.add_entry_tag(&n, &foreign.id),
         Err(Error::Invalid(_))
     ));
-    assert!(v.get_note(&n).unwrap().tag_ids.is_empty());
+    assert!(v.get_entry(&n).unwrap().tag_ids.is_empty());
 }
 
 #[test]
-fn deleting_a_tag_reparents_children_and_untags_notes() {
+fn deleting_a_tag_reparents_children_and_untags_entries() {
     let mut v = vault();
     let g = guide(&mut v, "G");
     let c = v.ensure_tag_path(Some(&g), "A/B/C").unwrap();
     let b = v.find_tag_by_path(Some(&g), "A/B").unwrap().unwrap();
-    let n = note(&mut v, &g, "Potion", "");
-    v.add_note_tag(&n, &b.id).unwrap();
-    v.add_note_tag(&n, &c.id).unwrap();
+    let n = entry(&mut v, &g, "Potion", "");
+    v.add_entry_tag(&n, &b.id).unwrap();
+    v.add_entry_tag(&n, &c.id).unwrap();
 
     v.delete_tag(&b.id).unwrap();
     assert_eq!(v.tag_path(&c.id).unwrap(), "A/C");
-    assert_eq!(v.get_note(&n).unwrap().tag_ids, from_ref(&c.id));
+    assert_eq!(v.get_entry(&n).unwrap().tag_ids, from_ref(&c.id));
     assert!(matches!(v.get_tag(&b.id), Err(Error::NotFound { .. })));
 }
 
@@ -155,31 +155,34 @@ fn deleting_a_tag_whose_child_collides_with_a_sibling_merges_them() {
     let inner = v.ensure_tag_path(Some(&g), "A/B/X").unwrap();
     let outer = v.ensure_tag_path(Some(&g), "A/X").unwrap();
     let b = v.find_tag_by_path(Some(&g), "A/B").unwrap().unwrap();
-    let n = note(&mut v, &g, "N", "");
-    v.add_note_tag(&n, &inner.id).unwrap();
+    let n = entry(&mut v, &g, "N", "");
+    v.add_entry_tag(&n, &inner.id).unwrap();
 
     v.delete_tag(&b.id).unwrap();
     assert!(matches!(v.get_tag(&inner.id), Err(Error::NotFound { .. })));
-    assert_eq!(v.get_note(&n).unwrap().tag_ids, from_ref(&outer.id));
+    assert_eq!(v.get_entry(&n).unwrap().tag_ids, from_ref(&outer.id));
 }
 
 #[test]
-fn merging_a_tag_retags_notes_carries_children_and_removes_it() {
+fn merging_a_tag_retags_entries_carries_children_and_removes_it() {
     let mut v = vault();
     let g = guide(&mut v, "G");
     let potions = v.ensure_tag_path(Some(&g), "Potions").unwrap();
     let potion = v.ensure_tag_path(Some(&g), "Potion").unwrap();
     let splash = v.ensure_tag_path(Some(&g), "Potion/Splash").unwrap();
-    let healing = note(&mut v, &g, "Healing", "");
-    v.add_note_tag(&healing, &potion.id).unwrap();
-    let strength = note(&mut v, &g, "Strength", "");
-    v.set_note_tags(&strength, &[potion.id.clone(), potions.id.clone()])
+    let healing = entry(&mut v, &g, "Healing", "");
+    v.add_entry_tag(&healing, &potion.id).unwrap();
+    let strength = entry(&mut v, &g, "Strength", "");
+    v.set_entry_tags(&strength, &[potion.id.clone(), potions.id.clone()])
         .unwrap();
 
     v.merge_tags(&potion.id, &potions.id).unwrap();
-    assert_eq!(v.get_note(&healing).unwrap().tag_ids, from_ref(&potions.id));
     assert_eq!(
-        v.get_note(&strength).unwrap().tag_ids,
+        v.get_entry(&healing).unwrap().tag_ids,
+        from_ref(&potions.id)
+    );
+    assert_eq!(
+        v.get_entry(&strength).unwrap().tag_ids,
         from_ref(&potions.id)
     );
     assert!(matches!(v.get_tag(&potion.id), Err(Error::NotFound { .. })));
@@ -197,11 +200,11 @@ fn browsing_a_tag_includes_every_descendant() {
     let c = v.ensure_tag_path(Some(&g), "A/B/C").unwrap();
     let a = v.find_tag_by_path(Some(&g), "A").unwrap().unwrap();
     let b = v.find_tag_by_path(Some(&g), "A/B").unwrap().unwrap();
-    let deep = note(&mut v, &g, "Deep", "");
-    v.add_note_tag(&deep, &c.id).unwrap();
-    let shallow = note(&mut v, &g, "Shallow", "");
-    v.add_note_tag(&shallow, &a.id).unwrap();
-    note(&mut v, &g, "Untagged", "");
+    let deep = entry(&mut v, &g, "Deep", "");
+    v.add_entry_tag(&deep, &c.id).unwrap();
+    let shallow = entry(&mut v, &g, "Shallow", "");
+    v.add_entry_tag(&shallow, &a.id).unwrap();
+    entry(&mut v, &g, "Untagged", "");
 
     let under = |tag: &TagId| browse_tag(&v, &g, tag);
     assert_eq!(under(&a.id), ["Deep", "Shallow"]);

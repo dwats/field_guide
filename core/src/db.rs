@@ -51,5 +51,19 @@ pub(crate) fn migrate(conn: &Connection) -> Result<()> {
         tx.pragma_update(None, "user_version", *version)?;
         tx.commit()?;
     }
+    // Pre-release vaults from before entries were called entries share this schema version but
+    // not these table names. There were no users then, so they are refused rather than migrated.
+    let has_entry_table: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entry')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_entry_table {
+        return Err(Error::Invalid(
+            "this vault was created by a pre-release build and cannot be opened; move or delete \
+             the vault folder and start Field Guide again"
+                .to_owned(),
+        ));
+    }
     Ok(())
 }

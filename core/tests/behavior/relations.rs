@@ -1,12 +1,12 @@
 use std::slice::from_ref;
 
-use fieldguide_core::note::NoteQuery;
+use fieldguide_core::entry::EntryQuery;
 use fieldguide_core::relation::{
     CreateRelation, Perspective, QualifierValue, QualifierValueView, RelationFilter, Section,
     Target,
 };
 use fieldguide_core::vocabulary::{Direction, NewVerb};
-use fieldguide_core::{Error, GuideId, NoteId, QualifierLabelId, Vault, VerbId};
+use fieldguide_core::{EntryId, Error, GuideId, QualifierLabelId, Vault, VerbId};
 
 use crate::common::*;
 
@@ -15,9 +15,9 @@ use crate::common::*;
 struct Fixture {
     v: Vault,
     g: GuideId,
-    stone: NoteId,
-    cobble: NoteId,
-    pickaxe: NoteId,
+    stone: EntryId,
+    cobble: EntryId,
+    pickaxe: EntryId,
     drops: VerbId,
     mined_with: QualifierLabelId,
 }
@@ -25,9 +25,9 @@ struct Fixture {
 fn fixture(verb_inverse: Option<&str>, qualifier_inverse: Option<&str>) -> Fixture {
     let mut v = vault();
     let g = guide(&mut v, "Minecraft");
-    let stone = note(&mut v, &g, "Stone Block", "");
-    let cobble = note(&mut v, &g, "Cobblestone Block", "");
-    let pickaxe = note(&mut v, &g, "Pickaxe", "");
+    let stone = entry(&mut v, &g, "Stone Block", "");
+    let cobble = entry(&mut v, &g, "Cobblestone Block", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
     let drops = verb(&mut v, &g, "DROPS", verb_inverse);
     let mined_with = qualifier_label(&mut v, &g, "mined with", qualifier_inverse);
     relate_with(
@@ -35,7 +35,7 @@ fn fixture(verb_inverse: Option<&str>, qualifier_inverse: Option<&str>) -> Fixtu
         &stone,
         &drops,
         &cobble,
-        vec![q_note(&mined_with, &pickaxe)],
+        vec![q_entry(&mined_with, &pickaxe)],
     );
     Fixture {
         v,
@@ -68,7 +68,7 @@ fn an_edge_entered_from_either_side_is_stored_once_in_canonical_direction() {
             origin: f.cobble.clone(),
             verb_id: matched.verb.id,
             direction: matched.direction,
-            target: Target::Note {
+            target: Target::Entry {
                 id: f.stone.clone(),
             },
             qualifiers: Vec::new(),
@@ -81,8 +81,8 @@ fn an_edge_entered_from_either_side_is_stored_once_in_canonical_direction() {
         1,
         "the existing edge kept its qualifier"
     );
-    assert_eq!(v.relations_for_note(&f.stone, &all()).unwrap().len(), 1);
-    assert_eq!(v.relations_for_note(&f.cobble, &all()).unwrap().len(), 1);
+    assert_eq!(v.relations_for_entry(&f.stone, &all()).unwrap().len(), 1);
+    assert_eq!(v.relations_for_entry(&f.cobble, &all()).unwrap().len(), 1);
 }
 
 #[test]
@@ -101,11 +101,11 @@ fn display_forms_follow_the_design_table() {
         views(&f.v, &f.pickaxe),
         ["MINES Stone Block → Cobblestone Block"]
     );
-    let on_pickaxe = f.v.relations_for_note(&f.pickaxe, &all()).unwrap();
+    let on_pickaxe = f.v.relations_for_entry(&f.pickaxe, &all()).unwrap();
     assert_eq!(on_pickaxe[0].perspective, Perspective::QualifierValue);
     assert_eq!(on_pickaxe[0].section, Section::Relations);
     assert_eq!(on_pickaxe[0].label, "MINES");
-    let on_cobble = f.v.relations_for_note(&f.cobble, &all()).unwrap();
+    let on_cobble = f.v.relations_for_entry(&f.cobble, &all()).unwrap();
     assert_eq!(on_cobble[0].perspective, Perspective::Object);
     assert_eq!(on_cobble[0].label, "DROPPED BY");
     assert!(!on_cobble[0].inverted);
@@ -120,7 +120,7 @@ fn display_forms_follow_the_design_table() {
         views(&f.v, &f.cobble),
         ["← DROPS Stone Block · mined with Pickaxe"]
     );
-    assert!(f.v.relations_for_note(&f.cobble, &all()).unwrap()[0].inverted);
+    assert!(f.v.relations_for_entry(&f.cobble, &all()).unwrap()[0].inverted);
     assert_eq!(
         views(&f.v, &f.pickaxe),
         ["MINES Stone Block → Cobblestone Block"]
@@ -136,7 +136,7 @@ fn display_forms_follow_the_design_table() {
         views(&f.v, &f.pickaxe),
         ["mined with · Stone Block DROPS Cobblestone Block"]
     );
-    let on_pickaxe = f.v.relations_for_note(&f.pickaxe, &all()).unwrap();
+    let on_pickaxe = f.v.relations_for_entry(&f.pickaxe, &all()).unwrap();
     assert_eq!(on_pickaxe[0].section, Section::ReferencedBy);
     assert_eq!(on_pickaxe[0].label, "mined with");
 
@@ -160,8 +160,8 @@ fn display_forms_follow_the_design_table() {
 fn symmetric_verbs_read_the_same_from_both_sides() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let plains = note(&mut v, &g, "Plains", "");
-    let forest = note(&mut v, &g, "Forest", "");
+    let plains = entry(&mut v, &g, "Plains", "");
+    let forest = entry(&mut v, &g, "Forest", "");
     let adjacent = v
         .create_verb(
             &g,
@@ -180,8 +180,8 @@ fn symmetric_verbs_read_the_same_from_both_sides() {
     // Entered again from the other side: the stored edge is reused, direction as first stored.
     let again = relate(&mut v, &forest, &adjacent, &plains);
     assert_eq!(again.subject.id, plains);
-    assert_eq!(v.relations_for_note(&plains, &all()).unwrap().len(), 1);
-    assert_eq!(v.relations_for_note(&forest, &all()).unwrap().len(), 1);
+    assert_eq!(v.relations_for_entry(&plains, &all()).unwrap().len(), 1);
+    assert_eq!(v.relations_for_entry(&forest, &all()).unwrap().len(), 1);
     let matched = v.lookup_verb(&g, "ADJACENT TO").unwrap().unwrap();
     assert_eq!(matched.direction, Direction::Forward);
 }
@@ -190,23 +190,23 @@ fn symmetric_verbs_read_the_same_from_both_sides() {
 fn creating_an_existing_edge_merges_qualifiers_without_a_second_edge() {
     let f = fixture(Some("DROPPED BY"), Some("mines"));
     let mut v = f.v;
-    let drill = note(&mut v, &f.g, "Drill", "");
+    let drill = entry(&mut v, &f.g, "Drill", "");
     let merged = relate_with(
         &mut v,
         &f.stone,
         &f.drops,
         &f.cobble,
         vec![
-            q_note(&f.mined_with, &drill),
-            q_note(&f.mined_with, &f.pickaxe),
+            q_entry(&f.mined_with, &drill),
+            q_entry(&f.mined_with, &f.pickaxe),
         ],
     );
     let values: Vec<String> = merged
         .qualifiers
         .iter()
         .map(|q| match &q.value {
-            QualifierValueView::Note(note) => note.title.clone(),
-            other => panic!("expected a note value, got {other:?}"),
+            QualifierValueView::Entry(entry) => entry.title.clone(),
+            other => panic!("expected an entry value, got {other:?}"),
         })
         .collect();
     assert_eq!(
@@ -214,7 +214,7 @@ fn creating_an_existing_edge_merges_qualifiers_without_a_second_edge() {
         ["Pickaxe", "Drill"],
         "existing first, exact duplicate skipped"
     );
-    assert_eq!(v.relations_for_note(&f.stone, &all()).unwrap().len(), 1);
+    assert_eq!(v.relations_for_entry(&f.stone, &all()).unwrap().len(), 1);
     assert_eq!(
         views(&v, &f.stone),
         ["DROPS Cobblestone Block · mined with Pickaxe · mined with Drill"]
@@ -225,14 +225,14 @@ fn creating_an_existing_edge_merges_qualifiers_without_a_second_edge() {
 fn the_same_label_may_repeat_and_qualifier_order_is_kept() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let stone = note(&mut v, &g, "Stone", "");
-    let cobble = note(&mut v, &g, "Cobblestone", "");
-    let pickaxe = note(&mut v, &g, "Pickaxe", "");
-    let drill = note(&mut v, &g, "Drill", "");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let cobble = entry(&mut v, &g, "Cobblestone", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
+    let drill = entry(&mut v, &g, "Drill", "");
     let drops = verb(&mut v, &g, "DROPS", None);
     let mined_with = qualifier_label(&mut v, &g, "mined with", None);
     let below = qualifier_label(&mut v, &g, "below depth", None);
-    let remark = qualifier_label(&mut v, &g, "note", None);
+    let remark = qualifier_label(&mut v, &g, "entry", None);
 
     let edge = relate_with(
         &mut v,
@@ -240,16 +240,16 @@ fn the_same_label_may_repeat_and_qualifier_order_is_kept() {
         &drops,
         &cobble,
         vec![
-            q_note(&mined_with, &pickaxe),
+            q_entry(&mined_with, &pickaxe),
             q_num(&below, 12.0),
-            q_note(&mined_with, &drill),
+            q_entry(&mined_with, &drill),
             q_text(&remark, "  silk touch gives stone  "),
         ],
     );
     assert_eq!(
         views(&v, &stone),
         [
-            "DROPS Cobblestone · mined with Pickaxe · below depth 12 · mined with Drill · note silk touch gives stone"
+            "DROPS Cobblestone · mined with Pickaxe · below depth 12 · mined with Drill · entry silk touch gives stone"
         ]
     );
     let sorts: Vec<i64> = edge.qualifiers.iter().map(|q| q.sort).collect();
@@ -258,7 +258,9 @@ fn the_same_label_may_repeat_and_qualifier_order_is_kept() {
     v.remove_qualifier(&edge.qualifiers[1].id).unwrap();
     assert_eq!(
         views(&v, &stone),
-        ["DROPS Cobblestone · mined with Pickaxe · mined with Drill · note silk touch gives stone"]
+        [
+            "DROPS Cobblestone · mined with Pickaxe · mined with Drill · entry silk touch gives stone"
+        ]
     );
 }
 
@@ -269,7 +271,7 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
     let mobs = v.ensure_tag_path(Some(&g), "Mobs").unwrap();
     let loot = v.ensure_tag_path(Some(&g), "Items/Drops").unwrap();
     let blocks = v.ensure_tag_path(Some(&g), "Blocks").unwrap();
-    let zombie = note(&mut v, &g, "Zombie", "");
+    let zombie = entry(&mut v, &g, "Zombie", "");
     let drops = v
         .create_verb(
             &g,
@@ -312,7 +314,7 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
     // Suggestion accepted.
     let suggested = v.suggested_stub_tag(&drops, Direction::Forward).unwrap();
     let edge = stub(&mut v, Direction::Forward, "Rotten Flesh", suggested);
-    let flesh = v.get_note(&edge.object.id).unwrap();
+    let flesh = v.get_entry(&edge.object.id).unwrap();
     assert!(flesh.is_stub);
     assert_eq!(flesh.title, "Rotten Flesh");
     assert!(flesh.body_md.is_empty());
@@ -327,34 +329,34 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
         Some(blocks.id.clone()),
     );
     assert_eq!(
-        v.get_note(&edge.object.id).unwrap().tag_ids,
+        v.get_entry(&edge.object.id).unwrap().tag_ids,
         from_ref(&blocks.id)
     );
     let edge = stub(&mut v, Direction::Forward, "Carrot", None);
-    assert!(v.get_note(&edge.object.id).unwrap().tag_ids.is_empty());
+    assert!(v.get_entry(&edge.object.id).unwrap().tag_ids.is_empty());
 
     // A stub on the subject side ("Zombie DROPPED BY Husk") gets the subject default.
     let suggested = v.suggested_stub_tag(&drops, Direction::Inverse).unwrap();
     let edge = stub(&mut v, Direction::Inverse, "Husk", suggested);
     assert_eq!(edge.object.id, zombie);
-    let husk = v.get_note(&edge.subject.id).unwrap();
+    let husk = v.get_entry(&edge.subject.id).unwrap();
     assert!(husk.is_stub);
     assert_eq!(husk.tag_ids, from_ref(&mobs.id));
 
-    let stubs_only = NoteQuery {
+    let stubs_only = EntryQuery {
         stubs_only: true,
-        ..NoteQuery::default()
+        ..EntryQuery::default()
     };
     assert_eq!(
-        titles(&v.list_notes(&g, &stubs_only).unwrap()),
+        titles(&v.list_entries(&g, &stubs_only).unwrap()),
         ["Carrot", "Husk", "Iron Ingot", "Rotten Flesh"]
     );
 
     // A body edit clears the flag; a colliding stub title is refused like any title.
-    v.update_note_body(&flesh.id, "Dropped by zombies.")
+    v.update_entry_body(&flesh.id, "Dropped by zombies.")
         .unwrap();
-    assert!(!v.get_note(&flesh.id).unwrap().is_stub);
-    assert_eq!(v.list_notes(&g, &stubs_only).unwrap().len(), 3);
+    assert!(!v.get_entry(&flesh.id).unwrap().is_stub);
+    assert_eq!(v.list_entries(&g, &stubs_only).unwrap().len(), 3);
     assert!(matches!(
         v.create_relation(CreateRelation {
             origin: zombie.clone(),
@@ -374,16 +376,16 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
 fn trash_hides_edges_and_qualifiers_restore_shows_them_and_purge_deletes_them() {
     let f = fixture(Some("DROPPED BY"), Some("mines"));
     let mut v = f.v;
-    let edge = v.relations_for_note(&f.stone, &all()).unwrap()[0]
+    let edge = v.relations_for_entry(&f.stone, &all()).unwrap()[0]
         .relation
         .id
         .clone();
 
     // Trashing the qualifier value hides the qualifier, not the edge.
-    v.trash_note(&f.pickaxe).unwrap();
+    v.trash_entry(&f.pickaxe).unwrap();
     assert_eq!(views(&v, &f.stone), ["DROPS Cobblestone Block"]);
     assert!(views(&v, &f.pickaxe).is_empty());
-    v.restore_note(&f.pickaxe).unwrap();
+    v.restore_entry(&f.pickaxe).unwrap();
     assert_eq!(
         views(&v, &f.stone),
         ["DROPS Cobblestone Block · mined with Pickaxe"]
@@ -394,7 +396,7 @@ fn trash_hides_edges_and_qualifiers_restore_shows_them_and_purge_deletes_them() 
     );
 
     // Trashing an endpoint hides the edge from both ends and from the value's page.
-    v.trash_note(&f.cobble).unwrap();
+    v.trash_entry(&f.cobble).unwrap();
     assert!(views(&v, &f.stone).is_empty());
     assert!(views(&v, &f.cobble).is_empty());
     assert!(views(&v, &f.pickaxe).is_empty());
@@ -403,31 +405,31 @@ fn trash_hides_edges_and_qualifiers_restore_shows_them_and_purge_deletes_them() 
         1,
         "kept, only hidden"
     );
-    v.restore_note(&f.cobble).unwrap();
+    v.restore_entry(&f.cobble).unwrap();
     assert_eq!(
         views(&v, &f.cobble),
         ["DROPPED BY Stone Block · mined with Pickaxe"]
     );
 
     // Purging the value deletes the qualifier; purging an endpoint deletes the edge.
-    v.trash_note(&f.pickaxe).unwrap();
-    v.purge_note(&f.pickaxe).unwrap();
+    v.trash_entry(&f.pickaxe).unwrap();
+    v.purge_entry(&f.pickaxe).unwrap();
     assert!(v.get_relation(&edge).unwrap().qualifiers.is_empty());
     assert_eq!(views(&v, &f.stone), ["DROPS Cobblestone Block"]);
-    v.trash_note(&f.cobble).unwrap();
-    v.purge_note(&f.cobble).unwrap();
+    v.trash_entry(&f.cobble).unwrap();
+    v.purge_entry(&f.cobble).unwrap();
     assert!(matches!(v.get_relation(&edge), Err(Error::NotFound { .. })));
     assert!(views(&v, &f.stone).is_empty());
 
-    // Trashed notes cannot take part in new edges.
-    let ore = note(&mut v, &f.g, "Ore", "");
-    v.trash_note(&ore).unwrap();
+    // Trashed entries cannot take part in new edges.
+    let ore = entry(&mut v, &f.g, "Ore", "");
+    v.trash_entry(&ore).unwrap();
     assert!(matches!(
         v.create_relation(CreateRelation {
             origin: f.stone.clone(),
             verb_id: f.drops.clone(),
             direction: Direction::Forward,
-            target: Target::Note { id: ore.clone() },
+            target: Target::Entry { id: ore.clone() },
             qualifiers: Vec::new(),
         }),
         Err(Error::Invalid(_))
@@ -439,19 +441,19 @@ fn cross_guide_edges_are_external_and_use_the_origin_guides_verb() {
     let mut v = vault();
     let g = guide(&mut v, "Minecraft");
     let h = guide(&mut v, "Terraria");
-    let stone = note(&mut v, &g, "Stone", "");
-    let ore = note(&mut v, &h, "Copper Ore", "");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let ore = entry(&mut v, &h, "Copper Ore", "");
     let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
 
     let edge = relate(&mut v, &stone, &drops, &ore);
     assert_eq!(edge.verb.guide_id, g);
     assert!(views(&v, &stone).is_empty(), "same-guide view hides it");
     assert!(views(&v, &ore).is_empty());
-    let from_stone = v.relations_for_note(&stone, &all()).unwrap();
+    let from_stone = v.relations_for_entry(&stone, &all()).unwrap();
     assert_eq!(from_stone.len(), 1);
     assert!(from_stone[0].external);
     assert_eq!(from_stone[0].text, "DROPS Copper Ore");
-    let from_ore = v.relations_for_note(&ore, &all()).unwrap();
+    let from_ore = v.relations_for_entry(&ore, &all()).unwrap();
     assert_eq!(from_ore.len(), 1);
     assert!(from_ore[0].external);
     assert_eq!(from_ore[0].text, "DROPPED BY Stone");
@@ -462,7 +464,7 @@ fn cross_guide_edges_are_external_and_use_the_origin_guides_verb() {
             origin: ore.clone(),
             verb_id: drops.clone(),
             direction: Direction::Forward,
-            target: Target::Note { id: stone.clone() },
+            target: Target::Entry { id: stone.clone() },
             qualifiers: Vec::new(),
         }),
         Err(Error::Invalid(_))
@@ -486,26 +488,29 @@ fn cross_guide_edges_are_external_and_use_the_origin_guides_verb() {
 fn mentions_are_not_relations() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let oak = note(&mut v, &g, "Oak Log", "");
-    let planks = note(&mut v, &g, "Planks", "from [[Oak Log]]");
+    let oak = entry(&mut v, &g, "Oak Log", "");
+    let planks = entry(&mut v, &g, "Planks", "from [[Oak Log]]");
     assert_eq!(titles(&v.mentions_from(&planks).unwrap()), ["Oak Log"]);
     assert_eq!(titles(&v.mentioned_by(&oak).unwrap()), ["Planks"]);
-    assert!(v.relations_for_note(&planks, &all()).unwrap().is_empty());
-    assert!(v.relations_for_note(&oak, &all()).unwrap().is_empty());
+    assert!(v.relations_for_entry(&planks, &all()).unwrap().is_empty());
+    assert!(v.relations_for_entry(&oak, &all()).unwrap().is_empty());
 
-    v.update_note_body(&planks, "from wood").unwrap();
+    v.update_entry_body(&planks, "from wood").unwrap();
     assert!(v.mentions_from(&planks).unwrap().is_empty());
     assert!(v.mentioned_by(&oak).unwrap().is_empty());
 }
 
 #[test]
-fn typed_qualifier_values_resolve_to_notes_numbers_or_text() {
+fn typed_qualifier_values_resolve_to_entries_numbers_or_text() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let pickaxe = note(&mut v, &g, "Pickaxe", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
     v.add_alias(&pickaxe, "Pick").unwrap();
     let resolve = |v: &Vault, text: &str| v.resolve_qualifier_value(&g, text).unwrap();
-    assert_eq!(resolve(&v, " pick "), QualifierValue::Note(pickaxe.clone()));
+    assert_eq!(
+        resolve(&v, " pick "),
+        QualifierValue::Entry(pickaxe.clone())
+    );
     assert_eq!(resolve(&v, "12"), QualifierValue::Number(12.0));
     assert_eq!(resolve(&v, "-0.5"), QualifierValue::Number(-0.5));
     assert_eq!(
@@ -513,7 +518,7 @@ fn typed_qualifier_values_resolve_to_notes_numbers_or_text() {
         QualifierValue::Text("night only".to_owned())
     );
     assert_eq!(resolve(&v, "NaN"), QualifierValue::Text("NaN".to_owned()));
-    v.trash_note(&pickaxe).unwrap();
+    v.trash_entry(&pickaxe).unwrap();
     assert_eq!(
         resolve(&v, "Pickaxe"),
         QualifierValue::Text("Pickaxe".to_owned())
@@ -524,7 +529,7 @@ fn typed_qualifier_values_resolve_to_notes_numbers_or_text() {
 fn edges_and_qualifiers_can_be_edited_and_removed() {
     let f = fixture(Some("DROPPED BY"), Some("mines"));
     let mut v = f.v;
-    let edge = v.relations_for_note(&f.stone, &all()).unwrap()[0]
+    let edge = v.relations_for_entry(&f.stone, &all()).unwrap()[0]
         .relation
         .id
         .clone();
@@ -558,12 +563,12 @@ fn edges_and_qualifiers_can_be_edited_and_removed() {
 fn a_stub_made_for_a_qualifier_value_reads_the_edge_from_its_own_page() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let stone = note(&mut v, &g, "Stone Block", "");
-    let cobble = note(&mut v, &g, "Cobblestone Block", "");
+    let stone = entry(&mut v, &g, "Stone Block", "");
+    let cobble = entry(&mut v, &g, "Cobblestone Block", "");
     let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
     let mined_with = qualifier_label(&mut v, &g, "mined with", Some("mines"));
 
-    let pickaxe = v.create_stub_note(&g, "Pickaxe", None).unwrap();
+    let pickaxe = v.create_stub_entry(&g, "Pickaxe", None).unwrap();
     assert!(pickaxe.is_stub);
     assert_eq!(pickaxe.body_md, "");
 
@@ -572,14 +577,14 @@ fn a_stub_made_for_a_qualifier_value_reads_the_edge_from_its_own_page() {
         &stone,
         &drops,
         &cobble,
-        vec![q_note(&mined_with, &pickaxe.id)],
+        vec![q_entry(&mined_with, &pickaxe.id)],
     );
     assert_eq!(
         views(&v, &pickaxe.id),
         ["MINES Stone Block → Cobblestone Block"]
     );
     assert_eq!(
-        v.lookup_note(&g, "pickaxe").unwrap().map(|s| s.id),
+        v.lookup_entry(&g, "pickaxe").unwrap().map(|s| s.id),
         Some(pickaxe.id.clone())
     );
 }

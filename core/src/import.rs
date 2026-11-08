@@ -16,16 +16,16 @@ use crate::archive::{
     VerbFile,
 };
 use crate::board::{BoardFilters, BoardNode};
+use crate::entry;
 use crate::frontmatter;
 use crate::guide::NewGuide;
 use crate::media::{self, NewMedia};
 use crate::names::normalize;
-use crate::note;
 use crate::relation::{self, NewQualifier, QualifierValue};
 use crate::similarity::{self, Similarity};
 use crate::vocabulary::{NewQualifierLabel, NewVerb};
 use crate::{
-    Error, GuideId, NoteId, QualifierLabelId, RelationId, Result, TagId, Vault, VerbId, clock,
+    EntryId, Error, GuideId, QualifierLabelId, RelationId, Result, TagId, Vault, VerbId, clock,
     fsutil, wikilink,
 };
 
@@ -44,13 +44,13 @@ pub struct ArchiveGuide {
     pub tags: Vec<TagTree>,
     pub verbs: Vec<VerbFile>,
     pub qualifier_labels: Vec<QualifierLabelFile>,
-    pub notes: Vec<ArchiveNote>,
+    pub entries: Vec<ArchiveEntry>,
     pub relations: Vec<RelationLine>,
     pub boards: Vec<BoardFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArchiveNote {
+pub struct ArchiveEntry {
     pub id: String,
     pub title: String,
     pub aliases: Vec<String>,
@@ -87,7 +87,7 @@ pub struct ArchiveSummary {
 pub struct ArchiveGuideSummary {
     pub id: String,
     pub name: String,
-    pub notes: usize,
+    pub entries: usize,
     pub relations: usize,
     pub boards: usize,
 }
@@ -105,7 +105,7 @@ impl Archive {
                 .map(|g| ArchiveGuideSummary {
                     id: g.guide.id.clone(),
                     name: g.guide.name.clone(),
-                    notes: g.notes.len(),
+                    entries: g.entries.len(),
                     relations: g.relations.len(),
                     boards: g.boards.len(),
                 })
@@ -151,16 +151,16 @@ pub fn read_archive(path: &Path) -> Result<Archive> {
         let qualifier_labels: Vec<QualifierLabelFile> =
             read_json_or_default(&mut zip, &format!("{dir}/qualifiers.json"))?;
 
-        let mut notes = Vec::new();
-        let notes_prefix = format!("{dir}/notes/");
+        let mut entries = Vec::new();
+        let entries_prefix = format!("{dir}/entries/");
         for name in names
             .iter()
-            .filter(|n| n.starts_with(&notes_prefix) && n.ends_with(".md"))
+            .filter(|n| n.starts_with(&entries_prefix) && n.ends_with(".md"))
         {
             let text = read_string(&mut zip, name)?;
             let (front, body) =
                 frontmatter::parse(&text).map_err(|e| Error::Archive(format!("{name}: {e}")))?;
-            notes.push(ArchiveNote {
+            entries.push(ArchiveEntry {
                 id: front.id,
                 title: front.title,
                 aliases: front.aliases,
@@ -172,7 +172,7 @@ pub fn read_archive(path: &Path) -> Result<Archive> {
                 body,
             });
         }
-        notes.sort_by(|a, b| a.id.cmp(&b.id));
+        entries.sort_by(|a, b| a.id.cmp(&b.id));
 
         let relations_entry = format!("{dir}/relations.jsonl");
         let mut relations = Vec::new();
@@ -204,7 +204,7 @@ pub fn read_archive(path: &Path) -> Result<Archive> {
             tags,
             verbs,
             qualifier_labels,
-            notes,
+            entries,
             relations,
             boards,
         });
@@ -254,7 +254,7 @@ pub struct GuideChoice {
     pub archive_guide_id: String,
     #[serde(default)]
     pub target: Option<GuideTarget>,
-    /// A tag in the target guide to add to every imported note.
+    /// A tag in the target guide to add to every imported entry.
     #[serde(default)]
     pub add_tag: Option<TagId>,
 }
@@ -316,11 +316,11 @@ pub struct ImportOptions {
 pub struct ImportReport {
     pub guides_created: Vec<String>,
     pub guides_updated: Vec<String>,
-    pub notes_created: usize,
-    pub notes_updated: usize,
-    /// Notes whose local copy was newer than the archive's and was kept.
-    pub notes_skipped_older: Vec<String>,
-    pub notes_renamed: Vec<RenamedNote>,
+    pub entries_created: usize,
+    pub entries_updated: usize,
+    /// Entries whose local copy was newer than the archive's and was kept.
+    pub entries_skipped_older: Vec<String>,
+    pub entries_renamed: Vec<RenamedEntry>,
     pub aliases_skipped: Vec<String>,
     pub tags_created: usize,
     pub verbs_created: usize,
@@ -329,7 +329,7 @@ pub struct ImportReport {
     pub relations_merged: usize,
     pub relations_unresolved: Vec<UnresolvedRelation>,
     pub stubs_created: usize,
-    /// Qualifier values that pointed at notes nothing could resolve; kept as the title text.
+    /// Qualifier values that pointed at entries nothing could resolve; kept as the title text.
     pub qualifier_values_kept_as_text: usize,
     pub boards_created: usize,
     /// Boards that already existed under the same name and had filters and positions replaced.
@@ -338,7 +338,7 @@ pub struct ImportReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RenamedNote {
+pub struct RenamedEntry {
     pub from: String,
     pub to: String,
 }
@@ -475,8 +475,8 @@ impl Vault {
         let result = self.atomically(|v| {
             let mut report = ImportReport::default();
             v.import_media_rows(archive, &mut report)?;
-            // Every guide's notes land before any relation or board is applied, so edges and
-            // positions that reach into another archive guide find their notes.
+            // Every guide's entries land before any relation or board is applied, so edges and
+            // positions that reach into another archive guide find their entries.
             let mut contexts = Vec::new();
             for ag in &archive.guides {
                 let mapping = plan
@@ -632,8 +632,8 @@ impl Vault {
         Ok(())
     }
 
-    /// Creates or finds the target guide and brings in its tags, vocabulary, and notes. Relations
-    /// and boards follow once every guide's notes exist.
+    /// Creates or finds the target guide and brings in its tags, vocabulary, and entries. Relations
+    /// and boards follow once every guide's entries exist.
     fn import_guide(
         &mut self,
         ag: &ArchiveGuide,
@@ -685,7 +685,7 @@ impl Vault {
         }
         self.import_tags(&ag.tags, None, "", mapping, &mut context, report)?;
         self.import_vocabulary(ag, mapping, &mut context, report)?;
-        self.import_notes(ag, &context, report)?;
+        self.import_entries(ag, &context, report)?;
         Ok(context)
     }
 
@@ -919,7 +919,7 @@ impl Vault {
         Ok(())
     }
 
-    fn import_notes(
+    fn import_entries(
         &mut self,
         ag: &ArchiveGuide,
         context: &GuideContext,
@@ -930,16 +930,16 @@ impl Vault {
             Update,
             Skip,
         }
-        // Decide every note's fate and final title before writing anything, so link rewrites
-        // for renamed notes can be applied to all incoming bodies.
+        // Decide every entry's fate and final title before writing anything, so link rewrites
+        // for renamed entries can be applied to all incoming bodies.
         let mut actions: Vec<(Action, String)> = Vec::new();
         let mut renames: Vec<(String, String)> = Vec::new();
         let mut claimed: Vec<String> = Vec::new();
-        for note in &ag.notes {
-            let id = NoteId(note.id.clone());
-            let action = match self.get_note(&id) {
+        for entry in &ag.entries {
+            let id = EntryId(entry.id.clone());
+            let action = match self.get_entry(&id) {
                 Ok(local) => {
-                    if note.updated > local.updated_at {
+                    if entry.updated > local.updated_at {
                         Action::Update
                     } else {
                         Action::Skip
@@ -950,97 +950,100 @@ impl Vault {
             };
             let title = match action {
                 Action::Create => {
-                    let holder =
-                        note::name_holder(self.conn(), &context.guide_id, &normalize(&note.title))?;
-                    if holder.is_none() && !claimed.contains(&normalize(&note.title)) {
-                        note.title.clone()
+                    let holder = entry::name_holder(
+                        self.conn(),
+                        &context.guide_id,
+                        &normalize(&entry.title),
+                    )?;
+                    if holder.is_none() && !claimed.contains(&normalize(&entry.title)) {
+                        entry.title.clone()
                     } else {
                         let conn = self.conn();
                         let guide_id = &context.guide_id;
                         let claimed_ref = &claimed;
                         let renamed =
-                            free_name(&format!("{} (imported)", note.title), |candidate| {
+                            free_name(&format!("{} (imported)", entry.title), |candidate| {
                                 claimed_ref.contains(&normalize(candidate))
-                                    || note::name_holder(conn, guide_id, &normalize(candidate))
+                                    || entry::name_holder(conn, guide_id, &normalize(candidate))
                                         .map(|h| h.is_some())
                                         .unwrap_or(true)
                             });
-                        renames.push((note.title.clone(), renamed.clone()));
+                        renames.push((entry.title.clone(), renamed.clone()));
                         renamed
                     }
                 }
                 Action::Update => {
-                    let local = self.get_note(&id)?;
-                    if normalize(&local.title) == normalize(&note.title) {
-                        note.title.clone()
+                    let local = self.get_entry(&id)?;
+                    if normalize(&local.title) == normalize(&entry.title) {
+                        entry.title.clone()
                     } else {
-                        match note::name_holder(
+                        match entry::name_holder(
                             self.conn(),
                             &local.guide_id,
-                            &normalize(&note.title),
+                            &normalize(&entry.title),
                         )? {
-                            None => note.title.clone(),
+                            None => entry.title.clone(),
                             Some(_) => {
-                                renames.push((note.title.clone(), local.title.clone()));
+                                renames.push((entry.title.clone(), local.title.clone()));
                                 local.title.clone()
                             }
                         }
                     }
                 }
-                Action::Skip => note.title.clone(),
+                Action::Skip => entry.title.clone(),
             };
             claimed.push(normalize(&title));
             actions.push((action, title));
         }
 
-        for (note, (action, title)) in ag.notes.iter().zip(actions) {
-            let id = NoteId(note.id.clone());
-            let mut body = note.body.clone();
+        for (entry, (action, title)) in ag.entries.iter().zip(actions) {
+            let id = EntryId(entry.id.clone());
+            let mut body = entry.body.clone();
             for (from, to) in &renames {
                 body = wikilink::rewrite_targets(&body, from, to).0;
             }
             match action {
                 Action::Skip => {
-                    report.notes_skipped_older.push(note.title.clone());
+                    report.entries_skipped_older.push(entry.title.clone());
                     continue;
                 }
                 Action::Create => {
-                    note::insert_imported(
+                    entry::insert_imported(
                         self.conn(),
-                        &note::ImportedNote {
+                        &entry::ImportedEntry {
                             id: &id,
                             guide_id: &context.guide_id,
                             title: &title,
                             body_md: &body,
-                            is_stub: note.stub,
-                            created_at: &note.created,
-                            updated_at: &note.updated,
+                            is_stub: entry.stub,
+                            created_at: &entry.created,
+                            updated_at: &entry.updated,
                         },
                     )?;
-                    report.notes_created += 1;
+                    report.entries_created += 1;
                 }
                 Action::Update => {
-                    note::overwrite_imported(
+                    entry::overwrite_imported(
                         self.conn(),
                         &id,
                         &title,
                         &body,
-                        note.stub,
-                        &note.updated,
+                        entry.stub,
+                        &entry.updated,
                     )?;
-                    report.notes_updated += 1;
+                    report.entries_updated += 1;
                 }
             }
-            if title != note.title {
-                report.notes_renamed.push(RenamedNote {
-                    from: note.title.clone(),
+            if title != entry.title {
+                report.entries_renamed.push(RenamedEntry {
+                    from: entry.title.clone(),
                     to: title.clone(),
                 });
             }
-            let skipped = note::replace_aliases(self.conn(), &id, &note.aliases)?;
+            let skipped = entry::replace_aliases(self.conn(), &id, &entry.aliases)?;
             report.aliases_skipped.extend(skipped);
 
-            let mut tags: Vec<TagId> = note
+            let mut tags: Vec<TagId> = entry
                 .tags
                 .iter()
                 .filter_map(|path| context.tags_by_path.get(path).cloned())
@@ -1050,12 +1053,12 @@ impl Vault {
             {
                 tags.push(tag.clone());
             }
-            let local_guide = self.get_note(&id)?.guide_id;
+            let local_guide = self.get_entry(&id)?.guide_id;
             if local_guide == context.guide_id {
-                self.set_note_tags(&id, &tags)?;
+                self.set_entry_tags(&id, &tags)?;
             }
 
-            for entry in &note.gallery {
+            for entry in &entry.gallery {
                 if let Some(sha256) = sha_from_entry(entry)
                     && let Some(media) = self.find_media_by_hash(&sha256)?
                 {
@@ -1063,7 +1066,7 @@ impl Vault {
                 }
             }
             // Tag and gallery writes bump updated_at; the archive's value is the truth.
-            note::set_updated_at(self.conn(), &id, &note.updated)?;
+            entry::set_updated_at(self.conn(), &id, &entry.updated)?;
         }
         Ok(())
     }
@@ -1102,12 +1105,12 @@ impl Vault {
                 else {
                     continue;
                 };
-                let value = if let Some(note_ref) = &q.note {
-                    match self.resolve_endpoint(note_ref, context, options, report)? {
-                        Some(id) => QualifierValue::Note(id),
+                let value = if let Some(entry_ref) = &q.entry {
+                    match self.resolve_endpoint(entry_ref, context, options, report)? {
+                        Some(id) => QualifierValue::Entry(id),
                         None => {
                             report.qualifier_values_kept_as_text += 1;
-                            QualifierValue::Text(note_ref.title.clone())
+                            QualifierValue::Text(entry_ref.title.clone())
                         }
                     }
                 } else if let Some(number) = q.number {
@@ -1132,7 +1135,7 @@ impl Vault {
                         wanted
                     };
                     self.conn().execute(
-                        "INSERT INTO relation (id, subject_note_id, verb_id, object_note_id, created_at)
+                        "INSERT INTO relation (id, subject_entry_id, verb_id, object_entry_id, created_at)
                          VALUES (?1, ?2, ?3, ?4, ?5)",
                         rusqlite::params![id, subject, verb.id, object, clock::now()],
                     )?;
@@ -1145,18 +1148,18 @@ impl Vault {
         Ok(())
     }
 
-    /// By id when the note exists, then by guide name and title, then as a stub when asked.
+    /// By id when the entry exists, then by guide name and title, then as a stub when asked.
     fn resolve_endpoint(
         &mut self,
         endpoint: &Endpoint,
         context: &GuideContext,
         options: &ImportOptions,
         report: &mut ImportReport,
-    ) -> Result<Option<NoteId>> {
+    ) -> Result<Option<EntryId>> {
         if let Some(id) = &endpoint.id {
-            let id = NoteId(id.clone());
-            if let Ok(note) = self.get_note(&id)
-                && note.deleted_at.is_none()
+            let id = EntryId(id.clone());
+            if let Ok(entry) = self.get_entry(&id)
+                && entry.deleted_at.is_none()
             {
                 return Ok(Some(id));
             }
@@ -1170,12 +1173,12 @@ impl Vault {
             None => Some(context.guide_id.clone()),
         };
         if let Some(guide_id) = &guide_id
-            && let Some(found) = self.lookup_note(guide_id, &endpoint.title)?
+            && let Some(found) = self.lookup_entry(guide_id, &endpoint.title)?
         {
             return Ok(Some(found.id));
         }
         if options.create_stubs_for_unresolved {
-            let stub = note::create_stub(self.conn(), &context.guide_id, &endpoint.title, None)?;
+            let stub = entry::create_stub(self.conn(), &context.guide_id, &endpoint.title, None)?;
             report.stubs_created += 1;
             return Ok(Some(stub));
         }
@@ -1198,7 +1201,7 @@ impl Vault {
             let board = match existing {
                 Some(board) => {
                     for node in self.board_layout(&board.id)? {
-                        self.remove_board_node(&board.id, &node.note_id)?;
+                        self.remove_board_node(&board.id, &node.entry_id)?;
                     }
                     report.boards_updated += 1;
                     board
@@ -1216,24 +1219,24 @@ impl Vault {
                     .filter_map(|p| context.tags_by_path.get(p).cloned())
                     .collect(),
                 text: file.filters.text.clone(),
-                topic_note_ids: Vec::new(),
+                topic_entry_ids: Vec::new(),
                 hops: file.filters.hops,
                 show_external: file.filters.show_external,
                 show_mentions: file.filters.show_mentions,
             };
-            for topic in &file.filters.topic_note_ids {
-                let id = NoteId(topic.clone());
-                if self.get_note(&id).is_ok() {
-                    filters.topic_note_ids.push(id);
+            for topic in &file.filters.topic_entry_ids {
+                let id = EntryId(topic.clone());
+                if self.get_entry(&id).is_ok() {
+                    filters.topic_entry_ids.push(id);
                 }
             }
             self.set_board_filters(&board.id, &filters)?;
             let mut nodes = Vec::new();
             for node in &file.nodes {
-                let id = NoteId(node.note_id.clone());
-                if self.get_note(&id).is_ok() {
+                let id = EntryId(node.entry_id.clone());
+                if self.get_entry(&id).is_ok() {
                     nodes.push(BoardNode {
-                        note_id: id,
+                        entry_id: id,
                         x: node.x,
                         y: node.y,
                     });
@@ -1437,14 +1440,14 @@ fn zip_error(e: zip::result::ZipError) -> Error {
 }
 
 /// Used by tests and the UI to list what an archive would add, without applying it.
-pub fn archive_note_titles(archive: &Archive) -> BTreeMap<String, Vec<String>> {
+pub fn archive_entry_titles(archive: &Archive) -> BTreeMap<String, Vec<String>> {
     archive
         .guides
         .iter()
         .map(|g| {
             (
                 g.guide.name.clone(),
-                g.notes.iter().map(|n| n.title.clone()).collect(),
+                g.entries.iter().map(|n| n.title.clone()).collect(),
             )
         })
         .collect()

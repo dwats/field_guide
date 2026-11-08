@@ -1,4 +1,4 @@
-//! Note front matter for archives: the fixed key set from `docs/design.md` section 7, written as
+//! Entry front matter for archives: the fixed key set from `docs/design.md` section 7, written as
 //! plain YAML and read back by core without a YAML library. A value is written plain when YAML
 //! reads it back unchanged and JSON-quoted otherwise, so any YAML tool sees the same values that
 //! core does, and core's parser only has to understand its own output.
@@ -19,7 +19,7 @@ pub(crate) struct FrontMatter {
 
 const FENCE: &str = "---";
 
-/// The note file: front matter, closing fence, then the body verbatim.
+/// The entry file: front matter, closing fence, then the body verbatim.
 pub(crate) fn write(front: &FrontMatter, body: &str) -> String {
     let mut out = String::with_capacity(body.len() + 256);
     out.push_str(FENCE);
@@ -38,13 +38,13 @@ pub(crate) fn write(front: &FrontMatter, body: &str) -> String {
     out
 }
 
-/// Splits a note file into its front matter and body. Unknown keys are ignored so a file from a
+/// Splits an entry file into its front matter and body. Unknown keys are ignored so a file from a
 /// newer build still reads; `format_version` in the manifest gates real incompatibilities.
 pub(crate) fn parse(text: &str) -> Result<(FrontMatter, String)> {
     let rest = text
         .strip_prefix("---\r\n")
         .or_else(|| text.strip_prefix("---\n"))
-        .ok_or_else(|| archive("note file does not start with a front matter fence"))?;
+        .ok_or_else(|| archive("entry file does not start with a front matter fence"))?;
     let mut front = FrontMatter::default();
     let mut offset = 0;
     loop {

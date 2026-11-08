@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn the_fallback_covers_titles_with_nothing_printable() {
-        assert_eq!(slugify("!!!", "note-018f"), "note-018f");
+        assert_eq!(slugify("!!!", "entry-018f"), "entry-018f");
         assert_eq!(slugify("", ""), "item");
     }
 

@@ -1,4 +1,4 @@
-//! Name rules shared by guides, tags, notes, aliases, and vocabulary.
+//! Name rules shared by guides, tags, entries, aliases, and vocabulary.
 
 use crate::{Error, Result};
 
@@ -25,8 +25,8 @@ fn single_line<'a>(kind: &'static str, raw: &'a str) -> Result<&'a str> {
     Ok(name)
 }
 
-/// Note titles and aliases: one line, and none of `[[`, `]]`, `|`, which would break wikilink syntax.
-pub(crate) fn clean_note_name(kind: &'static str, raw: &str) -> Result<String> {
+/// Entry titles and aliases: one line, and none of `[[`, `]]`, `|`, which would break wikilink syntax.
+pub(crate) fn clean_entry_name(kind: &'static str, raw: &str) -> Result<String> {
     let name = single_line(kind, raw)?;
     if name.contains("[[") || name.contains("]]") || name.contains('|') {
         return Err(invalid(kind, "must not contain [[, ]], or |"));

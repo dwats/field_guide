@@ -8,12 +8,12 @@ use tempfile::tempdir;
 use crate::common::*;
 
 #[test]
-fn a_backup_opens_and_holds_the_same_notes() {
+fn a_backup_opens_and_holds_the_same_entries() {
     let dir = tempdir().unwrap();
     let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
     let g = guide(&mut v, "G");
-    let stone = note(&mut v, &g, "Stone", "grey");
-    note(&mut v, &g, "Oak Log", "brown");
+    let stone = entry(&mut v, &g, "Stone", "grey");
+    entry(&mut v, &g, "Oak Log", "brown");
     let backups = dir.path().join("backups");
     assert!(backup::backup_due_today(&backups).unwrap());
 
@@ -25,7 +25,7 @@ fn a_backup_opens_and_holds_the_same_notes() {
 
     let copy = Vault::open(&info.path).unwrap();
     assert_eq!(browse(&copy, &g), ["Oak Log", "Stone"]);
-    assert_eq!(copy.get_note(&stone).unwrap().body_md, "grey");
+    assert_eq!(copy.get_entry(&stone).unwrap().body_md, "grey");
 }
 
 #[test]
@@ -54,13 +54,13 @@ fn backups_run_while_the_vault_is_being_written() {
     let dir = tempdir().unwrap();
     let mut v = Vault::open(&dir.path().join("vault.db")).unwrap();
     let g = guide(&mut v, "G");
-    note(&mut v, &g, "First", "");
+    entry(&mut v, &g, "First", "");
     let backups = dir.path().join("backups");
 
     let first = v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
-    note(&mut v, &g, "Second", "");
+    entry(&mut v, &g, "Second", "");
     let second = v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
-    note(&mut v, &g, "Third", "");
+    entry(&mut v, &g, "Third", "");
 
     assert_eq!(browse(&v, &g), ["First", "Second", "Third"]);
     assert_eq!(browse(&Vault::open(&first.path).unwrap(), &g), ["First"]);
@@ -76,10 +76,10 @@ fn restoring_a_backup_swaps_the_database_after_backing_up_the_current_one() {
     let db = dir.path().join("vault").join("vault.db");
     let mut v = Vault::open(&db).unwrap();
     let g = guide(&mut v, "G");
-    note(&mut v, &g, "First", "");
+    entry(&mut v, &g, "First", "");
     let backups = dir.path().join("backups");
     let snapshot = v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
-    note(&mut v, &g, "Second", "");
+    entry(&mut v, &g, "Second", "");
 
     let restored = v
         .restore_from_backup(&snapshot.path, &backups, BACKUPS_TO_KEEP)
@@ -99,7 +99,7 @@ fn restoring_from_a_file_that_is_not_a_database_changes_nothing() {
     let db = dir.path().join("vault.db");
     let mut v = Vault::open(&db).unwrap();
     let g = guide(&mut v, "G");
-    note(&mut v, &g, "First", "");
+    entry(&mut v, &g, "First", "");
     let bogus = dir.path().join("bogus.db");
     fs::write(&bogus, b"not a database").unwrap();
     let backups = dir.path().join("backups");
@@ -123,10 +123,10 @@ fn the_oldest_of_five_backups_can_be_restored() {
     let mut v = Vault::open(&db).unwrap();
     let g = guide(&mut v, "G");
     let backups = dir.path().join("backups");
-    note(&mut v, &g, "First", "");
+    entry(&mut v, &g, "First", "");
     let oldest = v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
     for title in ["Second", "Third", "Fourth", "Fifth"] {
-        note(&mut v, &g, title, "");
+        entry(&mut v, &g, title, "");
         v.backup(&backups, BACKUPS_TO_KEEP).unwrap();
     }
     assert_eq!(backup::list_backups(&backups).unwrap().len(), 5);

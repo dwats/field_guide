@@ -10,6 +10,7 @@ mod clock;
 pub mod config;
 pub mod datadir;
 mod db;
+pub mod entry;
 mod error;
 pub mod export;
 mod frontmatter;
@@ -20,7 +21,6 @@ pub mod import;
 pub mod markdown;
 pub mod media;
 pub mod names;
-pub mod note;
 pub mod relation;
 mod search;
 pub mod similarity;
@@ -33,6 +33,6 @@ pub mod wikilink;
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, Result};
 pub use ids::{
-    BoardId, GuideId, MediaId, NoteId, QualifierId, QualifierLabelId, RelationId, TagId, VerbId,
+    BoardId, EntryId, GuideId, MediaId, QualifierId, QualifierLabelId, RelationId, TagId, VerbId,
 };
 pub use vault::Vault;

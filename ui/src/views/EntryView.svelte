@@ -1,5 +1,5 @@
 <script lang="ts">
-  // A note: title with rename and undo, aliases, tags, the relation line and list, the rendered
+  // An entry: title with rename and undo, aliases, tags, the relation line and list, the rendered
   // body, and an editor with a live preview. Edits save on a short delay and when the page is left.
   import { onDestroy, untrack } from "svelte";
 
@@ -9,19 +9,19 @@
   import RelationBuilder from "../components/RelationBuilder.svelte";
   import RelationList from "../components/RelationList.svelte";
   import TagPicker from "../components/TagPicker.svelte";
-  import { api, errorMessage, type Guide, type Note, type NoteSummary, type Rendered } from "../lib/api";
+  import { api, errorMessage, type Guide, type Entry, type EntrySummary, type Rendered } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
   import { session } from "../lib/session.svelte";
 
   interface Props {
-    noteId: string;
+    entryId: string;
   }
-  let { noteId }: Props = $props();
+  let { entryId }: Props = $props();
 
-  let note = $state<Note | null>(null);
+  let entry = $state<Entry | null>(null);
   let guide = $state<Guide | null>(null);
   let rendered = $state<Rendered | null>(null);
-  let mentionedBy = $state<NoteSummary[]>([]);
+  let mentionedBy = $state<EntrySummary[]>([]);
   let mode = $state<"read" | "edit">("read");
   let draft = $state("");
   let saveState = $state<"saved" | "dirty" | "saving" | "error">("saved");
@@ -35,10 +35,10 @@
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const undoable = $derived(note ? session.renames[note.id] : undefined);
+  const undoable = $derived(entry ? session.renames[entry.id] : undefined);
 
   $effect(() => {
-    const id = noteId;
+    const id = entryId;
     untrack(() => void load(id));
   });
 
@@ -47,9 +47,9 @@
     mode = "read";
     renaming = false;
     try {
-      note = await api.getNote(id);
-      guide = await api.getGuide(note.guide_id);
-      draft = note.body_md;
+      entry = await api.getEntry(id);
+      guide = await api.getGuide(entry.guide_id);
+      draft = entry.body_md;
       await refresh();
       error = "";
     } catch (e) {
@@ -58,9 +58,9 @@
   }
 
   async function refresh() {
-    if (!note) return;
-    rendered = await api.renderNote(note.id);
-    mentionedBy = await api.mentionedBy(note.id);
+    if (!entry) return;
+    rendered = await api.renderEntry(entry.id);
+    mentionedBy = await api.mentionedBy(entry.id);
   }
 
   function onEditorChange(value: string) {
@@ -73,9 +73,9 @@
   }
 
   async function preview() {
-    if (!note) return;
+    if (!entry) return;
     try {
-      rendered = await api.renderMarkdown(note.guide_id, draft);
+      rendered = await api.renderMarkdown(entry.guide_id, draft);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -83,13 +83,13 @@
 
   async function save() {
     clearTimeout(saveTimer);
-    if (!note || draft === note.body_md) {
+    if (!entry || draft === entry.body_md) {
       if (saveState === "dirty") saveState = "saved";
       return;
     }
     saveState = "saving";
     try {
-      note = await api.updateNoteBody(note.id, draft);
+      entry = await api.updateEntryBody(entry.id, draft);
       saveState = "saved";
       error = "";
     } catch (e) {
@@ -98,7 +98,7 @@
     }
   }
 
-  /** Saves anything pending; used before leaving the note or switching to read mode. */
+  /** Saves anything pending; used before leaving the entry or switching to read mode. */
   async function flush() {
     clearTimeout(previewTimer);
     if (saveState === "dirty") await save();
@@ -113,46 +113,46 @@
   }
 
   function openRename() {
-    if (!note) return;
-    titleDraft = note.title;
+    if (!entry) return;
+    titleDraft = entry.title;
     renaming = true;
   }
 
   async function rename() {
-    if (!note) return;
+    if (!entry) return;
     const title = titleDraft.trim();
-    if (!title || title === note.title) {
+    if (!title || title === entry.title) {
       renaming = false;
       return;
     }
     try {
-      const record = await api.renameNote(note.id, title);
-      session.renames[note.id] = record;
+      const record = await api.renameEntry(entry.id, title);
+      session.renames[entry.id] = record;
       renaming = false;
       error = "";
-      await load(note.id);
+      await load(entry.id);
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
   async function undoRename() {
-    if (!note || !undoable) return;
+    if (!entry || !undoable) return;
     try {
       await api.undoRename(undoable);
-      delete session.renames[note.id];
-      await load(note.id);
+      delete session.renames[entry.id];
+      await load(entry.id);
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
   async function addAlias() {
-    if (!note) return;
+    if (!entry) return;
     const alias = aliasDraft.trim();
     if (!alias) return;
     try {
-      note = await api.addAlias(note.id, alias);
+      entry = await api.addAlias(entry.id, alias);
       aliasDraft = "";
       error = "";
     } catch (e) {
@@ -161,30 +161,30 @@
   }
 
   async function removeAlias(alias: string) {
-    if (!note) return;
+    if (!entry) return;
     try {
-      note = await api.removeAlias(note.id, alias);
+      entry = await api.removeAlias(entry.id, alias);
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
   async function setTags(ids: string[]) {
-    if (!note) return;
+    if (!entry) return;
     try {
-      note = await api.setNoteTags(note.id, ids);
+      entry = await api.setEntryTags(entry.id, ids);
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
   async function trash() {
-    if (!note) return;
-    if (!confirm(`Move "${note.title}" to the trash? It can be restored from Trash.`)) return;
+    if (!entry) return;
+    if (!confirm(`Move "${entry.title}" to the trash? It can be restored from Trash.`)) return;
     try {
       await flush();
-      const guideId = note.guide_id;
-      await api.trashNote(note.id);
+      const guideId = entry.guide_id;
+      await api.trashEntry(entry.id);
       navigate({ view: "guide", guideId });
     } catch (e) {
       error = errorMessage(e);
@@ -192,12 +192,12 @@
   }
 
   async function createFromLink(title: string) {
-    if (!note) return;
-    if (!confirm(`Create a note titled "${title}" in ${guide?.name ?? "this guide"}?`)) return;
+    if (!entry) return;
+    if (!confirm(`Create an entry titled "${title}" in ${guide?.name ?? "this guide"}?`)) return;
     try {
       await flush();
-      const created = await api.createNote(note.guide_id, title);
-      navigate({ view: "note", noteId: created.id });
+      const created = await api.createEntry(entry.guide_id, title);
+      navigate({ view: "entry", entryId: created.id });
     } catch (e) {
       error = errorMessage(e);
     }
@@ -206,8 +206,8 @@
   async function relationSaved() {
     relationsVersion += 1;
     // A stub may have been created or the body's links may now resolve.
-    if (note) {
-      note = await api.getNote(note.id);
+    if (entry) {
+      entry = await api.getEntry(entry.id);
       await refresh();
     }
   }
@@ -215,20 +215,20 @@
   onDestroy(() => {
     clearTimeout(previewTimer);
     clearTimeout(saveTimer);
-    if (note && saveState === "dirty") void api.updateNoteBody(note.id, draft);
+    if (entry && saveState === "dirty") void api.updateEntryBody(entry.id, draft);
   });
 </script>
 
 <div class="page" class:wide={mode === "edit"}>
-  {#if note && guide}
+  {#if entry && guide}
     <p class="muted crumbs">
       <a href={routeHash({ view: "guides" })}>Guides</a> /
       <a href={routeHash({ view: "guide", guideId: guide.id })}>{guide.name}</a>
     </p>
 
     <div class="row header">
-      <h1>{note.title}</h1>
-      {#if note.is_stub}<span class="chip">stub</span>{/if}
+      <h1>{entry.title}</h1>
+      {#if entry.is_stub}<span class="chip">stub</span>{/if}
       <button class="link" onclick={openRename}>Rename</button>
       {#if undoable}
         <button class="link" onclick={undoRename}>Undo rename from "{undoable.old_title}"</button>
@@ -243,7 +243,7 @@
 
     <div class="row meta">
       <span class="muted">Aliases</span>
-      {#each note.aliases as alias (alias)}
+      {#each entry.aliases as alias (alias)}
         <span class="chip">
           {alias}
           <button onclick={() => removeAlias(alias)} aria-label="Remove alias">&times;</button>
@@ -260,10 +260,10 @@
     </div>
     <div class="row meta">
       <span class="muted">Tags</span>
-      <TagPicker scope={guide.id} selected={note.tag_ids} onchange={setTags} />
+      <TagPicker scope={guide.id} selected={entry.tag_ids} onchange={setTags} />
     </div>
 
-    <RelationBuilder {note} {guide} onsaved={relationSaved} />
+    <RelationBuilder {entry} {guide} onsaved={relationSaved} />
 
     {#if error}<p class="error">{error}</p>{/if}
 
@@ -280,20 +280,20 @@
             <Preview
               html={rendered.html}
               mediaDir={session.startup?.media_dir ?? null}
-              onnavigate={(id) => navigate({ view: "note", noteId: id })}
+              onnavigate={(id) => navigate({ view: "entry", entryId: id })}
               oncreate={createFromLink}
             />
           {/if}
         </div>
       </div>
     {:else if rendered}
-      {#if note.body_md.trim() === ""}
-        <p class="muted">This note has no body yet. Choose Edit to write one.</p>
+      {#if entry.body_md.trim() === ""}
+        <p class="muted">This entry has no body yet. Choose Edit to write one.</p>
       {:else}
         <Preview
           html={rendered.html}
           mediaDir={session.startup?.media_dir ?? null}
-          onnavigate={(id) => navigate({ view: "note", noteId: id })}
+          onnavigate={(id) => navigate({ view: "entry", entryId: id })}
           oncreate={createFromLink}
         />
       {/if}
@@ -301,25 +301,25 @@
 
     {#if rendered && rendered.unresolved_links.length > 0}
       <p class="muted">
-        Links to notes that do not exist yet: {rendered.unresolved_links.join(", ")}. Click one
+        Links to entries that do not exist yet: {rendered.unresolved_links.join(", ")}. Click one
         to create it.
       </p>
     {/if}
 
-    <RelationList noteId={note.id} guideId={guide.id} version={relationsVersion} />
+    <RelationList entryId={entry.id} guideId={guide.id} version={relationsVersion} />
 
     {#if mentionedBy.length > 0}
       <section class="mentions">
         <h2>Mentioned by</h2>
         <ul>
           {#each mentionedBy as m (m.id)}
-            <li><a href={routeHash({ view: "note", noteId: m.id })}>{m.title}</a></li>
+            <li><a href={routeHash({ view: "entry", entryId: m.id })}>{m.title}</a></li>
           {/each}
         </ul>
       </section>
     {/if}
 
-    <Modal open={renaming} title="Rename note" onclose={() => (renaming = false)}>
+    <Modal open={renaming} title="Rename entry" onclose={() => (renaming = false)}>
       <form
         onsubmit={(e) => {
           e.preventDefault();
@@ -332,7 +332,7 @@
           <input type="text" bind:value={titleDraft} required autofocus />
         </label>
         <p class="muted">
-          Links to this note are rewritten and the old title stays as an alias. Undo is available
+          Links to this entry are rewritten and the old title stays as an alias. Undo is available
           until Field Guide closes.
         </p>
       </form>

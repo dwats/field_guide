@@ -1,12 +1,12 @@
 use std::slice::from_ref;
 
 use fieldguide_core::media::NewMedia;
-use fieldguide_core::{Error, MediaId, NoteId, Vault};
+use fieldguide_core::{EntryId, Error, MediaId, Vault};
 
 use crate::common::*;
 
-fn gallery_ids(v: &Vault, note_id: &NoteId) -> Vec<MediaId> {
-    v.note_gallery(note_id)
+fn gallery_ids(v: &Vault, entry_id: &EntryId) -> Vec<MediaId> {
+    v.entry_gallery(entry_id)
         .unwrap()
         .into_iter()
         .map(|m| m.id)
@@ -54,7 +54,7 @@ fn media_is_deduplicated_by_hash() {
 fn a_gallery_keeps_its_order_and_a_file_can_be_moved_or_removed() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let n = note(&mut v, &g, "N", "");
+    let n = entry(&mut v, &g, "N", "");
     let first = media(&mut v, 0x01);
     let second = media(&mut v, 0x02);
 

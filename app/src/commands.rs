@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use fieldguide_core::backup::{self, BACKUPS_TO_KEEP, BackupInfo};
 use fieldguide_core::board::{Board, BoardFilters, BoardNode};
 use fieldguide_core::config::UiPrefs;
+use fieldguide_core::entry::{Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord};
 use fieldguide_core::export::{ExportReport, ExportScope};
 use fieldguide_core::guide::{Guide, GuideFilter, GuideUpdate, NewGuide};
 use fieldguide_core::import::{
@@ -16,7 +17,6 @@ use fieldguide_core::import::{
 };
 use fieldguide_core::markdown::Rendered;
 use fieldguide_core::media::{Media, MediaDimensions};
-use fieldguide_core::note::{NameMatch, NewNote, Note, NoteQuery, NoteSummary, RenameRecord};
 use fieldguide_core::relation::{
     CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, RelationView,
 };
@@ -25,7 +25,7 @@ use fieldguide_core::vocabulary::{
     Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb, VerbMatch, VocabularyCopy,
 };
 use fieldguide_core::{
-    BoardId, GuideId, MediaId, NoteId, QualifierId, QualifierLabelId, RelationId, TagId, Vault,
+    BoardId, EntryId, GuideId, MediaId, QualifierId, QualifierLabelId, RelationId, TagId, Vault,
     VerbId,
 };
 use tauri::State;
@@ -171,11 +171,11 @@ pub fn merge_tags(state: S<'_>, source: TagId, target: TagId) -> CmdResult<()> {
     state.with_vault(|v| v.merge_tags(&source, &target))
 }
 
-// ---- notes ----
+// ---- entries ----
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn create_note(state: S<'_>, new: NewNote) -> CmdResult<Note> {
-    state.with_vault(|v| v.create_note(new))
+pub fn create_entry(state: S<'_>, new: NewEntry) -> CmdResult<Entry> {
+    state.with_vault(|v| v.create_entry(new))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -184,71 +184,71 @@ pub fn create_stub(
     guide_id: GuideId,
     title: String,
     tag_id: Option<TagId>,
-) -> CmdResult<Note> {
-    state.with_vault(|v| v.create_stub_note(&guide_id, &title, tag_id.as_ref()))
+) -> CmdResult<Entry> {
+    state.with_vault(|v| v.create_stub_entry(&guide_id, &title, tag_id.as_ref()))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_note(state: S<'_>, id: NoteId) -> CmdResult<Note> {
-    state.with_vault(|v| v.get_note(&id))
+pub fn get_entry(state: S<'_>, id: EntryId) -> CmdResult<Entry> {
+    state.with_vault(|v| v.get_entry(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn update_note_body(state: S<'_>, id: NoteId, body_md: String) -> CmdResult<Note> {
-    state.with_vault(|v| v.update_note_body(&id, &body_md))
+pub fn update_entry_body(state: S<'_>, id: EntryId, body_md: String) -> CmdResult<Entry> {
+    state.with_vault(|v| v.update_entry_body(&id, &body_md))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn rename_note(state: S<'_>, id: NoteId, new_title: String) -> CmdResult<RenameRecord> {
-    state.with_vault(|v| v.rename_note(&id, &new_title))
+pub fn rename_entry(state: S<'_>, id: EntryId, new_title: String) -> CmdResult<RenameRecord> {
+    state.with_vault(|v| v.rename_entry(&id, &new_title))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn undo_rename(state: S<'_>, record: RenameRecord) -> CmdResult<Note> {
+pub fn undo_rename(state: S<'_>, record: RenameRecord) -> CmdResult<Entry> {
     state.with_vault(|v| v.undo_rename(&record))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn add_alias(state: S<'_>, id: NoteId, alias: String) -> CmdResult<Note> {
+pub fn add_alias(state: S<'_>, id: EntryId, alias: String) -> CmdResult<Entry> {
     state.with_vault(|v| v.add_alias(&id, &alias))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn remove_alias(state: S<'_>, id: NoteId, alias: String) -> CmdResult<Note> {
+pub fn remove_alias(state: S<'_>, id: EntryId, alias: String) -> CmdResult<Entry> {
     state.with_vault(|v| v.remove_alias(&id, &alias))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn set_note_tags(state: S<'_>, id: NoteId, tag_ids: Vec<TagId>) -> CmdResult<Note> {
-    state.with_vault(|v| v.set_note_tags(&id, &tag_ids))
+pub fn set_entry_tags(state: S<'_>, id: EntryId, tag_ids: Vec<TagId>) -> CmdResult<Entry> {
+    state.with_vault(|v| v.set_entry_tags(&id, &tag_ids))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn add_note_tag(state: S<'_>, id: NoteId, tag_id: TagId) -> CmdResult<Note> {
-    state.with_vault(|v| v.add_note_tag(&id, &tag_id))
+pub fn add_entry_tag(state: S<'_>, id: EntryId, tag_id: TagId) -> CmdResult<Entry> {
+    state.with_vault(|v| v.add_entry_tag(&id, &tag_id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn remove_note_tag(state: S<'_>, id: NoteId, tag_id: TagId) -> CmdResult<Note> {
-    state.with_vault(|v| v.remove_note_tag(&id, &tag_id))
+pub fn remove_entry_tag(state: S<'_>, id: EntryId, tag_id: TagId) -> CmdResult<Entry> {
+    state.with_vault(|v| v.remove_entry_tag(&id, &tag_id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn list_notes(
+pub fn list_entries(
     state: S<'_>,
     guide_id: GuideId,
-    query: NoteQuery,
-) -> CmdResult<Vec<NoteSummary>> {
-    state.with_vault(|v| v.list_notes(&guide_id, &query))
+    query: EntryQuery,
+) -> CmdResult<Vec<EntrySummary>> {
+    state.with_vault(|v| v.list_entries(&guide_id, &query))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn lookup_note(
+pub fn lookup_entry(
     state: S<'_>,
     guide_id: GuideId,
     text: String,
-) -> CmdResult<Option<NoteSummary>> {
-    state.with_vault(|v| v.lookup_note(&guide_id, &text))
+) -> CmdResult<Option<EntrySummary>> {
+    state.with_vault(|v| v.lookup_entry(&guide_id, &text))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -262,37 +262,37 @@ pub fn suggest_names(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn lookup_note_any_guide(state: S<'_>, text: String) -> CmdResult<Vec<NoteSummary>> {
-    state.with_vault(|v| v.lookup_note_any_guide(&text))
+pub fn lookup_entry_any_guide(state: S<'_>, text: String) -> CmdResult<Vec<EntrySummary>> {
+    state.with_vault(|v| v.lookup_entry_any_guide(&text))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn mentioned_by(state: S<'_>, id: NoteId) -> CmdResult<Vec<NoteSummary>> {
+pub fn mentioned_by(state: S<'_>, id: EntryId) -> CmdResult<Vec<EntrySummary>> {
     state.with_vault(|v| v.mentioned_by(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn mentions_from(state: S<'_>, id: NoteId) -> CmdResult<Vec<NoteSummary>> {
+pub fn mentions_from(state: S<'_>, id: EntryId) -> CmdResult<Vec<EntrySummary>> {
     state.with_vault(|v| v.mentions_from(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn trash_note(state: S<'_>, id: NoteId) -> CmdResult<NoteSummary> {
-    state.with_vault(|v| v.trash_note(&id))
+pub fn trash_entry(state: S<'_>, id: EntryId) -> CmdResult<EntrySummary> {
+    state.with_vault(|v| v.trash_entry(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn restore_note(state: S<'_>, id: NoteId) -> CmdResult<NoteSummary> {
-    state.with_vault(|v| v.restore_note(&id))
+pub fn restore_entry(state: S<'_>, id: EntryId) -> CmdResult<EntrySummary> {
+    state.with_vault(|v| v.restore_entry(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn purge_note(state: S<'_>, id: NoteId) -> CmdResult<()> {
-    state.with_vault(|v| v.purge_note(&id))
+pub fn purge_entry(state: S<'_>, id: EntryId) -> CmdResult<()> {
+    state.with_vault(|v| v.purge_entry(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn list_trash(state: S<'_>, guide_id: GuideId) -> CmdResult<Vec<NoteSummary>> {
+pub fn list_trash(state: S<'_>, guide_id: GuideId) -> CmdResult<Vec<EntrySummary>> {
     state.with_vault(|v| v.list_trash(&guide_id))
 }
 
@@ -304,8 +304,8 @@ pub fn empty_trash(state: S<'_>, guide_id: GuideId) -> CmdResult<usize> {
 // ---- rendering ----
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn render_note(state: S<'_>, id: NoteId) -> CmdResult<Rendered> {
-    state.with_vault(|v| v.render_note(&id))
+pub fn render_entry(state: S<'_>, id: EntryId) -> CmdResult<Rendered> {
+    state.with_vault(|v| v.render_entry(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -316,12 +316,12 @@ pub fn render_markdown(state: S<'_>, guide_id: GuideId, body: String) -> CmdResu
 // ---- relations ----
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn relations_for_note(
+pub fn relations_for_entry(
     state: S<'_>,
-    id: NoteId,
+    id: EntryId,
     filter: RelationFilter,
 ) -> CmdResult<Vec<RelationView>> {
-    state.with_vault(|v| v.relations_for_note(&id, &filter))
+    state.with_vault(|v| v.relations_for_entry(&id, &filter))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -502,8 +502,8 @@ pub fn set_board_positions(state: S<'_>, id: BoardId, nodes: Vec<BoardNode>) -> 
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn remove_board_node(state: S<'_>, id: BoardId, note_id: NoteId) -> CmdResult<()> {
-    state.with_vault(|v| v.remove_board_node(&id, &note_id))
+pub fn remove_board_node(state: S<'_>, id: BoardId, entry_id: EntryId) -> CmdResult<()> {
+    state.with_vault(|v| v.remove_board_node(&id, &entry_id))
 }
 
 // ---- media ----
@@ -514,23 +514,23 @@ pub fn get_media(state: S<'_>, id: MediaId) -> CmdResult<Media> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn note_gallery(state: S<'_>, note_id: NoteId) -> CmdResult<Vec<Media>> {
-    state.with_vault(|v| v.note_gallery(&note_id))
+pub fn entry_gallery(state: S<'_>, entry_id: EntryId) -> CmdResult<Vec<Media>> {
+    state.with_vault(|v| v.entry_gallery(&entry_id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn attach_media(
     state: S<'_>,
-    note_id: NoteId,
+    entry_id: EntryId,
     media_id: MediaId,
     sort: Option<i64>,
 ) -> CmdResult<()> {
-    state.with_vault(|v| v.attach_media(&note_id, &media_id, sort))
+    state.with_vault(|v| v.attach_media(&entry_id, &media_id, sort))
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn detach_media(state: S<'_>, note_id: NoteId, media_id: MediaId) -> CmdResult<()> {
-    state.with_vault(|v| v.detach_media(&note_id, &media_id))
+pub fn detach_media(state: S<'_>, entry_id: EntryId, media_id: MediaId) -> CmdResult<()> {
+    state.with_vault(|v| v.detach_media(&entry_id, &media_id))
 }
 
 /// Stores bytes as a media file. Phase 8 decides how large files cross the IPC boundary; until

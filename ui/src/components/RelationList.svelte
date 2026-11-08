@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The relation list on a note page: core's display lines grouped by the words in the verb
+  // The relation list on an entry page: core's display lines grouped by the words in the verb
   // slot, with "Referenced by" below. Qualifiers can be edited in place; an edge can be deleted.
   import { untrack } from "svelte";
 
@@ -14,17 +14,17 @@
   import { routeHash } from "../lib/router";
 
   interface Props {
-    noteId: string;
+    entryId: string;
     guideId: string;
     /** Bump to reload after the builder saves. */
     version: number;
   }
-  let { noteId, guideId, version }: Props = $props();
+  let { entryId, guideId, version }: Props = $props();
 
   interface QualifierRow {
     label_id: string;
     text: string;
-    /** Kept when the row is unchanged, so a note value stays a note value. */
+    /** Kept when the row is unchanged, so an entry value stays an entry value. */
     original?: { label_id: string; text: string; value: NewQualifier["value"] };
   }
 
@@ -35,7 +35,7 @@
   let error = $state("");
 
   $effect(() => {
-    void noteId;
+    void entryId;
     void version;
     const external = includeExternal;
     untrack(() => void load(external));
@@ -43,7 +43,7 @@
 
   async function load(external: boolean) {
     try {
-      views = await api.relationsForNote(noteId, external);
+      views = await api.relationsForEntry(entryId, external);
       labels = await api.listQualifierLabels(guideId);
       error = "";
     } catch (e) {
@@ -68,7 +68,7 @@
   const referencedBy = $derived(views.filter((v) => v.section === "referenced_by"));
 
   function valueText(value: Relation["qualifiers"][number]["value"]): string {
-    if (value.kind === "note") return value.value.title;
+    if (value.kind === "entry") return value.value.title;
     return String(value.value);
   }
 
@@ -78,8 +78,8 @@
       rows: relation.qualifiers.map((q) => {
         const text = valueText(q.value);
         const value: NewQualifier["value"] =
-          q.value.kind === "note"
-            ? { kind: "note", value: q.value.value.id }
+          q.value.kind === "entry"
+            ? { kind: "entry", value: q.value.value.id }
             : q.value.kind === "number"
               ? { kind: "number", value: q.value.value }
               : { kind: "text", value: q.value.value };
@@ -135,8 +135,8 @@
   <li class="line">
     <span class="text">
       {#each view.segments as seg, i (i)}
-        {#if seg.note_id && seg.note_id !== noteId}
-          <a href={routeHash({ view: "note", noteId: seg.note_id })}>{seg.text}</a>
+        {#if seg.entry_id && seg.entry_id !== entryId}
+          <a href={routeHash({ view: "entry", entryId: seg.entry_id })}>{seg.text}</a>
         {:else}
           {seg.text}
         {/if}
@@ -191,7 +191,7 @@
           <select bind:value={row.label_id}>
             {#each labels as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
-          <input type="text" bind:value={row.text} placeholder="Value: a note title, text, or number" />
+          <input type="text" bind:value={row.text} placeholder="Value: an entry title, text, or number" />
           <button class="link danger" onclick={() => removeRow(i)}>Remove</button>
         </div>
       {/each}

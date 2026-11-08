@@ -1,13 +1,13 @@
 <script lang="ts">
-  // One guide: header, note list with the live filter line, and the way into its tag editor.
+  // One guide: header, entry list with the live filter line, and the way into its tag editor.
   import { untrack } from "svelte";
 
   import Modal from "../components/Modal.svelte";
   import TagPicker from "../components/TagPicker.svelte";
-  import { api, errorMessage, type Guide, type NoteSummary } from "../lib/api";
+  import { api, errorMessage, type Guide, type EntrySummary } from "../lib/api";
   import { parseFilter } from "../lib/filter";
   import { navigate, routeHash } from "../lib/router";
-  import { findByPath, flattenTags, type TagEntry } from "../lib/tags";
+  import { findByPath, flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
     guideId: string;
@@ -15,8 +15,8 @@
   let { guideId }: Props = $props();
 
   let guide = $state<Guide | null>(null);
-  let tags = $state<TagEntry[]>([]);
-  let notes = $state<NoteSummary[]>([]);
+  let tags = $state<TagOption[]>([]);
+  let entries = $state<EntrySummary[]>([]);
   let filterLine = $state("");
   let stubsOnly = $state(false);
   let unknownTags = $state<string[]>([]);
@@ -26,7 +26,7 @@
   let nameDraft = $state("");
   let descriptionDraft = $state("");
   let newTitle = $state("");
-  let creatingNote = $state(false);
+  let creatingEntry = $state(false);
   let createError = $state("");
 
   $effect(() => {
@@ -37,8 +37,8 @@
   $effect(() => {
     const parsed = parseFilter(filterLine);
     const stubs = stubsOnly;
-    const entries = tags;
-    untrack(() => void loadNotes(parsed.text, parsed.tags, stubs, entries));
+    const options = tags;
+    untrack(() => void loadEntries(parsed.text, parsed.tags, stubs, options));
   });
 
   async function loadGuide() {
@@ -51,12 +51,12 @@
     }
   }
 
-  async function loadNotes(text: string, tagPaths: string[], stubs: boolean, entries: TagEntry[]) {
-    const resolved = tagPaths.map((p) => ({ path: p, entry: findByPath(entries, p) }));
-    unknownTags = resolved.filter((r) => !r.entry).map((r) => r.path);
-    const first = resolved.find((r) => r.entry)?.entry;
+  async function loadEntries(text: string, tagPaths: string[], stubs: boolean, options: TagOption[]) {
+    const resolved = tagPaths.map((p) => ({ path: p, option: findByPath(options, p) }));
+    unknownTags = resolved.filter((r) => !r.option).map((r) => r.path);
+    const first = resolved.find((r) => r.option)?.option;
     try {
-      notes = await api.listNotes(guideId, {
+      entries = await api.listEntries(guideId, {
         text: text || null,
         tag_id: first?.id ?? null,
         stubs_only: stubs,
@@ -98,14 +98,14 @@
     }
   }
 
-  async function createNote() {
+  async function createEntry() {
     const title = newTitle.trim();
     if (!title) return;
     try {
-      const note = await api.createNote(guideId, title);
+      const entry = await api.createEntry(guideId, title);
       newTitle = "";
-      creatingNote = false;
-      navigate({ view: "note", noteId: note.id });
+      creatingEntry = false;
+      navigate({ view: "entry", entryId: entry.id });
     } catch (e) {
       createError = errorMessage(e);
     }
@@ -148,20 +148,20 @@
           onclick={() => {
             newTitle = "";
             createError = "";
-            creatingNote = true;
+            creatingEntry = true;
           }}
         >
-          New note
+          New entry
         </button>
       </div>
       {#if guide.description}<p class="muted">{guide.description}</p>{/if}
     {/if}
 
-    <Modal open={creatingNote} title="New note" onclose={() => (creatingNote = false)}>
+    <Modal open={creatingEntry} title="New entry" onclose={() => (creatingEntry = false)}>
       <form
         onsubmit={(e) => {
           e.preventDefault();
-          void createNote();
+          void createEntry();
         }}
       >
         <label class="field">
@@ -172,8 +172,8 @@
         {#if createError}<p class="error">{createError}</p>{/if}
       </form>
       {#snippet actions()}
-        <button onclick={() => (creatingNote = false)}>Cancel</button>
-        <button class="primary" onclick={createNote} disabled={!newTitle.trim()}>Create</button>
+        <button onclick={() => (creatingEntry = false)}>Cancel</button>
+        <button class="primary" onclick={createEntry} disabled={!newTitle.trim()}>Create</button>
       {/snippet}
     </Modal>
 
@@ -181,7 +181,7 @@
       <input
         type="search"
         class="filter"
-        placeholder="Filter notes: text and #Tag/Path"
+        placeholder="Filter entries: text and #Tag/Path"
         bind:value={filterLine}
       />
       <label class="row"><input type="checkbox" bind:checked={stubsOnly} /> Stubs only</label>
@@ -195,19 +195,19 @@
 
     {#if error}<p class="error">{error}</p>{/if}
 
-    {#if notes.length === 0}
-      <p class="muted">No notes match.</p>
+    {#if entries.length === 0}
+      <p class="muted">No entries match.</p>
     {:else}
       <table>
         <thead><tr><th>Title</th><th>Updated</th></tr></thead>
         <tbody>
-          {#each notes as note (note.id)}
+          {#each entries as entry (entry.id)}
             <tr>
               <td>
-                <a href={routeHash({ view: "note", noteId: note.id })}>{note.title}</a>
-                {#if note.is_stub}<span class="chip">stub</span>{/if}
+                <a href={routeHash({ view: "entry", entryId: entry.id })}>{entry.title}</a>
+                {#if entry.is_stub}<span class="chip">stub</span>{/if}
               </td>
-              <td class="muted">{when(note.updated_at)}</td>
+              <td class="muted">{when(entry.updated_at)}</td>
             </tr>
           {/each}
         </tbody>

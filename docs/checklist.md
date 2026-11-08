@@ -11,7 +11,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - Vault lock: hold the database from another process, then launch Field Guide. From PowerShell, with the path adjusted:
 
   ```
-  python -c "import sqlite3, time; c = sqlite3.connect(r'C:\Users\me\AppData\Local\FieldGuide\vault\vault.db'); c.execute('PRAGMA locking_mode = EXCLUSIVE'); c.execute('BEGIN IMMEDIATE'); c.execute('SELECT count(*) FROM note').fetchone(); time.sleep(300)"
+  python -c "import sqlite3, time; c = sqlite3.connect(r'C:\Users\me\AppData\Local\FieldGuide\vault\vault.db'); c.execute('PRAGMA locking_mode = EXCLUSIVE'); c.execute('BEGIN IMMEDIATE'); c.execute('SELECT count(*) FROM entry').fetchone(); time.sleep(300)"
   ```
 
 ## Shell
@@ -31,22 +31,22 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Add a global tag to a guide from Edit guide; the tag chip filters the guides list.
 - [ ] Copy vocabulary from another guide when creating one (checkable once the relation builder exists in phase 5).
 
-## Notes
+## Entries
 
-- [ ] Create a note from the guide page and land on it.
+- [ ] Create an entry from the guide page and land on it.
 - [ ] Edit mode shows the editor and a live preview that updates while typing; "Saved" appears after a pause.
 - [ ] Leaving the page while unsaved saves the body.
-- [ ] A `[[Title]]` link to an existing note renders as a link and navigates; a link to a missing note renders dashed and offers to create it.
-- [ ] Rename a note; a note that linked to it shows the new title; "Undo rename" puts the old title back and removes the alias.
-- [ ] Rename a note and then rename it back by typing the original title; the original title returns and the interim title becomes the alias.
-- [ ] Add and remove an alias; linking by alias resolves; the note filter finds the note by its alias.
-- [ ] Tag a note by typing a new path such as `Blocks/Natural`; the path appears under Tags for the guide.
-- [ ] The guide note list filters by text and by `#Tag/Path`, and "Stubs only" hides described notes.
-- [ ] Delete moves a note to the trash after confirmation and leaves the guide page (Trash view arrives in phase 6).
+- [ ] A `[[Title]]` link to an existing entry renders as a link and navigates; a link to a missing entry renders dashed and offers to create it.
+- [ ] Rename an entry; an entry that linked to it shows the new title; "Undo rename" puts the old title back and removes the alias.
+- [ ] Rename an entry and then rename it back by typing the original title; the original title returns and the interim title becomes the alias.
+- [ ] Add and remove an alias; linking by alias resolves; the entry filter finds the entry by its alias.
+- [ ] Tag an entry by typing a new path such as `Blocks/Natural`; the path appears under Tags for the guide.
+- [ ] The guide entry list filters by text and by `#Tag/Path`, and "Stubs only" hides described entries.
+- [ ] Delete moves an entry to the trash after confirmation and leaves the guide page (Trash view arrives in phase 6).
 
 ## Relations
 
-- [ ] On Stone Block, type `drops` and pick "Create verb", inverse `dropped by`; type `Cobblestone Block` and create it as a new note; type `mined with`, create the label with inverse `mines`; type `Pickaxe` and create it; press Enter. The line reads `DROPS Cobblestone Block · mined with Pickaxe`.
+- [ ] On Stone Block, type `drops` and pick "Create verb", inverse `dropped by`; type `Cobblestone Block` and create it as a new entry; type `mined with`, create the label with inverse `mines`; type `Pickaxe` and create it; press Enter. The line reads `DROPS Cobblestone Block · mined with Pickaxe`.
 - [ ] Cobblestone Block reads `DROPPED BY Stone Block · mined with Pickaxe`; Pickaxe reads `MINES Stone Block → Cobblestone Block`.
 - [ ] From Cobblestone Block, type `dropped by` then `Stone Block` and save; no second edge appears on either page.
 - [ ] Backspace on the empty input removes the last staged item; Escape clears the line.
@@ -57,7 +57,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 ## Tags
 
 - [ ] Rename, add child, delete with children (children move up a level).
-- [ ] Drag a tag onto another; it nests under it and note tag paths follow.
+- [ ] Drag a tag onto another; it nests under it and entry tag paths follow.
 - [ ] Drop a nested tag on the top-level bar; it becomes top-level.
 - [ ] Dragging a tag onto its own child is refused with a message.
 

@@ -1,11 +1,11 @@
-//! Note bodies rendered to HTML. One renderer for the app preview and any exported HTML, so
+//! Entry bodies rendered to HTML. One renderer for the app preview and any exported HTML, so
 //! wikilink and media resolution is tested once (`docs/design.md` section 1).
 //!
 //! Supported: CommonMark, GFM tables, strikethrough, task lists, `[[wikilinks]]`, and media
 //! references of the form `media/<sha256>.<ext>`. Raw HTML in a body is shown as text, never
 //! passed through, so a body from someone else's archive cannot inject markup.
 //!
-//! The output is plain, prefix-free HTML. Wikilinks become `<a class="wikilink" data-note-id=...>`
+//! The output is plain, prefix-free HTML. Wikilinks become `<a class="wikilink" data-entry-id=...>`
 //! when they resolve and `<a class="wikilink wikilink-unresolved" data-target=...>` when they do
 //! not; the UI decides what a click does. Media keeps its `media/...` path in `src`, and the host
 //! rewrites it to a URL it can serve.
@@ -15,7 +15,7 @@ use std::fmt::Write as _;
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
 
-use crate::{GuideId, NoteId, Result, Vault, wikilink};
+use crate::{EntryId, GuideId, Result, Vault, wikilink};
 
 /// Rendered body plus what the renderer learned about its links.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,30 +23,30 @@ pub struct Rendered {
     pub html: String,
     /// Distinct link targets, as written, that matched no title or alias in the guide.
     pub unresolved_links: Vec<String>,
-    /// Distinct note ids the body links to.
-    pub linked_note_ids: Vec<NoteId>,
+    /// Distinct entry ids the body links to.
+    pub linked_entry_ids: Vec<EntryId>,
 }
 
 impl Vault {
-    /// Renders a stored note's body.
-    pub fn render_note(&self, id: &NoteId) -> Result<Rendered> {
-        let note = self.get_note(id)?;
-        self.render_markdown(&note.guide_id, &note.body_md)
+    /// Renders a stored entry's body.
+    pub fn render_entry(&self, id: &EntryId) -> Result<Rendered> {
+        let entry = self.get_entry(id)?;
+        self.render_markdown(&entry.guide_id, &entry.body_md)
     }
 
-    /// Renders any markdown as if it were a note body in `guide_id`. Used for live preview of
+    /// Renders any markdown as if it were an entry body in `guide_id`. Used for live preview of
     /// text that has not been saved yet.
     pub fn render_markdown(&self, guide_id: &GuideId, body: &str) -> Result<Rendered> {
         let mut resolve =
-            |target: &str| self.lookup_note(guide_id, target).map(|n| n.map(|n| n.id));
+            |target: &str| self.lookup_entry(guide_id, target).map(|n| n.map(|n| n.id));
         render(body, &mut resolve)
     }
 }
 
-/// Renders with a caller-supplied resolver from link text to note id.
+/// Renders with a caller-supplied resolver from link text to entry id.
 pub fn render(
     body: &str,
-    resolve: &mut dyn FnMut(&str) -> Result<Option<NoteId>>,
+    resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
 ) -> Result<Rendered> {
     let options =
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
@@ -58,7 +58,7 @@ pub fn render(
     let flush_text = |run: &mut String,
                       events: &mut Vec<Event<'_>>,
                       out: &mut Rendered,
-                      resolve: &mut dyn FnMut(&str) -> Result<Option<NoteId>>|
+                      resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>|
      -> Result<()> {
         if run.is_empty() {
             return Ok(());
@@ -104,7 +104,7 @@ fn push_text_with_wikilinks<'a>(
     text: &str,
     events: &mut Vec<Event<'a>>,
     out: &mut Rendered,
-    resolve: &mut dyn FnMut(&str) -> Result<Option<NoteId>>,
+    resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
 ) -> Result<()> {
     let mut copied_to = 0;
     for link in wikilink::find_wikilinks(text) {
@@ -119,13 +119,13 @@ fn push_text_with_wikilinks<'a>(
             Some(id) => {
                 write!(
                     html,
-                    "<a class=\"wikilink\" href=\"#\" data-note-id=\"{}\">{}</a>",
+                    "<a class=\"wikilink\" href=\"#\" data-entry-id=\"{}\">{}</a>",
                     escape(id.as_str()),
                     escape(shown)
                 )
                 .expect("write to string");
-                if !out.linked_note_ids.contains(&id) {
-                    out.linked_note_ids.push(id);
+                if !out.linked_entry_ids.contains(&id) {
+                    out.linked_entry_ids.push(id);
                 }
             }
             None => {
@@ -192,7 +192,7 @@ mod tests {
             Ok(known
                 .iter()
                 .find(|(title, _)| title.eq_ignore_ascii_case(target.trim()))
-                .map(|(_, id)| NoteId((*id).to_owned())))
+                .map(|(_, id)| EntryId((*id).to_owned())))
         };
         render(body, &mut resolve).unwrap()
     }
@@ -205,11 +205,11 @@ mod tests {
         );
         assert_eq!(
             r.html,
-            "<p>See <a class=\"wikilink\" href=\"#\" data-note-id=\"n1\">Oak Log</a> and \
-             <a class=\"wikilink\" href=\"#\" data-note-id=\"n1\">logs</a> and \
+            "<p>See <a class=\"wikilink\" href=\"#\" data-entry-id=\"n1\">Oak Log</a> and \
+             <a class=\"wikilink\" href=\"#\" data-entry-id=\"n1\">logs</a> and \
              <a class=\"wikilink wikilink-unresolved\" href=\"#\" data-target=\"Missing\">Missing</a>.</p>\n"
         );
-        assert_eq!(r.linked_note_ids, [NoteId("n1".to_owned())]);
+        assert_eq!(r.linked_entry_ids, [EntryId("n1".to_owned())]);
         assert_eq!(r.unresolved_links, ["Missing"]);
     }
 
@@ -256,7 +256,7 @@ mod tests {
     fn link_text_in_a_code_span_is_not_a_link() {
         let r = render_with("`[[Oak Log]]`", &[("Oak Log", "n1")]);
         assert_eq!(r.html, "<p><code>[[Oak Log]]</code></p>\n");
-        assert!(r.linked_note_ids.is_empty());
+        assert!(r.linked_entry_ids.is_empty());
     }
 
     #[test]

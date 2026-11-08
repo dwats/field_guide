@@ -191,9 +191,9 @@ fn qualifier_labels_follow_the_same_pool_rule_in_their_own_pool() {
 fn vocabulary_in_use_cannot_be_deleted_but_can_be_merged() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let stone = note(&mut v, &g, "Stone", "");
-    let cobble = note(&mut v, &g, "Cobblestone", "");
-    let pickaxe = note(&mut v, &g, "Pickaxe", "");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let cobble = entry(&mut v, &g, "Cobblestone", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
     let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
     let gives = verb(&mut v, &g, "GIVES", None);
     let mined = qualifier_label(&mut v, &g, "mined with", Some("mines"));
@@ -203,7 +203,7 @@ fn vocabulary_in_use_cannot_be_deleted_but_can_be_merged() {
         &stone,
         &gives,
         &cobble,
-        vec![q_note(&dug, &pickaxe)],
+        vec![q_entry(&dug, &pickaxe)],
     );
 
     match v.delete_verb(&gives) {
@@ -258,20 +258,20 @@ fn vocabulary_in_use_cannot_be_deleted_but_can_be_merged() {
 fn merging_verbs_that_collide_on_an_edge_merges_the_edges() {
     let mut v = vault();
     let g = guide(&mut v, "G");
-    let a = note(&mut v, &g, "A", "");
-    let b = note(&mut v, &g, "B", "");
-    let x = note(&mut v, &g, "X", "");
-    let y = note(&mut v, &g, "Y", "");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    let x = entry(&mut v, &g, "X", "");
+    let y = entry(&mut v, &g, "Y", "");
     let drops = verb(&mut v, &g, "DROPS", None);
     let gives = verb(&mut v, &g, "GIVES", None);
     let with = qualifier_label(&mut v, &g, "with", None);
-    relate_with(&mut v, &a, &drops, &b, vec![q_note(&with, &x)]);
+    relate_with(&mut v, &a, &drops, &b, vec![q_entry(&with, &x)]);
     let doomed = relate_with(
         &mut v,
         &a,
         &gives,
         &b,
-        vec![q_note(&with, &y), q_note(&with, &x)],
+        vec![q_entry(&with, &y), q_entry(&with, &x)],
     );
 
     v.merge_verbs(&gives, &drops).unwrap();

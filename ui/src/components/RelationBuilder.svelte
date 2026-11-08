@@ -10,7 +10,7 @@
     errorMessage,
     type Guide,
     type NewQualifier,
-    type Note,
+    type Entry,
     type QualifierLabel,
     type Target,
     type Verb,
@@ -31,11 +31,11 @@
   } from "../lib/staged";
 
   interface Props {
-    note: Note;
+    entry: Entry;
     guide: Guide;
     onsaved: () => void;
   }
-  let { note, guide, onsaved }: Props = $props();
+  let { entry, guide, onsaved }: Props = $props();
 
   interface Suggestion {
     key: string;
@@ -66,7 +66,7 @@
   const placeholder = $derived(
     {
       verb: "Relation: verb, e.g. DROPS",
-      target: "Target note",
+      target: "Target entry",
       ready: "+ qualifier, or Enter to save",
       qualifier_label: "Qualifier label",
       qualifier_value: `Value for "${staged.pendingLabel?.label ?? ""}"`,
@@ -133,14 +133,14 @@
       } else if (stage === "target" || stage === "qualifier_value") {
         const matches = key ? await api.suggestNames(guide.id, query, 8) : [];
         next = matches
-          .filter((m) => stage === "qualifier_value" || m.note_id !== note.id)
+          .filter((m) => stage === "qualifier_value" || m.entry_id !== entry.id)
           .map((m) => ({
-            key: m.note_id + m.matched,
+            key: m.entry_id + m.matched,
             text: m.title,
             detail: m.is_alias ? `alias: ${m.matched}` : m.is_stub ? "stub" : undefined,
             apply: () => {
               if (stage === "target") {
-                staged = commitTarget(staged, { kind: "note", id: m.note_id, title: m.title });
+                staged = commitTarget(staged, { kind: "entry", id: m.entry_id, title: m.title });
               } else {
                 staged = commitQualifierValue(staged, m.title);
               }
@@ -151,7 +151,7 @@
           if (stage === "target") {
             next.push({
               key: "new-stub",
-              text: `Create "${query}" as a new note`,
+              text: `Create "${query}" as a new entry`,
               apply: () => void openStubPrompt(query),
             });
           } else {
@@ -166,7 +166,7 @@
             });
             next.push({
               key: "stub-value",
-              text: `Create "${query}" as a new note`,
+              text: `Create "${query}" as a new entry`,
               apply: () => {
                 staged = commitQualifierValue(staged, query, true);
                 text = "";
@@ -324,18 +324,18 @@
           (await api.createQualifierLabel(guide.id, q.label.label, q.label.inverse_label ?? null))
             .id;
         let value = await api.resolveQualifierValue(guide.id, q.value);
-        if (q.stub && value.kind !== "note") {
+        if (q.stub && value.kind !== "entry") {
           const stub = await api.createStub(guide.id, q.value);
-          value = { kind: "note", value: stub.id };
+          value = { kind: "entry", value: stub.id };
         }
         qualifiers.push({ label_id: labelId, value });
       }
       const target: Target =
-        staged.target.kind === "note"
-          ? { kind: "note", id: staged.target.id }
+        staged.target.kind === "entry"
+          ? { kind: "entry", id: staged.target.id }
           : { kind: "stub", title: staged.target.title, tag_id: staged.target.tag_id };
       await api.createRelation({
-        origin: note.id,
+        origin: entry.id,
         verb_id: verbId,
         direction: staged.verb.direction,
         target,
@@ -404,7 +404,7 @@
     </ul>
   {/if}
   {#if staged.verb}
-    <p class="muted preview">{summary(staged, note.title)}</p>
+    <p class="muted preview">{summary(staged, entry.title)}</p>
   {/if}
   {#if error}<p class="error">{error}</p>{/if}
 </div>
@@ -446,10 +446,10 @@
   {/snippet}
 </Modal>
 
-<Modal open={stubPrompt !== null} title="New note" onclose={() => (stubPrompt = null)}>
+<Modal open={stubPrompt !== null} title="New entry" onclose={() => (stubPrompt = null)}>
   {#if stubPrompt}
     <form class="prompt" onsubmit={(e) => { e.preventDefault(); confirmStubPrompt(); }}>
-      <p class="muted">No note has this name. It will be created as a stub you can describe later.</p>
+      <p class="muted">No entry has this name. It will be created as a stub you can describe later.</p>
       <label>
         Title
         <!-- svelte-ignore a11y_autofocus -->

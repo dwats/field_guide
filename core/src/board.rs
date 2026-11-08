@@ -1,5 +1,5 @@
-//! Boards: named views of a guide's notes and edges, each with saved filters and node positions.
-//! See `docs/design.md` section 6. Core owns the data; which notes a board shows and how they are
+//! Boards: named views of a guide's entries and edges, each with saved filters and node positions.
+//! See `docs/design.md` section 6. Core owns the data; which entries a board shows and how they are
 //! laid out is the UI's job in a later phase.
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
 use crate::names::{self, normalize};
-use crate::{BoardId, Error, GuideId, NoteId, Result, TagId, Vault, clock, guide, note};
+use crate::{BoardId, EntryId, Error, GuideId, Result, TagId, Vault, clock, entry, guide};
 
 /// Saved filters. All optional; an empty filter shows the whole guide.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,10 +18,10 @@ pub struct BoardFilters {
     /// Free text, run as a prefix search.
     #[serde(default)]
     pub text: Option<String>,
-    /// Topics: notes whose neighbourhood the board shows.
+    /// Topics: entries whose neighbourhood the board shows.
     #[serde(default)]
-    pub topic_note_ids: Vec<NoteId>,
-    /// How many edges away from a topic a note may be. Ignored without topics.
+    pub topic_entry_ids: Vec<EntryId>,
+    /// How many edges away from a topic an entry may be. Ignored without topics.
     #[serde(default)]
     pub hops: u32,
     #[serde(default)]
@@ -40,10 +40,10 @@ pub struct Board {
     pub updated_at: String,
 }
 
-/// A note's saved position on a board.
+/// An entry's saved position on a board.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardNode {
-    pub note_id: NoteId,
+    pub entry_id: EntryId,
     pub x: f64,
     pub y: f64,
 }
@@ -105,7 +105,7 @@ impl Vault {
         load_board(self.conn(), id)
     }
 
-    /// Deletes a board and its positions. Notes are untouched.
+    /// Deletes a board and its positions. Entries are untouched.
     pub fn delete_board(&mut self, id: &BoardId) -> Result<()> {
         let removed = self
             .conn()
@@ -116,16 +116,16 @@ impl Vault {
         Ok(())
     }
 
-    /// Saved positions on a board, ordered by note id. Notes without a saved position are laid
+    /// Saved positions on a board, ordered by entry id. Entries without a saved position are laid
     /// out by the UI when the board opens.
     pub fn board_layout(&self, id: &BoardId) -> Result<Vec<BoardNode>> {
         load_board(self.conn(), id)?;
-        let mut stmt = self
-            .conn()
-            .prepare("SELECT note_id, x, y FROM board_node WHERE board_id = ?1 ORDER BY note_id")?;
+        let mut stmt = self.conn().prepare(
+            "SELECT entry_id, x, y FROM board_node WHERE board_id = ?1 ORDER BY entry_id",
+        )?;
         let rows = stmt.query_map(params![id], |row| {
             Ok(BoardNode {
-                note_id: row.get(0)?,
+                entry_id: row.get(0)?,
                 x: row.get(1)?,
                 y: row.get(2)?,
             })
@@ -133,18 +133,18 @@ impl Vault {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Saves where a note sits on a board, replacing any earlier position.
+    /// Saves where an entry sits on a board, replacing any earlier position.
     pub fn set_board_position(
         &mut self,
         id: &BoardId,
-        note_id: &NoteId,
+        entry_id: &EntryId,
         x: f64,
         y: f64,
     ) -> Result<()> {
         self.set_board_positions(
             id,
             &[BoardNode {
-                note_id: note_id.clone(),
+                entry_id: entry_id.clone(),
                 x,
                 y,
             }],
@@ -161,11 +161,11 @@ impl Vault {
                     "a board position must be a finite number".to_owned(),
                 ));
             }
-            note::load_summary(&tx, &node.note_id)?;
+            entry::load_summary(&tx, &node.entry_id)?;
             tx.execute(
-                "INSERT INTO board_node (board_id, note_id, x, y) VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT (board_id, note_id) DO UPDATE SET x = excluded.x, y = excluded.y",
-                params![id, node.note_id, node.x, node.y],
+                "INSERT INTO board_node (board_id, entry_id, x, y) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (board_id, entry_id) DO UPDATE SET x = excluded.x, y = excluded.y",
+                params![id, node.entry_id, node.x, node.y],
             )?;
         }
         tx.execute(
@@ -176,14 +176,14 @@ impl Vault {
         Ok(())
     }
 
-    /// Forgets a note's position on a board. The note itself is untouched.
-    pub fn remove_board_node(&mut self, id: &BoardId, note_id: &NoteId) -> Result<()> {
+    /// Forgets an entry's position on a board. The entry itself is untouched.
+    pub fn remove_board_node(&mut self, id: &BoardId, entry_id: &EntryId) -> Result<()> {
         let removed = self.conn().execute(
-            "DELETE FROM board_node WHERE board_id = ?1 AND note_id = ?2",
-            params![id, note_id],
+            "DELETE FROM board_node WHERE board_id = ?1 AND entry_id = ?2",
+            params![id, entry_id],
         )?;
         if removed == 0 {
-            return Err(not_found("board node", note_id));
+            return Err(not_found("board node", entry_id));
         }
         Ok(())
     }

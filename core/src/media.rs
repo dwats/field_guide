@@ -1,4 +1,4 @@
-//! Media: content-addressed files referenced by notes, stored as `media/<sha256>.<ext>` beside
+//! Media: content-addressed files referenced by entries, stored as `media/<sha256>.<ext>` beside
 //! `vault.db`, plus the catalogue rows and gallery membership. Cleanup of unreferenced files and
 //! reading image dimensions arrive in a later phase.
 
@@ -9,7 +9,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
-use crate::{Error, MediaId, NoteId, Result, Vault, clock, fsutil, note};
+use crate::{EntryId, Error, MediaId, Result, Vault, clock, entry, fsutil};
 
 /// Width, height, and duration where the caller knows them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,58 +156,58 @@ impl Vault {
             .optional()?)
     }
 
-    /// Adds a file to a note's gallery, or moves it when already there. `sort` defaults to the end.
+    /// Adds a file to an entry's gallery, or moves it when already there. `sort` defaults to the end.
     pub fn attach_media(
         &mut self,
-        note_id: &NoteId,
+        entry_id: &EntryId,
         media_id: &MediaId,
         sort: Option<i64>,
     ) -> Result<()> {
         let tx = self.savepoint()?;
-        note::load_summary(&tx, note_id)?;
+        entry::load_summary(&tx, entry_id)?;
         load_media(&tx, media_id)?;
         let sort = match sort {
             Some(sort) => sort,
             None => tx.query_row(
-                "SELECT coalesce(max(sort) + 1, 0) FROM note_media WHERE note_id = ?1",
-                params![note_id],
+                "SELECT coalesce(max(sort) + 1, 0) FROM entry_media WHERE entry_id = ?1",
+                params![entry_id],
                 |row| row.get(0),
             )?,
         };
         tx.execute(
-            "INSERT INTO note_media (note_id, media_id, sort) VALUES (?1, ?2, ?3)
-             ON CONFLICT (note_id, media_id) DO UPDATE SET sort = excluded.sort",
-            params![note_id, media_id, sort],
+            "INSERT INTO entry_media (entry_id, media_id, sort) VALUES (?1, ?2, ?3)
+             ON CONFLICT (entry_id, media_id) DO UPDATE SET sort = excluded.sort",
+            params![entry_id, media_id, sort],
         )?;
-        note::touch(&tx, note_id)?;
+        entry::touch(&tx, entry_id)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// Removes a file from a note's gallery. The media row and file stay; cleanup is a separate,
+    /// Removes a file from an entry's gallery. The media row and file stay; cleanup is a separate,
     /// explicit action.
-    pub fn detach_media(&mut self, note_id: &NoteId, media_id: &MediaId) -> Result<()> {
+    pub fn detach_media(&mut self, entry_id: &EntryId, media_id: &MediaId) -> Result<()> {
         let tx = self.savepoint()?;
-        note::load_summary(&tx, note_id)?;
+        entry::load_summary(&tx, entry_id)?;
         let removed = tx.execute(
-            "DELETE FROM note_media WHERE note_id = ?1 AND media_id = ?2",
-            params![note_id, media_id],
+            "DELETE FROM entry_media WHERE entry_id = ?1 AND media_id = ?2",
+            params![entry_id, media_id],
         )?;
         if removed == 0 {
             return Err(not_found("gallery entry", media_id));
         }
-        note::touch(&tx, note_id)?;
+        entry::touch(&tx, entry_id)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// A note's gallery in display order.
-    pub fn note_gallery(&self, note_id: &NoteId) -> Result<Vec<Media>> {
+    /// An entry's gallery in display order.
+    pub fn entry_gallery(&self, entry_id: &EntryId) -> Result<Vec<Media>> {
         let mut stmt = self.conn().prepare(&format!(
-            "SELECT {COLUMNS} FROM note_media nm JOIN media m ON m.id = nm.media_id
-             WHERE nm.note_id = ?1 ORDER BY nm.sort, m.created_at, m.id"
+            "SELECT {COLUMNS} FROM entry_media nm JOIN media m ON m.id = nm.media_id
+             WHERE nm.entry_id = ?1 ORDER BY nm.sort, m.created_at, m.id"
         ))?;
-        let rows = stmt.query_map(params![note_id], media_from_row)?;
+        let rows = stmt.query_map(params![entry_id], media_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 }

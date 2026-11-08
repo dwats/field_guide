@@ -23,11 +23,11 @@ fn boards_are_named_per_guide_and_keep_their_filters() {
     v.create_board(&g, "Biomes").unwrap();
 
     let tools = v.ensure_tag_path(Some(&g), "Tools").unwrap();
-    let pickaxe = note(&mut v, &g, "Pickaxe", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
     let filters = BoardFilters {
         tag_ids: vec![tools.id.clone()],
         text: Some("iron".to_owned()),
-        topic_note_ids: vec![pickaxe.clone()],
+        topic_entry_ids: vec![pickaxe.clone()],
         hops: 2,
         show_external: true,
         show_mentions: false,
@@ -61,26 +61,26 @@ fn boards_are_named_per_guide_and_keep_their_filters() {
 }
 
 #[test]
-fn positions_persist_and_follow_their_notes() {
+fn positions_persist_and_follow_their_entries() {
     let mut v = vault();
     let g = guide(&mut v, "Minecraft");
     let h = guide(&mut v, "Terraria");
     let board = v.create_board(&g, "Overview").unwrap().id;
-    let stone = note(&mut v, &g, "Stone", "");
-    let pickaxe = note(&mut v, &g, "Pickaxe", "");
-    let ore = note(&mut v, &h, "Copper Ore", "");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
+    let ore = entry(&mut v, &h, "Copper Ore", "");
 
     v.set_board_position(&board, &stone, 10.0, 20.0).unwrap();
     v.set_board_positions(
         &board,
         &[
             BoardNode {
-                note_id: pickaxe.clone(),
+                entry_id: pickaxe.clone(),
                 x: -5.5,
                 y: 0.0,
             },
             BoardNode {
-                note_id: ore.clone(),
+                entry_id: ore.clone(),
                 x: 100.0,
                 y: 100.0,
             },
@@ -90,7 +90,7 @@ fn positions_persist_and_follow_their_notes() {
     assert_eq!(
         v.board_layout(&board).unwrap().len(),
         3,
-        "external notes may be placed"
+        "external entries may be placed"
     );
 
     // A drag end replaces the earlier position.
@@ -99,25 +99,25 @@ fn positions_persist_and_follow_their_notes() {
         .board_layout(&board)
         .unwrap()
         .into_iter()
-        .map(|n| (v.get_note(&n.note_id).unwrap().title, n.x, n.y))
+        .map(|n| (v.get_entry(&n.entry_id).unwrap().title, n.x, n.y))
         .collect();
     assert!(placed.contains(&("Stone".to_owned(), 11.0, 21.0)));
     assert!(placed.contains(&("Pickaxe".to_owned(), -5.5, 0.0)));
 
-    // Purging a note drops its position; forgetting a node leaves the note alone.
-    v.trash_note(&ore).unwrap();
-    v.purge_note(&ore).unwrap();
+    // Purging an entry drops its position; forgetting a node leaves the entry alone.
+    v.trash_entry(&ore).unwrap();
+    v.purge_entry(&ore).unwrap();
     assert_eq!(v.board_layout(&board).unwrap().len(), 2);
     v.remove_board_node(&board, &pickaxe).unwrap();
     assert_eq!(v.board_layout(&board).unwrap().len(), 1);
-    assert_eq!(v.get_note(&pickaxe).unwrap().title, "Pickaxe");
+    assert_eq!(v.get_entry(&pickaxe).unwrap().title, "Pickaxe");
     assert!(matches!(
         v.remove_board_node(&board, &pickaxe),
         Err(Error::NotFound { .. })
     ));
 
-    // Rejected input: unknown note, non-finite coordinates.
-    let missing = fieldguide_core::NoteId::generate();
+    // Rejected input: unknown entry, non-finite coordinates.
+    let missing = fieldguide_core::EntryId::generate();
     assert!(matches!(
         v.set_board_position(&board, &missing, 0.0, 0.0),
         Err(Error::NotFound { .. })

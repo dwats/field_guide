@@ -1,4 +1,4 @@
-//! `[[Title]]` and `[[Title|shown text]]` links in note bodies.
+//! `[[Title]]` and `[[Title|shown text]]` links in entry bodies.
 //!
 //! The text is the human-readable serialization; the `mention` table holds the resolved ids.
 //! This scanner is plain text: it does not know about code spans, so a link written inside

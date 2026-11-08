@@ -120,7 +120,7 @@ impl Vault {
         load_guide(self.conn(), id)
     }
 
-    /// Deletes a guide and everything in it: notes, tags, aliases, mentions, gallery rows.
+    /// Deletes a guide and everything in it: entries, tags, aliases, mentions, gallery rows.
     /// Media rows are vault-scoped and stay.
     pub fn delete_guide(&mut self, id: &GuideId) -> Result<()> {
         let changed = self

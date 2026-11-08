@@ -4,16 +4,16 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use fieldguide_core::board::{BoardFilters, BoardNode};
+use fieldguide_core::entry::NewEntry;
 use fieldguide_core::export::ExportScope;
 use fieldguide_core::guide::GuideUpdate;
 use fieldguide_core::import::{
     self, GuideChoice, GuideTarget, ImportOptions, ImportReport, MappingChoice,
 };
 use fieldguide_core::media::MediaDimensions;
-use fieldguide_core::note::NewNote;
 use fieldguide_core::relation::{Perspective, RelationFilter};
 use fieldguide_core::vocabulary::NewVerb;
-use fieldguide_core::{Error, GuideId, NoteId, TagId, Vault};
+use fieldguide_core::{EntryId, Error, GuideId, TagId, Vault};
 use tempfile::{TempDir, tempdir};
 use zip::ZipArchive;
 use zip::write::SimpleFileOptions;
@@ -22,8 +22,8 @@ use crate::common::*;
 
 const PNG: &[u8] = b"\x89PNG stand-in bytes for a screenshot";
 
-/// Two guides exercising every exported entity: colored nested tags, global tags, a cover, notes
-/// with aliases and inline plus gallery media, slug collisions, a trashed note with an edge,
+/// Two guides exercising every exported entity: colored nested tags, global tags, a cover, entries
+/// with aliases and inline plus gallery media, slug collisions, a trashed entry with an edge,
 /// vocabulary with inverses and defaults, ordered qualifiers, a symmetric edge, a cross-guide
 /// edge, and a board with filters and positions.
 struct Fixture {
@@ -31,9 +31,9 @@ struct Fixture {
     v: Vault,
     mc: GuideId,
     tr: GuideId,
-    stone: NoteId,
-    cobble: NoteId,
-    ore: NoteId,
+    stone: EntryId,
+    cobble: EntryId,
+    ore: EntryId,
     blocks: TagId,
 }
 
@@ -64,7 +64,7 @@ fn fixture() -> Fixture {
     v.set_guide_cover(&mc, Some(&png.id)).unwrap();
 
     let stone = v
-        .create_note(NewNote {
+        .create_entry(NewEntry {
             guide_id: mc.clone(),
             title: "Stone Block".to_owned(),
             body_md: format!(
@@ -77,7 +77,7 @@ fn fixture() -> Fixture {
         .id;
     v.add_alias(&stone, "Stone").unwrap();
     let cobble = v
-        .create_note(NewNote {
+        .create_entry(NewEntry {
             guide_id: mc.clone(),
             title: "Cobblestone Block".to_owned(),
             body_md: String::new(),
@@ -86,7 +86,7 @@ fn fixture() -> Fixture {
         .unwrap()
         .id;
     let pickaxe = v
-        .create_note(NewNote {
+        .create_entry(NewEntry {
             guide_id: mc.clone(),
             title: "Pickaxe".to_owned(),
             body_md: "Mines things.".to_owned(),
@@ -96,10 +96,10 @@ fn fixture() -> Fixture {
         .id;
     v.attach_media(&pickaxe, &png.id, None).unwrap();
     v.attach_media(&cobble, &png.id, None).unwrap();
-    let cafe = note(&mut v, &mc, "Café", "accented");
-    note(&mut v, &mc, "Cafe", "plain");
-    let doomed = note(&mut v, &mc, "Doomed", "soon trashed");
-    let ore = note(&mut v, &tr, "Copper Ore", "");
+    let cafe = entry(&mut v, &mc, "Café", "accented");
+    entry(&mut v, &mc, "Cafe", "plain");
+    let doomed = entry(&mut v, &mc, "Doomed", "soon trashed");
+    let ore = entry(&mut v, &tr, "Copper Ore", "");
 
     let drops = v
         .create_verb(
@@ -128,7 +128,7 @@ fn fixture() -> Fixture {
     verb(&mut v, &mc, "UNUSED", None);
     let mined = qualifier_label(&mut v, &mc, "mined with", Some("mines"));
     let depth = qualifier_label(&mut v, &mc, "below depth", None);
-    let remark = qualifier_label(&mut v, &mc, "note", None);
+    let remark = qualifier_label(&mut v, &mc, "remark", None);
     qualifier_label(&mut v, &mc, "unused label", None);
 
     relate_with(
@@ -137,7 +137,7 @@ fn fixture() -> Fixture {
         &drops,
         &cobble,
         vec![
-            q_note(&mined, &pickaxe),
+            q_entry(&mined, &pickaxe),
             q_num(&depth, 12.0),
             q_text(&remark, "silk touch gives stone"),
         ],
@@ -145,7 +145,7 @@ fn fixture() -> Fixture {
     relate(&mut v, &stone, &adjacent, &cafe);
     relate(&mut v, &stone, &drops, &ore);
     relate(&mut v, &doomed, &drops, &stone);
-    v.trash_note(&doomed).unwrap();
+    v.trash_entry(&doomed).unwrap();
 
     let board = v.create_board(&mc, "Overview").unwrap().id;
     v.set_board_filters(
@@ -153,7 +153,7 @@ fn fixture() -> Fixture {
         &BoardFilters {
             tag_ids: vec![blocks.id.clone()],
             text: Some("stone".to_owned()),
-            topic_note_ids: vec![stone.clone()],
+            topic_entry_ids: vec![stone.clone()],
             hops: 2,
             show_external: true,
             show_mentions: false,
@@ -164,12 +164,12 @@ fn fixture() -> Fixture {
         &board,
         &[
             BoardNode {
-                note_id: stone.clone(),
+                entry_id: stone.clone(),
                 x: 1.0,
                 y: 2.0,
             },
             BoardNode {
-                note_id: cobble.clone(),
+                entry_id: cobble.clone(),
                 x: 3.5,
                 y: -4.0,
             },
@@ -202,14 +202,14 @@ struct GuideSnap {
     tags: Vec<(String, Option<String>)>,
     verbs: Vec<VerbSnap>,
     labels: Vec<(String, Option<String>)>,
-    notes: Vec<NoteSnap>,
+    entries: Vec<EntrySnap>,
     /// Relation lines from the subject's side, with qualifiers in order.
     relations: Vec<String>,
     boards: Vec<BoardSnap>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct NoteSnap {
+struct EntrySnap {
     id: String,
     title: String,
     aliases: Vec<String>,
@@ -265,13 +265,13 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
         .into_iter()
         .map(|l| (l.label, l.inverse_label))
         .collect();
-    let mut notes = Vec::new();
+    let mut entries = Vec::new();
     let mut relations = Vec::new();
-    for summary in v.list_notes(guide_id, &Default::default()).unwrap() {
-        let n = v.get_note(&summary.id).unwrap();
+    for summary in v.list_entries(guide_id, &Default::default()).unwrap() {
+        let n = v.get_entry(&summary.id).unwrap();
         let mut tag_paths: Vec<String> = n.tag_ids.iter().map(&path).collect();
         tag_paths.sort();
-        notes.push(NoteSnap {
+        entries.push(EntrySnap {
             id: n.id.0.clone(),
             title: n.title.clone(),
             aliases: n.aliases.clone(),
@@ -279,7 +279,7 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             stub: n.is_stub,
             body: n.body_md.clone(),
             gallery: v
-                .note_gallery(&n.id)
+                .entry_gallery(&n.id)
                 .unwrap()
                 .into_iter()
                 .map(|m| m.sha256)
@@ -288,7 +288,7 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             updated: n.updated_at.clone(),
         });
         for view in v
-            .relations_for_note(
+            .relations_for_entry(
                 &n.id,
                 &RelationFilter {
                     include_external: external,
@@ -308,16 +308,16 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
         tag_paths.sort();
         let mut topics: Vec<String> = b
             .filters
-            .topic_note_ids
+            .topic_entry_ids
             .iter()
-            .map(|n| v.get_note(n).unwrap().title)
+            .map(|n| v.get_entry(n).unwrap().title)
             .collect();
         topics.sort();
         let mut nodes: Vec<(String, f64, f64)> = v
             .board_layout(&b.id)
             .unwrap()
             .into_iter()
-            .map(|n| (v.get_note(&n.note_id).unwrap().title, n.x, n.y))
+            .map(|n| (v.get_entry(&n.entry_id).unwrap().title, n.x, n.y))
             .collect();
         nodes.sort_by(|a, b| a.0.cmp(&b.0));
         boards.push(BoardSnap {
@@ -339,7 +339,7 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
         tags,
         verbs,
         labels,
-        notes,
+        entries,
         relations,
         boards,
     }
@@ -434,7 +434,7 @@ fn a_vault_round_trips_through_export_and_import_without_loss() {
 
     assert_eq!(snapshot(&target), snapshot(&f.v));
     assert_eq!(report.guides_created, ["Minecraft", "Terraria"]);
-    assert_eq!(report.notes_created, 6, "the trashed note stays behind");
+    assert_eq!(report.entries_created, 6, "the trashed entry stays behind");
     assert!(
         report.relations_unresolved.is_empty(),
         "{:?}",
@@ -450,17 +450,17 @@ fn a_vault_round_trips_through_export_and_import_without_loss() {
         PNG
     );
 
-    // Importing the same archive again changes nothing: every note is already as new.
+    // Importing the same archive again changes nothing: every entry is already as new.
     let again = import_all(&mut target, &archive, &[], &ImportOptions::default());
-    assert_eq!(again.notes_created, 0);
-    assert_eq!(again.notes_updated, 0);
-    assert_eq!(again.notes_skipped_older.len(), 6);
+    assert_eq!(again.entries_created, 0);
+    assert_eq!(again.entries_updated, 0);
+    assert_eq!(again.entries_skipped_older.len(), 6);
     assert_eq!(again.relations_merged, 3);
     assert_eq!(snapshot(&target), snapshot(&f.v));
 }
 
 #[test]
-fn guide_tag_and_note_scopes_round_trip_their_subset() {
+fn guide_tag_and_entry_scopes_round_trip_their_subset() {
     let f = fixture();
 
     // Guide scope: everything in Minecraft; the edge into Terraria is external and unresolved.
@@ -481,7 +481,7 @@ fn guide_tag_and_note_scopes_round_trip_their_subset() {
     assert_eq!(report.relations_unresolved.len(), 1);
     assert_eq!(report.relations_unresolved[0].object, "Copper Ore");
 
-    // Tag scope: only the notes under Blocks, the tags they need, and the vocabulary they use.
+    // Tag scope: only the entries under Blocks, the tags they need, and the vocabulary they use.
     let archive = export_to(
         &f.v,
         &ExportScope::Tag {
@@ -510,28 +510,28 @@ fn guide_tag_and_note_scopes_round_trip_their_subset() {
         "UNUSED is not carried"
     );
     let label_names: Vec<&str> = snap.labels.iter().map(|l| l.0.as_str()).collect();
-    assert_eq!(label_names, ["below depth", "mined with", "note"]);
+    assert_eq!(label_names, ["below depth", "mined with", "remark"]);
     assert!(snap.boards.is_empty(), "a partial scope has no boards");
     // The qualifier pointing at Pickaxe, which is outside the scope, is kept as text.
     assert_eq!(
         snap.relations,
         [
-            "Stone Block DROPS Cobblestone Block · mined with Pickaxe · below depth 12 · note silk touch gives stone"
+            "Stone Block DROPS Cobblestone Block · mined with Pickaxe · below depth 12 · remark silk touch gives stone"
         ]
     );
     let stone_body = target
-        .get_note(&target.lookup_note(g, "Stone Block").unwrap().unwrap().id)
+        .get_entry(&target.lookup_entry(g, "Stone Block").unwrap().unwrap().id)
         .unwrap();
     assert_eq!(stone_body.aliases, ["Stone"]);
 
-    // Note scope: one note, its tags with ancestors, and the edges it takes part in.
+    // Entry scope: one entry, its tags with ancestors, and the edges it takes part in.
     let archive = export_to(
         &f.v,
-        &ExportScope::Note {
+        &ExportScope::Entry {
             id: f.cobble.clone(),
         },
         f.dir.path(),
-        "note.zip",
+        "entry.zip",
     );
     let (_d3, mut target) = empty_vault();
     let report = import_all(
@@ -554,7 +554,7 @@ fn guide_tag_and_note_scopes_round_trip_their_subset() {
     assert_eq!(report.qualifier_values_kept_as_text, 0);
     assert!(
         target
-            .get_note(&target.lookup_note(g, "Stone Block").unwrap().unwrap().id)
+            .get_entry(&target.lookup_entry(g, "Stone Block").unwrap().unwrap().id)
             .unwrap()
             .is_stub
     );
@@ -562,13 +562,13 @@ fn guide_tag_and_note_scopes_round_trip_their_subset() {
         views(
             &target,
             &target
-                .lookup_note(g, "Cobblestone Block")
+                .lookup_entry(g, "Cobblestone Block")
                 .unwrap()
                 .unwrap()
                 .id
         ),
         [
-            "DROPPED BY Stone Block · mined with Pickaxe · below depth 12 · note silk touch gives stone"
+            "DROPPED BY Stone Block · mined with Pickaxe · below depth 12 · remark silk touch gives stone"
         ]
     );
 }
@@ -597,16 +597,16 @@ fn the_archive_matches_the_documented_layout_and_is_deterministic() {
     assert!(names.contains(&"guides/minecraft/qualifiers.json"));
     assert!(names.contains(&"guides/minecraft/relations.jsonl"));
     assert!(names.contains(&"guides/minecraft/boards/overview.json"));
-    assert!(names.contains(&"guides/minecraft/notes/stone-block.md"));
-    assert!(names.contains(&"guides/minecraft/notes/cafe.md"));
+    assert!(names.contains(&"guides/minecraft/entries/stone-block.md"));
+    assert!(names.contains(&"guides/minecraft/entries/cafe.md"));
     assert!(
-        names.contains(&"guides/minecraft/notes/cafe-2.md"),
+        names.contains(&"guides/minecraft/entries/cafe-2.md"),
         "case and accent variants get distinct slugs"
     );
-    assert!(names.contains(&"guides/terraria/notes/copper-ore.md"));
+    assert!(names.contains(&"guides/terraria/entries/copper-ore.md"));
     assert!(
         !names.iter().any(|n| n.contains("doomed")),
-        "trashed notes are not exported"
+        "trashed entries are not exported"
     );
     assert_eq!(
         names.iter().filter(|n| n.starts_with("media/")).count(),
@@ -626,7 +626,7 @@ fn the_archive_matches_the_documented_layout_and_is_deterministic() {
         );
     }
 
-    // Every JSON entry parses; every note starts with front matter; relations are one JSON per line.
+    // Every JSON entry parses; every entry starts with front matter; relations are one JSON per line.
     for (name, bytes) in &a {
         if name.ends_with(".json") {
             serde_json::from_slice::<serde_json::Value>(bytes)
@@ -644,7 +644,7 @@ fn the_archive_matches_the_documented_layout_and_is_deterministic() {
     assert_eq!(
         relations.lines().count(),
         3,
-        "the edge touching the trashed note is absent"
+        "the edge touching the trashed entry is absent"
     );
     assert!(
         !relations.contains("\"external\""),
@@ -756,7 +756,7 @@ fn mapping_auto_matches_normalized_names_and_ranks_near_misses() {
     assert_eq!(report.verbs_created, 2, "ADJACENT TO and UNUSED");
     assert_eq!(
         report.qualifier_labels_created, 3,
-        "below depth, note, unused label"
+        "below depth, entry, unused label"
     );
     assert!(
         target
@@ -771,7 +771,7 @@ fn mapping_auto_matches_normalized_names_and_ranks_near_misses() {
             .is_none()
     );
     let stone = target
-        .lookup_note(&local, "Stone Block")
+        .lookup_entry(&local, "Stone Block")
         .unwrap()
         .unwrap()
         .id;
@@ -779,18 +779,18 @@ fn mapping_auto_matches_normalized_names_and_ranks_near_misses() {
         views(&target, &stone),
         [
             "ADJACENT TO Café",
-            "DROPS Cobblestone Block · mined by Pickaxe · below depth 12 · note silk touch gives stone",
+            "DROPS Cobblestone Block · mined by Pickaxe · below depth 12 · remark silk touch gives stone",
         ]
     );
-    let stone_note = target.get_note(&stone).unwrap();
+    let stone_entry = target.get_entry(&stone).unwrap();
     assert_eq!(
-        target.tag_path(&stone_note.tag_ids[0]).unwrap(),
+        target.tag_path(&stone_entry.tag_ids[0]).unwrap(),
         "Block/Natural"
     );
 }
 
 #[test]
-fn note_identity_follows_ids_and_timestamps_and_collisions_rename() {
+fn entry_identity_follows_ids_and_timestamps_and_collisions_rename() {
     let f = fixture();
     let (_d, mut target) = empty_vault();
     let first = export_to(
@@ -804,24 +804,24 @@ fn note_identity_follows_ids_and_timestamps_and_collisions_rename() {
         .id
         .clone();
 
-    // The source edits one note and the target edits another; a second export follows.
+    // The source edits one entry and the target edits another; a second export follows.
     let mut f = f;
     std::thread::sleep(std::time::Duration::from_millis(5));
-    f.v.update_note_body(&f.stone, "Grey, common, and now edited at the source.")
+    f.v.update_entry_body(&f.stone, "Grey, common, and now edited at the source.")
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(5));
     target
-        .update_note_body(&f.cobble, "Edited in the target, which is newer.")
+        .update_entry_body(&f.cobble, "Edited in the target, which is newer.")
         .unwrap();
-    // The target also made its own note with a title the archive will bring.
-    let own_pickaxe = note(&mut target, &local_guide, "Diamond Pickaxe", "");
+    // The target also made its own entry with a title the archive will bring.
+    let own_pickaxe = entry(&mut target, &local_guide, "Diamond Pickaxe", "");
     let second = export_to(
         &f.v,
         &ExportScope::Guide { id: f.mc.clone() },
         f.dir.path(),
         "second.zip",
     );
-    f.v.create_note(NewNote {
+    f.v.create_entry(NewEntry {
         guide_id: f.mc.clone(),
         title: "Diamond Pickaxe".to_owned(),
         body_md: "Links to [[Diamond Pickaxe]] itself and to [[Stone Block]].".to_owned(),
@@ -836,44 +836,44 @@ fn note_identity_follows_ids_and_timestamps_and_collisions_rename() {
     );
 
     let report = import_all(&mut target, &second, &[], &ImportOptions::default());
-    assert_eq!(report.notes_updated, 1);
+    assert_eq!(report.entries_updated, 1);
     assert_eq!(
-        target.get_note(&f.stone).unwrap().body_md,
+        target.get_entry(&f.stone).unwrap().body_md,
         "Grey, common, and now edited at the source."
     );
     assert!(
         report
-            .notes_skipped_older
+            .entries_skipped_older
             .contains(&"Cobblestone Block".to_owned())
     );
     assert_eq!(
-        target.get_note(&f.cobble).unwrap().body_md,
+        target.get_entry(&f.cobble).unwrap().body_md,
         "Edited in the target, which is newer."
     );
 
     let report = import_all(&mut target, &third, &[], &ImportOptions::default());
-    assert_eq!(report.notes_created, 1);
-    assert_eq!(report.notes_renamed.len(), 1);
-    assert_eq!(report.notes_renamed[0].from, "Diamond Pickaxe");
-    assert_eq!(report.notes_renamed[0].to, "Diamond Pickaxe (imported)");
+    assert_eq!(report.entries_created, 1);
+    assert_eq!(report.entries_renamed.len(), 1);
+    assert_eq!(report.entries_renamed[0].from, "Diamond Pickaxe");
+    assert_eq!(report.entries_renamed[0].to, "Diamond Pickaxe (imported)");
     let imported = target
-        .lookup_note(&local_guide, "Diamond Pickaxe (imported)")
+        .lookup_entry(&local_guide, "Diamond Pickaxe (imported)")
         .unwrap()
         .unwrap();
     assert_ne!(imported.id, own_pickaxe);
-    let body = target.get_note(&imported.id).unwrap().body_md;
+    let body = target.get_entry(&imported.id).unwrap().body_md;
     assert_eq!(
         body,
         "Links to [[Diamond Pickaxe (imported)]] itself and to [[Stone Block]]."
     );
     assert_eq!(
-        target.get_note(&own_pickaxe).unwrap().title,
+        target.get_entry(&own_pickaxe).unwrap().title,
         "Diamond Pickaxe"
     );
 }
 
 #[test]
-fn imported_wikilinks_resolve_against_the_archives_own_notes_first() {
+fn imported_wikilinks_resolve_against_the_archives_own_entries_first() {
     let f = fixture();
     let archive = export_to(
         &f.v,
@@ -883,18 +883,18 @@ fn imported_wikilinks_resolve_against_the_archives_own_notes_first() {
     );
     let (_d, mut target) = empty_vault();
     let local = guide(&mut target, "Minecraft");
-    let local_cobble = note(&mut target, &local, "Cobblestone Block", "mine, not theirs");
+    let local_cobble = entry(&mut target, &local, "Cobblestone Block", "mine, not theirs");
 
     import_all(&mut target, &archive, &[], &ImportOptions::default());
-    let stone = target.get_note(&f.stone).unwrap();
+    let stone = target.get_entry(&f.stone).unwrap();
     assert!(stone.body_md.contains("[[Cobblestone Block (imported)]]"));
     let mentioned: Vec<String> = titles(&target.mentions_from(&f.stone).unwrap());
     assert_eq!(mentioned, ["Cobblestone Block (imported)", "Pickaxe"]);
     assert!(target.mentioned_by(&local_cobble).unwrap().is_empty());
-    // The edge arrived too, pointing at the imported note.
+    // The edge arrived too, pointing at the imported entry.
     assert_eq!(
         views(&target, &f.stone)[1],
-        "DROPS Cobblestone Block (imported) · mined with Pickaxe · below depth 12 · note silk touch gives stone"
+        "DROPS Cobblestone Block (imported) · mined with Pickaxe · below depth 12 · remark silk touch gives stone"
     );
 }
 
@@ -908,7 +908,7 @@ fn external_endpoints_resolve_by_id_then_by_guide_and_title() {
         "guide.zip",
     );
 
-    // By id: the target already holds the very same Terraria note.
+    // By id: the target already holds the very same Terraria entry.
     let (_d1, mut by_id) = empty_vault();
     import_all(
         &mut by_id,
@@ -927,18 +927,18 @@ fn external_endpoints_resolve_by_id_then_by_guide_and_title() {
         include_external: true,
     };
     assert_eq!(
-        by_id.relations_for_note(&f.ore, &all).unwrap()[0].text,
+        by_id.relations_for_entry(&f.ore, &all).unwrap()[0].text,
         "DROPPED BY Stone Block"
     );
 
-    // By guide name and title: a different note with the same title in a guide of the same name.
+    // By guide name and title: a different entry with the same title in a guide of the same name.
     let (_d2, mut by_name) = empty_vault();
     let tr = guide(&mut by_name, "terraria");
-    let ore = note(&mut by_name, &tr, "copper ore", "different id");
+    let ore = entry(&mut by_name, &tr, "copper ore", "different id");
     let report = import_all(&mut by_name, &archive, &[], &ImportOptions::default());
     assert!(report.relations_unresolved.is_empty());
     assert_eq!(
-        by_name.relations_for_note(&ore, &all).unwrap()[0].text,
+        by_name.relations_for_entry(&ore, &all).unwrap()[0].text,
         "DROPPED BY Stone Block"
     );
 
@@ -949,7 +949,7 @@ fn external_endpoints_resolve_by_id_then_by_guide_and_title() {
     assert_eq!(report.relations_created, 2);
     assert!(
         nothing
-            .lookup_note_any_guide("Copper Ore")
+            .lookup_entry_any_guide("Copper Ore")
             .unwrap()
             .is_empty()
     );
@@ -964,7 +964,7 @@ fn external_endpoints_resolve_by_id_then_by_guide_and_title() {
     );
     assert!(report.relations_unresolved.is_empty());
     assert_eq!(report.stubs_created, 1);
-    let stub = stubs.lookup_note_any_guide("Copper Ore").unwrap();
+    let stub = stubs.lookup_entry_any_guide("Copper Ore").unwrap();
     assert_eq!(stub.len(), 1);
     assert!(stub[0].is_stub);
 }
@@ -994,12 +994,12 @@ fn a_failing_import_leaves_the_vault_and_its_media_untouched() {
     let f = fixture();
     let archive = export_to(&f.v, &ExportScope::Vault, f.dir.path(), "vault.zip");
     let broken = f.dir.path().join("broken.zip");
-    // A note whose title breaks the rules fails in the middle of applying, after guides, tags,
-    // vocabulary, and earlier notes have been written.
+    // An entry whose title breaks the rules fails in the middle of applying, after guides, tags,
+    // vocabulary, and earlier entries have been written.
     rewrite_entry(
         &archive,
         &broken,
-        "guides/minecraft/notes/pickaxe.md",
+        "guides/minecraft/entries/pickaxe.md",
         replace_text("title: Pickaxe", "title: \"Pick [[axe\""),
     );
 
@@ -1051,7 +1051,7 @@ fn a_failing_import_leaves_the_vault_and_its_media_untouched() {
 }
 
 #[test]
-fn importing_into_a_tag_adds_it_to_every_imported_note() {
+fn importing_into_a_tag_adds_it_to_every_imported_entry() {
     let f = fixture();
     let archive = export_to(
         &f.v,
@@ -1081,6 +1081,6 @@ fn importing_into_a_tag_adds_it_to_every_imported_note() {
     let tagged = browse_tag(&target, &local, &from_friend.id);
     assert_eq!(tagged, browse(&target, &local));
     assert_eq!(tagged.len(), 5);
-    let stone = target.get_note(&f.stone).unwrap();
+    let stone = target.get_entry(&f.stone).unwrap();
     assert_eq!(stone.tag_ids.len(), 2, "its own tag and the added one");
 }

@@ -7,11 +7,11 @@
   import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
   import { session } from "../lib/session.svelte";
-  import { flattenTags, type TagEntry } from "../lib/tags";
+  import { flattenTags, type TagOption } from "../lib/tags";
 
   let guides = $state<Guide[]>([]);
   let allGuides = $state<Guide[]>([]);
-  let tags = $state<TagEntry[]>([]);
+  let tags = $state<TagOption[]>([]);
   let nameFilter = $state("");
   let selectedTags = $state<string[]>([]);
   let error = $state("");
@@ -74,10 +74,10 @@
     }
   }
 
-  function tagPaths(guide: Guide): TagEntry[] {
+  function tagPaths(guide: Guide): TagOption[] {
     return guide.tag_ids
       .map((id) => tags.find((t) => t.id === id))
-      .filter((t): t is TagEntry => t !== undefined);
+      .filter((t): t is TagOption => t !== undefined);
   }
 
   function when(iso: string): string {

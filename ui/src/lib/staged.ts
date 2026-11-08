@@ -18,7 +18,7 @@ export interface VerbChoice {
 }
 
 export type TargetChoice =
-  | { kind: "note"; id: Id; title: string }
+  | { kind: "entry"; id: Id; title: string }
   | { kind: "stub"; title: string; tag_id: Id | null };
 
 export interface LabelChoice {
@@ -31,7 +31,7 @@ export interface LabelChoice {
 export interface QualifierDraft {
   label: LabelChoice;
   value: string;
-  /** The value names a note that does not exist yet; a stub is created when the line is saved. */
+  /** The value names an entry that does not exist yet; a stub is created when the line is saved. */
   stub?: boolean;
 }
 
@@ -102,7 +102,7 @@ export function interpret(s: Staged, text: string): { stage: Stage; text: string
   return { stage, text: trimmed };
 }
 
-/** The line as it will read from the origin note once saved. */
+/** The line as it will read from the origin entry once saved. */
 export function summary(s: Staged, originTitle: string): string {
   if (!s.verb) return "";
   const parts = [`${originTitle} ${s.verb.label.toUpperCase()}`];

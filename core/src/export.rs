@@ -1,4 +1,4 @@
-//! Export: writes a vault, a guide, a tag subtree, or a single note as the zip archive described
+//! Export: writes a vault, a guide, a tag subtree, or a single entry as the zip archive described
 //! in `docs/design.md` section 7. Every archive is self-contained and readable without the app.
 //!
 //! Entries are written in a fixed order with a fixed timestamp, so two exports of the same
@@ -22,7 +22,7 @@ use crate::frontmatter::{self, FrontMatter};
 use crate::relation::{self, QualifierValueView, Relation};
 use crate::slug::SlugSet;
 use crate::tag::TagNode;
-use crate::{Error, GuideId, NoteId, RelationId, Result, TagId, Vault, clock, fsutil};
+use crate::{EntryId, Error, GuideId, RelationId, Result, TagId, Vault, clock, fsutil};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -31,12 +31,12 @@ pub enum ExportScope {
     Guide {
         id: GuideId,
     },
-    /// The tag's guide, limited to notes under the tag.
+    /// The tag's guide, limited to entries under the tag.
     Tag {
         id: TagId,
     },
-    Note {
-        id: NoteId,
+    Entry {
+        id: EntryId,
     },
 }
 
@@ -44,7 +44,7 @@ pub enum ExportScope {
 pub struct ExportReport {
     pub path: PathBuf,
     pub guides: usize,
-    pub notes: usize,
+    pub entries: usize,
     pub relations: usize,
     pub boards: usize,
     pub media: usize,
@@ -82,14 +82,14 @@ impl Vault {
 /// What goes into the archive, resolved before any byte is written.
 struct Plan {
     guides: Vec<GuidePlan>,
-    /// Every exported note id, across guides.
-    note_ids: BTreeSet<NoteId>,
+    /// Every exported entry id, across guides.
+    entry_ids: BTreeSet<EntryId>,
     partial: bool,
 }
 
 struct GuidePlan {
     id: GuideId,
-    note_ids: Vec<NoteId>,
+    entry_ids: Vec<EntryId>,
     /// Tags to write: the whole tree for a full guide, the closure of used tags otherwise.
     tag_ids: Option<BTreeSet<TagId>>,
 }
@@ -102,7 +102,7 @@ impl Vault {
             ExportScope::Vault => {
                 for guide in self.list_guides(&Default::default())? {
                     guides.push(GuidePlan {
-                        note_ids: self.live_note_ids(&guide.id)?,
+                        entry_ids: self.live_entry_ids(&guide.id)?,
                         id: guide.id,
                         tag_ids: None,
                     });
@@ -112,7 +112,7 @@ impl Vault {
                 self.get_guide(id)?;
                 guides.push(GuidePlan {
                     id: id.clone(),
-                    note_ids: self.live_note_ids(id)?,
+                    entry_ids: self.live_entry_ids(id)?,
                     tag_ids: None,
                 });
             }
@@ -123,60 +123,60 @@ impl Vault {
                     Error::Invalid("a global tag is not an export scope".to_owned())
                 })?;
                 let subtree = self.descendant_tag_ids(id)?;
-                let note_ids = self.live_notes_under(&guide_id, &subtree)?;
-                let mut tag_ids = self.tags_of_notes(&note_ids)?;
+                let entry_ids = self.live_entries_under(&guide_id, &subtree)?;
+                let mut tag_ids = self.tags_of_entries(&entry_ids)?;
                 tag_ids.insert(id.clone());
                 guides.push(GuidePlan {
                     id: guide_id,
-                    note_ids,
+                    entry_ids,
                     tag_ids: Some(self.with_ancestors(tag_ids)?),
                 });
             }
-            ExportScope::Note { id } => {
+            ExportScope::Entry { id } => {
                 partial = true;
-                let note = self.get_note(id)?;
-                if note.deleted_at.is_some() {
+                let entry = self.get_entry(id)?;
+                if entry.deleted_at.is_some() {
                     return Err(Error::Invalid(format!(
                         "\"{}\" is in the trash; restore it before exporting",
-                        note.title
+                        entry.title
                     )));
                 }
-                let tag_ids = self.with_ancestors(note.tag_ids.iter().cloned().collect())?;
+                let tag_ids = self.with_ancestors(entry.tag_ids.iter().cloned().collect())?;
                 guides.push(GuidePlan {
-                    id: note.guide_id,
-                    note_ids: vec![id.clone()],
+                    id: entry.guide_id,
+                    entry_ids: vec![id.clone()],
                     tag_ids: Some(tag_ids),
                 });
             }
         }
         guides.sort_by(|a, b| a.id.cmp(&b.id));
-        let note_ids = guides
+        let entry_ids = guides
             .iter()
-            .flat_map(|g| g.note_ids.iter().cloned())
+            .flat_map(|g| g.entry_ids.iter().cloned())
             .collect();
         Ok(Plan {
             guides,
-            note_ids,
+            entry_ids,
             partial,
         })
     }
 
-    fn live_note_ids(&self, guide_id: &GuideId) -> Result<Vec<NoteId>> {
+    fn live_entry_ids(&self, guide_id: &GuideId) -> Result<Vec<EntryId>> {
         let mut stmt = self.conn().prepare(
-            "SELECT id FROM note WHERE guide_id = ?1 AND deleted_at IS NULL ORDER BY id",
+            "SELECT id FROM entry WHERE guide_id = ?1 AND deleted_at IS NULL ORDER BY id",
         )?;
         let rows = stmt.query_map(params![guide_id], |row| row.get(0))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    fn live_notes_under(&self, guide_id: &GuideId, tags: &[TagId]) -> Result<Vec<NoteId>> {
+    fn live_entries_under(&self, guide_id: &GuideId, tags: &[TagId]) -> Result<Vec<EntryId>> {
         let mut ids = BTreeSet::new();
         for tag_id in tags {
             let mut stmt = self.conn().prepare(
-                "SELECT n.id FROM note n JOIN note_tag nt ON nt.note_id = n.id
+                "SELECT n.id FROM entry n JOIN entry_tag nt ON nt.entry_id = n.id
                  WHERE n.guide_id = ?1 AND n.deleted_at IS NULL AND nt.tag_id = ?2",
             )?;
-            let rows = stmt.query_map(params![guide_id, tag_id], |row| row.get::<_, NoteId>(0))?;
+            let rows = stmt.query_map(params![guide_id, tag_id], |row| row.get::<_, EntryId>(0))?;
             for id in rows {
                 ids.insert(id?);
             }
@@ -184,10 +184,10 @@ impl Vault {
         Ok(ids.into_iter().collect())
     }
 
-    fn tags_of_notes(&self, note_ids: &[NoteId]) -> Result<BTreeSet<TagId>> {
+    fn tags_of_entries(&self, entry_ids: &[EntryId]) -> Result<BTreeSet<TagId>> {
         let mut tags = BTreeSet::new();
-        for note_id in note_ids {
-            for tag_id in crate::tag::tags_of_note(self.conn(), note_id)? {
+        for entry_id in entry_ids {
+            for tag_id in crate::tag::tags_of_entry(self.conn(), entry_id)? {
                 tags.insert(tag_id);
             }
         }
@@ -256,7 +256,7 @@ impl Vault {
             write_json(&mut zip, &format!("{dir}/tags.json"), &tree)?;
 
             // Relations first, because a partial export only carries the vocabulary they use.
-            let relations = self.relations_to_export(&guide.id, &plan.note_ids)?;
+            let relations = self.relations_to_export(&guide.id, &plan.entry_ids)?;
             let used_verbs: BTreeSet<_> = relations.iter().map(|r| r.verb.id.clone()).collect();
             let used_labels: BTreeSet<_> = relations
                 .iter()
@@ -299,46 +299,51 @@ impl Vault {
             labels.sort_by(|a, b| a.id.cmp(&b.id));
             write_json(&mut zip, &format!("{dir}/qualifiers.json"), &labels)?;
 
-            // notes/<slug>.md
-            let mut note_slugs = SlugSet::default();
-            for note_id in &guide_plan.note_ids {
-                let note = self.get_note(note_id)?;
-                let gallery = self.note_gallery(note_id)?;
+            // entries/<slug>.md
+            let mut entry_slugs = SlugSet::default();
+            for entry_id in &guide_plan.entry_ids {
+                let entry = self.get_entry(entry_id)?;
+                let gallery = self.entry_gallery(entry_id)?;
                 for media in &gallery {
                     media_wanted.insert(media.sha256.clone(), media.ext.clone());
                 }
-                for sha in inline_media_hashes(&note.body_md) {
+                for sha in inline_media_hashes(&entry.body_md) {
                     if let Some(media) = self.find_media_by_hash(&sha)? {
                         media_wanted.insert(media.sha256, media.ext);
                     }
                 }
                 let front = FrontMatter {
-                    id: note.id.0.clone(),
-                    title: note.title.clone(),
-                    aliases: note.aliases.clone(),
-                    tags: note
+                    id: entry.id.0.clone(),
+                    title: entry.title.clone(),
+                    aliases: entry.aliases.clone(),
+                    tags: entry
                         .tag_ids
                         .iter()
                         .filter_map(|t| tag_paths.get(t).cloned())
                         .collect(),
-                    stub: note.is_stub,
+                    stub: entry.is_stub,
                     gallery: gallery
                         .iter()
                         .map(|m| archive::media_entry(&m.sha256, &m.ext))
                         .collect(),
-                    created: note.created_at.clone(),
-                    updated: note.updated_at.clone(),
+                    created: entry.created_at.clone(),
+                    updated: entry.updated_at.clone(),
                 };
-                let slug = note_slugs.claim(&note.title, &format!("note-{}", short(&note.id.0)));
-                let text = frontmatter::write(&front, &note.body_md);
-                write_text(&mut zip, &format!("{dir}/notes/{slug}.md"), text.as_bytes())?;
-                report.notes += 1;
+                let slug =
+                    entry_slugs.claim(&entry.title, &format!("entry-{}", short(&entry.id.0)));
+                let text = frontmatter::write(&front, &entry.body_md);
+                write_text(
+                    &mut zip,
+                    &format!("{dir}/entries/{slug}.md"),
+                    text.as_bytes(),
+                )?;
+                report.entries += 1;
             }
 
             // relations.jsonl
             let mut lines = String::new();
             for relation in &relations {
-                let line = relation_line(relation, &plan.note_ids, &guide_names);
+                let line = relation_line(relation, &plan.entry_ids, &guide_names);
                 lines.push_str(&serde_json::to_string(&line)?);
                 lines.push('\n');
                 report.relations += 1;
@@ -349,7 +354,7 @@ impl Vault {
                 lines.as_bytes(),
             )?;
 
-            // boards/<slug>.json, full guides only: a partial scope cannot carry a board's notes.
+            // boards/<slug>.json, full guides only: a partial scope cannot carry a board's entries.
             if !plan.partial {
                 let mut board_slugs = SlugSet::default();
                 let mut boards = self.list_boards(&guide.id)?;
@@ -367,9 +372,9 @@ impl Vault {
                                 .filter_map(|t| tag_paths.get(t).cloned())
                                 .collect(),
                             text: board.filters.text.clone(),
-                            topic_note_ids: board
+                            topic_entry_ids: board
                                 .filters
-                                .topic_note_ids
+                                .topic_entry_ids
                                 .iter()
                                 .map(|n| n.0.clone())
                                 .collect(),
@@ -380,7 +385,7 @@ impl Vault {
                         nodes: nodes
                             .iter()
                             .map(|n| BoardNodeFile {
-                                note_id: n.note_id.0.clone(),
+                                entry_id: n.entry_id.0.clone(),
                                 x: n.x,
                                 y: n.y,
                             })
@@ -452,12 +457,12 @@ impl Vault {
                     path: self.tag_path(id)?,
                 }
             }
-            ExportScope::Note { id } => {
-                let note = self.get_note(id)?;
-                ScopeRecord::Note {
-                    guide_id: note.guide_id.0,
+            ExportScope::Entry { id } => {
+                let entry = self.get_entry(id)?;
+                ScopeRecord::Entry {
+                    guide_id: entry.guide_id.0,
                     id: id.0.clone(),
-                    title: note.title,
+                    title: entry.title,
                 }
             }
         })
@@ -484,18 +489,18 @@ impl Vault {
         Ok(paths)
     }
 
-    /// Edges owned by the guide's vocabulary that touch an exported note, with both endpoints
+    /// Edges owned by the guide's vocabulary that touch an exported entry, with both endpoints
     /// live. Edges into the trash are left out entirely.
     fn relations_to_export(
         &self,
         guide_id: &GuideId,
-        exported: &BTreeSet<NoteId>,
+        exported: &BTreeSet<EntryId>,
     ) -> Result<Vec<Relation>> {
         let mut stmt = self.conn().prepare(
             "SELECT r.id FROM relation r
              JOIN verb v ON v.id = r.verb_id
-             JOIN note s ON s.id = r.subject_note_id
-             JOIN note o ON o.id = r.object_note_id
+             JOIN entry s ON s.id = r.subject_entry_id
+             JOIN entry o ON o.id = r.object_entry_id
              WHERE v.guide_id = ?1 AND s.deleted_at IS NULL AND o.deleted_at IS NULL
              ORDER BY r.id",
         )?;
@@ -509,7 +514,7 @@ impl Vault {
                 continue;
             }
             relation.qualifiers.retain(|q| match &q.value {
-                QualifierValueView::Note(note) => note.deleted_at.is_none(),
+                QualifierValueView::Entry(entry) => entry.deleted_at.is_none(),
                 _ => true,
             });
             relations.push(relation);
@@ -541,17 +546,17 @@ fn tag_tree_file(nodes: &[TagNode], keep: Option<&BTreeSet<TagId>>) -> Vec<TagTr
 
 fn relation_line(
     relation: &Relation,
-    exported: &BTreeSet<NoteId>,
+    exported: &BTreeSet<EntryId>,
     guide_names: &HashMap<GuideId, String>,
 ) -> RelationLine {
-    let endpoint = |note: &relation::NoteRef| Endpoint {
-        id: Some(note.id.0.clone()),
-        title: note.title.clone(),
-        external: !exported.contains(&note.id),
-        guide: if exported.contains(&note.id) {
+    let endpoint = |entry: &relation::EntryRef| Endpoint {
+        id: Some(entry.id.0.clone()),
+        title: entry.title.clone(),
+        external: !exported.contains(&entry.id),
+        guide: if exported.contains(&entry.id) {
             None
         } else {
-            guide_names.get(&note.guide_id).cloned()
+            guide_names.get(&entry.guide_id).cloned()
         },
     };
     RelationLine {
@@ -568,8 +573,8 @@ fn relation_line(
             .map(|q| QualifierLine {
                 label_id: q.label.id.0.clone(),
                 label: q.label.label.clone(),
-                note: match &q.value {
-                    QualifierValueView::Note(note) => Some(endpoint(note)),
+                entry: match &q.value {
+                    QualifierValueView::Entry(entry) => Some(endpoint(entry)),
                     _ => None,
                 },
                 text: match &q.value {
