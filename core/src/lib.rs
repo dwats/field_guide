@@ -6,7 +6,7 @@
 pub mod archive;
 pub mod backup;
 pub mod board;
-mod clock;
+pub mod clock;
 pub mod config;
 pub mod datadir;
 mod db;

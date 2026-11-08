@@ -577,7 +577,7 @@ fn guide_tag_and_entry_scopes_round_trip_their_subset() {
 fn the_archive_matches_the_documented_layout_and_is_deterministic() {
     let f = fixture();
     let first = export_to(&f.v, &ExportScope::Vault, f.dir.path(), "one.zip");
-    std::thread::sleep(std::time::Duration::from_millis(5));
+    fieldguide_core::clock::advance_for_tests(5);
     let second = export_to(&f.v, &ExportScope::Vault, f.dir.path(), "two.zip");
     let a = entries(&first);
     let b = entries(&second);
@@ -806,10 +806,10 @@ fn entry_identity_follows_ids_and_timestamps_and_collisions_rename() {
 
     // The source edits one entry and the target edits another; a second export follows.
     let mut f = f;
-    std::thread::sleep(std::time::Duration::from_millis(5));
+    fieldguide_core::clock::advance_for_tests(5);
     f.v.update_entry_body(&f.stone, "Grey, common, and now edited at the source.")
         .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(5));
+    fieldguide_core::clock::advance_for_tests(5);
     target
         .update_entry_body(&f.cobble, "Edited in the target, which is newer.")
         .unwrap();
@@ -1083,4 +1083,171 @@ fn importing_into_a_tag_adds_it_to_every_imported_entry() {
     assert_eq!(tagged.len(), 5);
     let stone = target.get_entry(&f.stone).unwrap();
     assert_eq!(stone.tag_ids.len(), 2, "its own tag and the added one");
+}
+
+#[test]
+fn an_archive_verb_that_matches_a_local_inverse_is_stored_the_right_way_round() {
+    let dir = tempdir().unwrap();
+    // Their guide names the verb from the object's side.
+    let mut theirs = vault();
+    let tg = guide(&mut theirs, "Minecraft");
+    let t_stone = entry(&mut theirs, &tg, "Stone Block", "");
+    let t_cobble = entry(&mut theirs, &tg, "Cobblestone Block", "");
+    let dropped_by = verb(&mut theirs, &tg, "DROPPED BY", Some("DROPS"));
+    relate(&mut theirs, &t_cobble, &dropped_by, &t_stone);
+    let archive = export_to(
+        &theirs,
+        &ExportScope::Guide { id: tg },
+        dir.path(),
+        "theirs.zip",
+    );
+
+    // My guide has the verb the other way round and none of the entries yet.
+    let mut mine = vault();
+    let mg = guide(&mut mine, "Minecraft");
+    verb(&mut mine, &mg, "DROPS", Some("DROPPED BY"));
+
+    let report = import_all(&mut mine, &archive, &[], &ImportOptions::default());
+    assert_eq!(
+        report.verbs_created, 0,
+        "their DROPPED BY is my DROPS read backwards"
+    );
+    assert_eq!(report.relations_created, 1);
+    let stone = mine.lookup_entry(&mg, "Stone Block").unwrap().unwrap().id;
+    assert_eq!(views(&mine, &stone), ["DROPS Cobblestone Block"]);
+    assert_eq!(mine.list_verbs(&mg).unwrap().len(), 1);
+}
+
+#[test]
+fn importing_an_archive_as_a_new_guide_twice_makes_independent_copies() {
+    let dir = tempdir().unwrap();
+    let mut source = vault();
+    let g = guide(&mut source, "Minecraft");
+    let stone = entry(&mut source, &g, "Stone Block", "see [[Cobblestone Block]]");
+    let cobble = entry(&mut source, &g, "Cobblestone Block", "");
+    let drops = verb(&mut source, &g, "DROPS", None);
+    relate(&mut source, &stone, &drops, &cobble);
+    let archive = export_to(&source, &ExportScope::Guide { id: g }, dir.path(), "mc.zip");
+    let archive_guide_id = import::read_archive(&archive).unwrap().guides[0]
+        .guide
+        .id
+        .clone();
+
+    let mut target = vault();
+    let first = import_all(&mut target, &archive, &[], &ImportOptions::default());
+    assert_eq!(first.guides_created, ["Minecraft"]);
+
+    let as_new = GuideChoice {
+        archive_guide_id,
+        target: Some(GuideTarget::New {
+            name: "Minecraft".to_owned(),
+        }),
+        add_tag: None,
+    };
+    let second = import_all(&mut target, &archive, &[as_new], &ImportOptions::default());
+    assert_eq!(second.guides_created, ["Minecraft (imported)"]);
+    assert_eq!(second.entries_created, 2);
+    assert!(second.entries_skipped_older.is_empty());
+    assert_eq!(second.relations_created, 1);
+
+    let guides = target.list_guides(&Default::default()).unwrap();
+    let original = guides.iter().find(|g| g.name == "Minecraft").unwrap();
+    let copy = guides
+        .iter()
+        .find(|g| g.name == "Minecraft (imported)")
+        .unwrap();
+    assert_eq!(
+        browse(&target, &original.id),
+        ["Cobblestone Block", "Stone Block"]
+    );
+    assert_eq!(
+        browse(&target, &copy.id),
+        ["Cobblestone Block", "Stone Block"]
+    );
+    let copy_stone = target
+        .lookup_entry(&copy.id, "Stone Block")
+        .unwrap()
+        .unwrap();
+    assert_ne!(copy_stone.id, stone, "the copy has its own id");
+    assert_eq!(views(&target, &copy_stone.id), ["DROPS Cobblestone Block"]);
+    let copy_cobble = target
+        .lookup_entry(&copy.id, "Cobblestone Block")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        target
+            .render_entry(&copy_stone.id)
+            .unwrap()
+            .linked_entry_ids,
+        [copy_cobble.id],
+        "the copy's links resolve inside the copy"
+    );
+}
+
+#[test]
+fn with_stubs_on_a_title_held_by_a_trashed_entry_is_reported_not_fatal() {
+    let dir = tempdir().unwrap();
+    let mut source = vault();
+    let g = guide(&mut source, "Minecraft");
+    let stone = entry(&mut source, &g, "Stone Block", "");
+    let cobble = entry(&mut source, &g, "Cobblestone Block", "");
+    let drops = verb(&mut source, &g, "DROPS", None);
+    relate(&mut source, &stone, &drops, &cobble);
+    // A single-entry export carries Cobblestone only as an external endpoint.
+    let archive = export_to(
+        &source,
+        &ExportScope::Entry { id: stone },
+        dir.path(),
+        "stone.zip",
+    );
+
+    let mut target = vault();
+    let tg = guide(&mut target, "Minecraft");
+    let old = entry(&mut target, &tg, "Cobblestone Block", "");
+    target.trash_entry(&old).unwrap();
+    let report = import_all(
+        &mut target,
+        &archive,
+        &[],
+        &ImportOptions {
+            create_stubs_for_unresolved: true,
+        },
+    );
+    assert_eq!(report.entries_created, 1);
+    assert_eq!(report.stubs_created, 0);
+    assert_eq!(report.relations_unresolved.len(), 1);
+    assert!(
+        report.relations_unresolved[0].reason.contains("trash"),
+        "{:?}",
+        report.relations_unresolved
+    );
+}
+
+#[test]
+fn a_media_entry_whose_extension_is_a_path_is_refused() {
+    let dir = tempdir().unwrap();
+    let mut source = vault();
+    let g = guide(&mut source, "G");
+    entry(&mut source, &g, "A", "");
+    let good = export_to(&source, &ExportScope::Vault, dir.path(), "good.zip");
+    let bad = dir.path().join("bad.zip");
+    {
+        let mut writer = zip::ZipWriter::new(fs::File::create(&bad).unwrap());
+        for (name, bytes) in entries(&good) {
+            writer
+                .start_file(name, SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(&bytes).unwrap();
+        }
+        let sha = "ab".repeat(32);
+        writer
+            .start_file(
+                format!("media/{sha}./../../escaped.png"),
+                SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"x").unwrap();
+        writer.finish().unwrap();
+    }
+    assert!(matches!(import::read_archive(&bad), Err(Error::Archive(_))));
 }

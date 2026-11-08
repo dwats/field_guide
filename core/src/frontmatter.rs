@@ -156,10 +156,16 @@ fn needs_quotes(value: &str, in_list: bool) -> bool {
 /// time part contain letters, so they stay plain.
 fn looks_numeric(value: &str) -> bool {
     let first = value.chars().next().expect("non-empty");
-    (first.is_ascii_digit() || first == '+' || first == '-' || first == '.')
+    let numeric_chars = value
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() || "+-._xXoObBeE".contains(c));
+    // `16:9` is a sexagesimal integer to YAML 1.1 readers.
+    let sexagesimal = value.contains(':')
         && value
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() || "+-._xXoObBeE".contains(c))
+            .split(':')
+            .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()));
+    (first.is_ascii_digit() || first == '+' || first == '-' || first == '.') && numeric_chars
+        || sexagesimal
 }
 
 fn unquote(value: &str) -> Result<String> {
@@ -241,6 +247,15 @@ mod tests {
             created: "2026-11-07T19:02:11.123Z".to_owned(),
             updated: "2026-11-07T19:40:03.000Z".to_owned(),
         }
+    }
+
+    #[test]
+    fn sexagesimal_looking_titles_are_quoted() {
+        let mut front = sample();
+        front.title = "16:9".to_owned();
+        let text = write(&front, "");
+        assert!(text.contains("title: \"16:9\""), "{text}");
+        assert_eq!(parse(&text).unwrap().0.title, "16:9");
     }
 
     #[test]

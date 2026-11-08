@@ -56,10 +56,7 @@ impl Vault {
                 "sha256 must be 64 hex characters".to_owned(),
             ));
         }
-        let ext = new.ext.trim().trim_start_matches('.').to_ascii_lowercase();
-        if ext.is_empty() {
-            return Err(Error::Invalid("media needs a file extension".to_owned()));
-        }
+        let ext = clean_ext(&new.ext)?;
         if let Some(existing) = self.find_media_by_hash(&sha256)? {
             return Ok(existing);
         }
@@ -101,10 +98,7 @@ impl Vault {
         let dir = self
             .media_dir()
             .ok_or_else(|| Error::Invalid("this vault has no media directory".to_owned()))?;
-        let ext = ext.trim().trim_start_matches('.').to_ascii_lowercase();
-        if ext.is_empty() {
-            return Err(Error::Invalid("media needs a file extension".to_owned()));
-        }
+        let ext = clean_ext(ext)?;
         let sha256 = sha256_hex(bytes);
         let existing = self.find_media_by_hash(&sha256)?;
         let path = dir.join(format!(
@@ -246,4 +240,16 @@ fn load_media(conn: &Connection, id: &MediaId) -> Result<Media> {
     )
     .optional()?
     .ok_or_else(|| not_found("media", id))
+}
+
+/// A file extension safe to splice into a path: one to sixteen ASCII letters or digits,
+/// lowercased. Anything else (a `/`, a `..`, an empty string) is refused.
+pub(crate) fn clean_ext(raw: &str) -> Result<String> {
+    let ext = raw.trim().trim_start_matches('.').to_ascii_lowercase();
+    if ext.is_empty() || ext.len() > 16 || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(Error::Invalid(
+            "a media extension must be 1 to 16 letters or digits".to_owned(),
+        ));
+    }
+    Ok(ext)
 }

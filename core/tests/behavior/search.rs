@@ -111,7 +111,7 @@ fn search_is_scoped_to_the_guide_and_combines_with_tags() {
         "a title match ranks above a body match"
     );
     let query = EntryQuery {
-        tag_id: Some(tools.id.clone()),
+        tag_ids: vec![tools.id.clone()],
         text: Some("pick".to_owned()),
         stubs_only: false,
     };
@@ -153,4 +153,32 @@ fn name_suggestions_match_title_and_alias_prefixes_and_skip_the_trash() {
     assert!(names("").is_empty());
     assert!(names("100%").is_empty(), "wildcards are literal");
     assert_eq!(v.suggest_names(&g, "oak", 1).unwrap().len(), 1);
+}
+
+#[test]
+fn several_tags_narrow_the_list_together() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let ores = v.create_tag(Some(&g), None, "Ores").unwrap();
+    let rare = v.create_tag(Some(&g), None, "Rare").unwrap();
+    let diamond = entry(&mut v, &g, "Diamond", "");
+    v.set_entry_tags(&diamond, &[ores.id.clone(), rare.id.clone()])
+        .unwrap();
+    let coal = entry(&mut v, &g, "Coal", "");
+    v.set_entry_tags(&coal, std::slice::from_ref(&ores.id))
+        .unwrap();
+
+    let both = EntryQuery {
+        tag_ids: vec![ores.id.clone(), rare.id.clone()],
+        ..EntryQuery::default()
+    };
+    assert_eq!(titles(&v.list_entries(&g, &both).unwrap()), ["Diamond"]);
+    let one = EntryQuery {
+        tag_ids: vec![ores.id],
+        ..EntryQuery::default()
+    };
+    assert_eq!(
+        titles(&v.list_entries(&g, &one).unwrap()),
+        ["Coal", "Diamond"]
+    );
 }

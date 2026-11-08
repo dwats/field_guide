@@ -101,7 +101,7 @@ fn restoring_a_live_entry_is_an_error_and_trashing_twice_is_not() {
     let stone = entry(&mut v, &g, "Stone", "");
     assert!(matches!(v.restore_entry(&stone), Err(Error::NotTrashed)));
     let first = v.trash_entry(&stone).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(2));
+    fieldguide_core::clock::advance_for_tests(2);
     let second = v.trash_entry(&stone).unwrap();
     assert!(first.deleted_at.is_some());
     assert_eq!(first.deleted_at, second.deleted_at);

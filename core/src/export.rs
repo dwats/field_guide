@@ -438,7 +438,14 @@ impl Vault {
             scope: self.scope_record(scope)?,
         };
         write_json(&mut zip, "manifest.json", &manifest)?;
-        zip.finish().map_err(zip_error)?;
+        let file = zip.finish().map_err(zip_error)?;
+        // Flushed before the rename, like every other atomic write; a yanked drive then leaves
+        // either no archive or a whole one.
+        file.sync_all().map_err(|source| Error::Io {
+            context: "writing",
+            path: tmp.to_path_buf(),
+            source,
+        })?;
         Ok(report)
     }
 

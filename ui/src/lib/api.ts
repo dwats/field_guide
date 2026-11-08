@@ -107,7 +107,7 @@ export interface EntrySummary {
 }
 
 export interface EntryQuery {
-  tag_id: Id | null;
+  tag_ids: Id[];
   text: string | null;
   stubs_only: boolean;
 }
@@ -223,10 +223,17 @@ export interface NewQualifierLabel {
 export type QualifierValue =
   | { kind: "entry"; value: Id }
   | { kind: "text"; value: string }
-  | { kind: "number"; value: number };
+  | { kind: "number"; value: number }
+  | { kind: "stub"; value: { title: string; tag_id: Id | null } };
+
+/** A verb from the pool, or a new one that core creates with the edge. */
+export type VerbSpec = { kind: "existing"; id: Id } | ({ kind: "new" } & NewVerb);
+
+/** A qualifier label from the pool, or a new one that core creates with the qualifier. */
+export type LabelSpec = { kind: "existing"; id: Id } | ({ kind: "new" } & NewQualifierLabel);
 
 export interface NewQualifier {
-  label_id: Id;
+  label: LabelSpec;
   value: QualifierValue;
 }
 
@@ -234,7 +241,7 @@ export type Target = { kind: "entry"; id: Id } | { kind: "stub"; title: string; 
 
 export interface CreateRelation {
   origin: Id;
-  verb_id: Id;
+  verb: VerbSpec;
   direction: Direction;
   target: Target;
   qualifiers: NewQualifier[];
@@ -272,6 +279,8 @@ export const api = {
   tagPath: (id: Id) => invoke<string>("tag_path", { id }),
   createTag: (scope: Id | null, parent: Id | null, name: string) =>
     invoke<Tag>("create_tag", { scope, parent, name }),
+  findTagByPath: (scope: Id | null, path: string) =>
+    invoke<Tag | null>("find_tag_by_path", { scope, path }),
   ensureTagPath: (scope: Id | null, path: string) =>
     invoke<Tag>("ensure_tag_path", { scope, path }),
   renameTag: (id: Id, name: string) => invoke<Tag>("rename_tag", { id, name }),
@@ -282,8 +291,6 @@ export const api = {
 
   createEntry: (guide_id: Id, title: string, body_md = "", tag_ids: Id[] = []) =>
     invoke<Entry>("create_entry", { new: { guide_id, title, body_md, tag_ids } }),
-  createStub: (guide_id: Id, title: string, tag_id: Id | null = null) =>
-    invoke<Entry>("create_stub", { guide_id, title, tag_id }),
   getEntry: (id: Id) => invoke<Entry>("get_entry", { id }),
   updateEntryBody: (id: Id, body_md: string) =>
     invoke<Entry>("update_entry_body", { id, body_md }),
@@ -299,7 +306,7 @@ export const api = {
     invoke<EntrySummary[]>("list_entries", {
       guide_id,
       query: {
-        tag_id: query.tag_id ?? null,
+        tag_ids: query.tag_ids ?? [],
         text: query.text ?? null,
         stubs_only: query.stubs_only ?? false,
       },
@@ -336,26 +343,10 @@ export const api = {
   listVerbs: (guide_id: Id) => invoke<Verb[]>("list_verbs", { guide_id }),
   lookupVerb: (guide_id: Id, text: string) =>
     invoke<VerbMatch | null>("lookup_verb", { guide_id, text }),
-  createVerb: (guide_id: Id, label: string, inverse_label: string | null, symmetric: boolean) =>
-    invoke<Verb>("create_verb", {
-      guide_id,
-      new: {
-        label,
-        inverse_label,
-        symmetric,
-        subject_default_tag_id: null,
-        object_default_tag_id: null,
-      } satisfies NewVerb,
-    }),
   listQualifierLabels: (guide_id: Id) =>
     invoke<QualifierLabel[]>("list_qualifier_labels", { guide_id }),
   lookupQualifierLabel: (guide_id: Id, text: string) =>
     invoke<QualifierLabel | null>("lookup_qualifier_label", { guide_id, text }),
-  createQualifierLabel: (guide_id: Id, label: string, inverse_label: string | null) =>
-    invoke<QualifierLabel>("create_qualifier_label", {
-      guide_id,
-      new: { label, inverse_label } satisfies NewQualifierLabel,
-    }),
 
   listBackups: () => invoke<BackupInfo[]>("list_backups"),
   backupNow: () => invoke<BackupInfo>("backup_now"),

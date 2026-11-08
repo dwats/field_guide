@@ -11,6 +11,7 @@
     type Relation,
     type RelationView,
   } from "../lib/api";
+  import { verbSlot } from "../lib/format";
   import { routeHash } from "../lib/router";
 
   interface Props {
@@ -110,7 +111,7 @@
         const value = unchanged
           ? row.original!.value
           : await api.resolveQualifierValue(guideId, text);
-        qualifiers.push({ label_id: row.label_id, value });
+        qualifiers.push({ label: { kind: "existing", id: row.label_id }, value });
       }
       await api.replaceQualifiers(editing.relation.id, qualifiers);
       editing = null;
@@ -183,7 +184,7 @@
     <div class="edit">
       <h3>
         Qualifiers on {editing.relation.subject.title}
-        {editing.relation.verb.label.toUpperCase()}
+        {verbSlot(editing.relation.verb.label)}
         {editing.relation.object.title}
       </h3>
       {#each editing.rows as row, i (i)}

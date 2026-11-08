@@ -3,7 +3,7 @@
 
   import { api, errorMessage } from "./lib/api";
   import { HOME, parseRoute, routeHash, type Route } from "./lib/router";
-  import { session } from "./lib/session.svelte";
+  import { dismiss, notify, session } from "./lib/session.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
   import EntryView from "./views/EntryView.svelte";
@@ -12,7 +12,6 @@
 
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
-  let notices = $state<string[]>([]);
 
   onMount(() => {
     const onHash = () => {
@@ -30,10 +29,10 @@
       if (!startup.fatal) {
         session.prefs = await api.getPrefs();
         if (startup.backup_error) {
-          notices.push(`Today's backup failed: ${startup.backup_error.message}`);
+          notify(`Today's backup failed: ${startup.backup_error.message}`);
         }
         if (startup.sync_warning) {
-          notices.push(
+          notify(
             `Your Field Guide data is inside a ${startup.sync_warning} folder. A sync client can ` +
               `corrupt the database while Field Guide is open. Moving the data elsewhere is safer. ` +
               `This warning shows once.`,
@@ -58,9 +57,6 @@
     }
   }
 
-  function dismiss(index: number) {
-    notices.splice(index, 1);
-  }
 </script>
 
 {#if loading}
@@ -92,10 +88,10 @@
       <a href={routeHash({ view: "settings" })} class:active={route.view === "settings"}>Settings</a>
     </nav>
   </header>
-  {#each notices as notice, i (notice)}
+  {#each session.notices as notice (notice.id)}
     <div class="notice" role="status">
-      <span>{notice}</span>
-      <button class="link" onclick={() => dismiss(i)} aria-label="Dismiss">&times;</button>
+      <span>{notice.text}</span>
+      <button class="link" onclick={() => dismiss(notice.id)} aria-label="Dismiss">&times;</button>
     </div>
   {/each}
   <main>

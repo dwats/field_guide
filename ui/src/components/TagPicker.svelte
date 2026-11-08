@@ -4,7 +4,7 @@
   import { untrack } from "svelte";
 
   import { api, errorMessage, type Id } from "../lib/api";
-  import { findByPath, flattenTags, type TagOption } from "../lib/tags";
+  import { flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
     /** Guide id for that guide's tags; null for the global tags applied to guides. */
@@ -38,14 +38,10 @@
     if (!path) return;
     error = "";
     try {
-      let entry = findByPath(entries, path);
-      if (!entry) {
-        const tag = await api.ensureTagPath(scope, path);
-        await load();
-        entry = entries.find((e) => e.id === tag.id);
-      }
-      if (entry && !selected.includes(entry.id)) {
-        await onchange([...selected, entry.id]);
+      const tag = (await api.findTagByPath(scope, path)) ?? (await api.ensureTagPath(scope, path));
+      await load();
+      if (!selected.includes(tag.id)) {
+        await onchange([...selected, tag.id]);
       }
       text = "";
     } catch (e) {

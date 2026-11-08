@@ -99,10 +99,17 @@ impl Vault {
     ) -> Result<T> {
         self.conn.execute_batch("SAVEPOINT fieldguide_outer;")?;
         match work(self) {
-            Ok(value) => {
-                self.conn.execute_batch("RELEASE fieldguide_outer;")?;
-                Ok(value)
-            }
+            Ok(value) => match self.conn.execute_batch("RELEASE fieldguide_outer;") {
+                Ok(()) => Ok(value),
+                Err(e) => {
+                    // A failed commit must not leave the savepoint open for the rest of the
+                    // session, where every later write would silently nest inside it.
+                    let _ = self
+                        .conn
+                        .execute_batch("ROLLBACK TO fieldguide_outer; RELEASE fieldguide_outer;");
+                    Err(e.into())
+                }
+            },
             Err(e) => {
                 let _ = self
                     .conn

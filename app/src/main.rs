@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event
-                && let Ok(webview) = window.get_webview_window("main").ok_or(())
+                && let Some(webview) = window.get_webview_window("main")
             {
                 save_window_state(&webview);
             }
@@ -68,6 +68,7 @@ fn main() -> anyhow::Result<()> {
             commands::get_tag,
             commands::tag_path,
             commands::create_tag,
+            commands::find_tag_by_path,
             commands::ensure_tag_path,
             commands::rename_tag,
             commands::move_tag,

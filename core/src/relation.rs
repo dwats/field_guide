@@ -10,7 +10,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
-use crate::vocabulary::{self, Direction, QualifierLabel, Verb};
+use crate::vocabulary::{self, Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb};
 use crate::{
     EntryId, Error, GuideId, QualifierId, QualifierLabelId, RelationId, Result, TagId, Vault,
     VerbId, clock, entry,
@@ -32,6 +32,29 @@ pub enum QualifierValue {
     Entry(EntryId),
     Text(String),
     Number(f64),
+    /// An entry nobody has described yet: resolved by title when one exists, else created as a
+    /// stub in the relation's guide, inside the same transaction as the edge.
+    Stub {
+        title: String,
+        #[serde(default)]
+        tag_id: Option<TagId>,
+    },
+}
+
+/// The verb of a new relation: one from the pool, or a new one created with the edge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VerbSpec {
+    Existing { id: VerbId },
+    New(NewVerb),
+}
+
+/// A qualifier's label: one from the pool, or a new one created with the qualifier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LabelSpec {
+    Existing { id: QualifierLabelId },
+    New(NewQualifierLabel),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,7 +67,7 @@ pub enum QualifierValueView {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NewQualifier {
-    pub label_id: QualifierLabelId,
+    pub label: LabelSpec,
     pub value: QualifierValue,
 }
 
@@ -70,13 +93,14 @@ pub enum Target {
     },
 }
 
-/// A relation as entered on an entry page. The UI resolves the verb and target; core validates,
-/// creates a stub when asked, stores the canonical edge, and merges into an existing one.
+/// A relation as entered on an entry page. The UI stages the words; core creates any new verb,
+/// label, or stub, validates, stores the canonical edge, and merges into an existing one, all in
+/// one transaction, so a failed save leaves nothing behind.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateRelation {
     /// The entry the relation was entered on.
     pub origin: EntryId,
-    pub verb_id: VerbId,
+    pub verb: VerbSpec,
     #[serde(default)]
     pub direction: Direction,
     pub target: Target,
@@ -161,7 +185,32 @@ impl Vault {
                 "the entry is in the trash; restore it first".to_owned(),
             ));
         }
-        let verb = vocabulary::load_verb(&tx, &request.verb_id)?;
+        let (verb, direction) = match request.verb {
+            VerbSpec::Existing { id } => (vocabulary::load_verb(&tx, &id)?, request.direction),
+            VerbSpec::New(new) => match vocabulary::insert_verb(&tx, &origin.guide_id, &new) {
+                Ok(verb) => (verb, request.direction),
+                // The word already exists, perhaps as another verb's inverse: use that verb,
+                // read from the side the typed word implies.
+                Err(Error::LabelTaken { .. }) => {
+                    match vocabulary::lookup_verb_in(&tx, &origin.guide_id, &new.label)? {
+                        Some(found) => {
+                            let direction = match found.direction {
+                                Direction::Forward => request.direction,
+                                Direction::Inverse => request.direction.flipped(),
+                            };
+                            (found.verb, direction)
+                        }
+                        None => {
+                            return Err(Error::LabelTaken {
+                                kind: "verb",
+                                label: new.label,
+                            });
+                        }
+                    }
+                }
+                Err(e) => return Err(e),
+            },
+        };
         if verb.guide_id != origin.guide_id {
             return Err(Error::Invalid(format!(
                 "verb \"{}\" belongs to another guide",
@@ -183,7 +232,7 @@ impl Vault {
                 entry::create_stub(&tx, &origin.guide_id, &title, tag_id.as_ref())?
             }
         };
-        let (subject, object) = match request.direction {
+        let (subject, object) = match direction {
             Direction::Forward => (origin.id.clone(), target_id),
             Direction::Inverse => (target_id, origin.id.clone()),
         };
@@ -627,7 +676,21 @@ pub(crate) fn insert_qualifiers(
     qualifiers: &[NewQualifier],
 ) -> Result<()> {
     for qualifier in qualifiers {
-        let label = vocabulary::load_qualifier_label(conn, &qualifier.label_id)?;
+        let label = match &qualifier.label {
+            LabelSpec::Existing { id } => vocabulary::load_qualifier_label(conn, id)?,
+            LabelSpec::New(new) => match vocabulary::insert_qualifier_label(conn, guide_id, new) {
+                Ok(label) => label,
+                Err(Error::LabelTaken { .. }) => {
+                    vocabulary::lookup_label_in(conn, guide_id, &new.label)?.ok_or_else(|| {
+                        Error::LabelTaken {
+                            kind: "qualifier",
+                            label: new.label.clone(),
+                        }
+                    })?
+                }
+                Err(e) => return Err(e),
+            },
+        };
         if label.guide_id != *guide_id {
             return Err(Error::Invalid(format!(
                 "qualifier label \"{}\" belongs to another guide",
@@ -653,6 +716,13 @@ pub(crate) fn insert_qualifiers(
                     ));
                 }
                 (None, None, Some(*number))
+            }
+            QualifierValue::Stub { title, tag_id } => {
+                let id = match entry::resolve_name(conn, guide_id, title, false)? {
+                    Some(id) => id,
+                    None => entry::create_stub(conn, guide_id, title, tag_id.as_ref())?,
+                };
+                (Some(id), None, None)
             }
         };
         let exists: bool = conn.query_row(
@@ -692,7 +762,7 @@ pub(crate) fn move_qualifiers(
         .qualifiers
         .into_iter()
         .map(|q| NewQualifier {
-            label_id: q.label.id,
+            label: LabelSpec::Existing { id: q.label.id },
             value: match q.value {
                 QualifierValueView::Entry(entry) => QualifierValue::Entry(entry.id),
                 QualifierValueView::Text(text) => QualifierValue::Text(text),

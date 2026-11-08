@@ -2,7 +2,8 @@ use fieldguide_core::entry::{EntryQuery, EntrySummary, NewEntry};
 use fieldguide_core::guide::NewGuide;
 use fieldguide_core::media::NewMedia;
 use fieldguide_core::relation::{
-    CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, Target,
+    CreateRelation, LabelSpec, NewQualifier, QualifierValue, Relation, RelationFilter, Target,
+    VerbSpec,
 };
 use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb};
 use fieldguide_core::{EntryId, GuideId, MediaId, QualifierLabelId, TagId, Vault, VerbId};
@@ -61,7 +62,7 @@ pub fn browse(v: &Vault, guide_id: &GuideId) -> Vec<String> {
 /// Live entries under a tag, with ancestor inclusion.
 pub fn browse_tag(v: &Vault, guide_id: &GuideId, tag_id: &TagId) -> Vec<String> {
     let query = EntryQuery {
-        tag_id: Some(tag_id.clone()),
+        tag_ids: vec![tag_id.clone()],
         ..EntryQuery::default()
     };
     titles(
@@ -115,7 +116,9 @@ pub fn relate_with(
 ) -> Relation {
     v.create_relation(CreateRelation {
         origin: origin.clone(),
-        verb_id: verb_id.clone(),
+        verb: VerbSpec::Existing {
+            id: verb_id.clone(),
+        },
         direction: Direction::Forward,
         target: Target::Entry { id: target.clone() },
         qualifiers,
@@ -125,21 +128,21 @@ pub fn relate_with(
 
 pub fn q_entry(label: &QualifierLabelId, entry_id: &EntryId) -> NewQualifier {
     NewQualifier {
-        label_id: label.clone(),
+        label: LabelSpec::Existing { id: label.clone() },
         value: QualifierValue::Entry(entry_id.clone()),
     }
 }
 
 pub fn q_text(label: &QualifierLabelId, text: &str) -> NewQualifier {
     NewQualifier {
-        label_id: label.clone(),
+        label: LabelSpec::Existing { id: label.clone() },
         value: QualifierValue::Text(text.to_owned()),
     }
 }
 
 pub fn q_num(label: &QualifierLabelId, number: f64) -> NewQualifier {
     NewQualifier {
-        label_id: label.clone(),
+        label: LabelSpec::Existing { id: label.clone() },
         value: QualifierValue::Number(number),
     }
 }

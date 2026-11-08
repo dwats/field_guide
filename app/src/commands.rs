@@ -74,13 +74,7 @@ pub fn create_guide(
     new: NewGuide,
     copy_vocabulary_from: Option<GuideId>,
 ) -> CmdResult<Guide> {
-    state.with_vault(|v| {
-        let guide = v.create_guide(new)?;
-        if let Some(from) = copy_vocabulary_from {
-            v.copy_vocabulary(&from, &guide.id)?;
-        }
-        Ok(guide)
-    })
+    state.with_vault(|v| v.create_guide_with_vocabulary(new, copy_vocabulary_from.as_ref()))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -139,6 +133,15 @@ pub fn create_tag(
     name: String,
 ) -> CmdResult<Tag> {
     state.with_vault(|v| v.create_tag(scope.as_ref(), parent.as_ref(), &name))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn find_tag_by_path(
+    state: S<'_>,
+    scope: Option<GuideId>,
+    path: String,
+) -> CmdResult<Option<Tag>> {
+    state.with_vault(|v| v.find_tag_by_path(scope.as_ref(), &path))
 }
 
 #[tauri::command(rename_all = "snake_case")]

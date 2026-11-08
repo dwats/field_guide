@@ -182,7 +182,7 @@ fn a_body_edit_is_stored_verbatim_and_bumps_updated_at() {
     let g = guide(&mut v, "G");
     let id = entry(&mut v, &g, "Entry", "first");
     let before = v.get_entry(&id).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(2));
+    fieldguide_core::clock::advance_for_tests(2);
     let body = "  trailing spaces  \r\nand CRLF\ttabs ";
     let after = v.update_entry_body(&id, body).unwrap();
     assert_eq!(after.body_md, body);

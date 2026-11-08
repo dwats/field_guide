@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
+use crate::board;
 use crate::error::not_found;
 use crate::names::{self, normalize};
 use crate::{EntryId, Error, GuideId, Result, TagId, Vault, guide};
@@ -181,6 +182,7 @@ impl Vault {
         let tag = load_tag(&tx, id)?;
         release_name(&tx, id)?;
         reparent_children(&tx, &tag, tag.parent_id.as_ref())?;
+        board::retag_filters(&tx, id, None)?;
         tx.execute("DELETE FROM tag WHERE id = ?1", params![id])?;
         tx.commit()?;
         Ok(())
@@ -403,6 +405,13 @@ fn merge_into(conn: &Connection, source: &Tag, target: &Tag) -> Result<()> {
         "DELETE FROM guide_tag WHERE tag_id = ?1",
         params![source.id],
     )?;
+    for column in ["subject_default_tag_id", "object_default_tag_id"] {
+        conn.execute(
+            &format!("UPDATE verb SET {column} = ?2 WHERE {column} = ?1"),
+            params![source.id, target.id],
+        )?;
+    }
+    board::retag_filters(conn, &source.id, Some(&target.id))?;
     release_name(conn, &source.id)?;
     reparent_children(conn, source, Some(&target.id))?;
     conn.execute("DELETE FROM tag WHERE id = ?1", params![source.id])?;

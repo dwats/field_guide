@@ -2,6 +2,10 @@ use std::slice::from_ref;
 
 use fieldguide_core::{Error, TagId};
 
+use fieldguide_core::board::BoardFilters;
+
+use fieldguide_core::vocabulary::NewVerb;
+
 use crate::common::*;
 
 #[test]
@@ -212,4 +216,45 @@ fn browsing_a_tag_includes_every_descendant() {
     assert_eq!(under(&c.id), ["Deep"]);
     assert_eq!(browse(&v, &g), ["Deep", "Shallow", "Untagged"]);
     assert_eq!(v.descendant_tag_ids(&a.id).unwrap().len(), 3, "A, B, and C");
+}
+
+#[test]
+fn merging_a_tag_follows_through_to_verb_defaults_and_board_filters() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let ores = v.create_tag(Some(&g), None, "Ores").unwrap();
+    let minerals = v.create_tag(Some(&g), None, "Minerals").unwrap();
+    let drops = v
+        .create_verb(
+            &g,
+            NewVerb {
+                label: "DROPS".to_owned(),
+                object_default_tag_id: Some(ores.id.clone()),
+                ..NewVerb::default()
+            },
+        )
+        .unwrap();
+    let board = v.create_board(&g, "Map").unwrap();
+    v.set_board_filters(
+        &board.id,
+        &BoardFilters {
+            tag_ids: vec![ores.id.clone()],
+            ..BoardFilters::default()
+        },
+    )
+    .unwrap();
+
+    v.merge_tags(&ores.id, &minerals.id).unwrap();
+    assert_eq!(
+        v.get_verb(&drops.id).unwrap().object_default_tag_id,
+        Some(minerals.id.clone())
+    );
+    assert_eq!(
+        v.get_board(&board.id).unwrap().filters.tag_ids,
+        std::slice::from_ref(&minerals.id)
+    );
+
+    v.delete_tag(&minerals.id).unwrap();
+    assert!(v.get_board(&board.id).unwrap().filters.tag_ids.is_empty());
+    assert_eq!(v.get_verb(&drops.id).unwrap().object_default_tag_id, None);
 }

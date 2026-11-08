@@ -58,6 +58,22 @@ impl Vault {
         load_guide(self.conn(), &id)
     }
 
+    /// Creates a guide and, when asked, copies another guide's verbs and qualifier labels into
+    /// it, in one transaction.
+    pub fn create_guide_with_vocabulary(
+        &mut self,
+        new: NewGuide,
+        copy_from: Option<&GuideId>,
+    ) -> Result<Guide> {
+        self.atomically(|v| {
+            let guide = v.create_guide(new)?;
+            if let Some(from) = copy_from {
+                v.copy_vocabulary(from, &guide.id)?;
+            }
+            Ok(guide)
+        })
+    }
+
     pub fn get_guide(&self, id: &GuideId) -> Result<Guide> {
         load_guide(self.conn(), id)
     }

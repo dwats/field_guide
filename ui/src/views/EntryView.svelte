@@ -11,7 +11,7 @@
   import TagPicker from "../components/TagPicker.svelte";
   import { api, errorMessage, type Guide, type Entry, type EntrySummary, type Rendered } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
-  import { session } from "../lib/session.svelte";
+  import { notify, session } from "../lib/session.svelte";
 
   interface Props {
     entryId: string;
@@ -215,7 +215,12 @@
   onDestroy(() => {
     clearTimeout(previewTimer);
     clearTimeout(saveTimer);
-    if (entry && saveState === "dirty") void api.updateEntryBody(entry.id, draft);
+    if (entry && saveState === "dirty") {
+      const { id, title } = entry;
+      api.updateEntryBody(id, draft).catch((e) => {
+        notify(`The body of "${title}" could not be saved: ${errorMessage(e)}`);
+      });
+    }
   });
 </script>
 

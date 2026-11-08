@@ -68,6 +68,15 @@ pub enum Direction {
     Inverse,
 }
 
+impl Direction {
+    pub fn flipped(self) -> Direction {
+        match self {
+            Direction::Forward => Direction::Inverse,
+            Direction::Inverse => Direction::Forward,
+        }
+    }
+}
+
 /// Typed text resolved against a guide's verbs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerbMatch {
@@ -86,26 +95,9 @@ impl Vault {
     pub fn create_verb(&mut self, guide_id: &GuideId, new: NewVerb) -> Result<Verb> {
         let tx = self.savepoint()?;
         guide::ensure_guide_exists(&tx, guide_id)?;
-        let id = VerbId::generate();
-        let def = validate_verb(&tx, guide_id, &new, None)?;
-        tx.execute(
-            "INSERT INTO verb (id, guide_id, label, label_norm, inverse_label, inverse_norm, symmetric,
-                               subject_default_tag_id, object_default_tag_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                id,
-                guide_id,
-                def.label,
-                normalize(&def.label),
-                def.inverse,
-                def.inverse.as_deref().map(normalize),
-                new.symmetric,
-                new.subject_default_tag_id,
-                new.object_default_tag_id,
-            ],
-        )?;
+        let verb = insert_verb(&tx, guide_id, &new)?;
         tx.commit()?;
-        load_verb(self.conn(), &id)
+        Ok(verb)
     }
 
     pub fn get_verb(&self, id: &VerbId) -> Result<Verb> {
@@ -208,9 +200,19 @@ impl Vault {
     /// Resolves typed text to a verb and the direction it implies: a label reads forward, an
     /// inverse label reads from the object side. Case-insensitive.
     pub fn lookup_verb(&self, guide_id: &GuideId, text: &str) -> Result<Option<VerbMatch>> {
+        lookup_verb_in(self.conn(), guide_id, text)
+    }
+}
+
+/// [`Vault::lookup_verb`] inside a transaction.
+pub(crate) fn lookup_verb_in(
+    conn: &Connection,
+    guide_id: &GuideId,
+    text: &str,
+) -> Result<Option<VerbMatch>> {
+    {
         let key = normalize(text);
-        let found = self
-            .conn()
+        let found = conn
             .query_row(
                 &format!(
                     "SELECT {VERB_COLUMNS}, (label_norm = ?2) AS forward FROM verb
@@ -229,7 +231,9 @@ impl Vault {
             verb,
         }))
     }
+}
 
+impl Vault {
     pub fn create_qualifier_label(
         &mut self,
         guide_id: &GuideId,
@@ -237,22 +241,9 @@ impl Vault {
     ) -> Result<QualifierLabel> {
         let tx = self.savepoint()?;
         guide::ensure_guide_exists(&tx, guide_id)?;
-        let id = QualifierLabelId::generate();
-        let def = validate_qualifier_label(&tx, guide_id, &new, None)?;
-        tx.execute(
-            "INSERT INTO qualifier_label (id, guide_id, label, label_norm, inverse_label, inverse_norm)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                id,
-                guide_id,
-                def.label,
-                normalize(&def.label),
-                def.inverse,
-                def.inverse.as_deref().map(normalize),
-            ],
-        )?;
+        let label = insert_qualifier_label(&tx, guide_id, &new)?;
         tx.commit()?;
-        load_qualifier_label(self.conn(), &id)
+        Ok(label)
     }
 
     pub fn get_qualifier_label(&self, id: &QualifierLabelId) -> Result<QualifierLabel> {
@@ -347,8 +338,17 @@ impl Vault {
         guide_id: &GuideId,
         text: &str,
     ) -> Result<Option<QualifierLabel>> {
-        Ok(self
-            .conn()
+        lookup_label_in(self.conn(), guide_id, text)
+    }
+}
+
+/// [`Vault::lookup_qualifier_label`] inside a transaction.
+pub(crate) fn lookup_label_in(
+    conn: &Connection,
+    guide_id: &GuideId,
+    text: &str,
+) -> Result<Option<QualifierLabel>> {
+    Ok(conn
             .query_row(
                 &format!(
                     "SELECT {LABEL_COLUMNS} FROM qualifier_label WHERE guide_id = ?1 AND label_norm = ?2"
@@ -357,8 +357,9 @@ impl Vault {
                 label_from_row,
             )
             .optional()?)
-    }
+}
 
+impl Vault {
     /// Copies `from`'s verbs and qualifier labels into `to` with new ids. Words whose label or
     /// inverse already exist in `to` are skipped. Default tags are not copied, since tags belong
     /// to a guide.
@@ -381,45 +382,22 @@ impl Vault {
                 subject_default_tag_id: None,
                 object_default_tag_id: None,
             };
-            let Ok(def) = validate_verb(&tx, to, &new, None) else {
-                continue;
-            };
-            tx.execute(
-                "INSERT INTO verb (id, guide_id, label, label_norm, inverse_label, inverse_norm, symmetric)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    VerbId::generate(),
-                    to,
-                    def.label,
-                    normalize(&def.label),
-                    def.inverse,
-                    def.inverse.as_deref().map(normalize),
-                    new.symmetric,
-                ],
-            )?;
-            copied.verbs += 1;
+            match insert_verb(&tx, to, &new) {
+                Ok(_) => copied.verbs += 1,
+                Err(Error::LabelTaken { .. }) => continue,
+                Err(e) => return Err(e),
+            }
         }
         for label in labels {
             let new = NewQualifierLabel {
                 label: label.label,
                 inverse_label: label.inverse_label,
             };
-            let Ok(def) = validate_qualifier_label(&tx, to, &new, None) else {
-                continue;
-            };
-            tx.execute(
-                "INSERT INTO qualifier_label (id, guide_id, label, label_norm, inverse_label, inverse_norm)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    QualifierLabelId::generate(),
-                    to,
-                    def.label,
-                    normalize(&def.label),
-                    def.inverse,
-                    def.inverse.as_deref().map(normalize),
-                ],
-            )?;
-            copied.qualifier_labels += 1;
+            match insert_qualifier_label(&tx, to, &new) {
+                Ok(_) => copied.qualifier_labels += 1,
+                Err(Error::LabelTaken { .. }) => continue,
+                Err(e) => return Err(e),
+            }
         }
         tx.commit()?;
         Ok(copied)
@@ -577,4 +555,50 @@ fn validate_qualifier_label(
         }
     }
     Ok(def)
+}
+
+/// Inserts a verb after the pool check. Callers own the transaction.
+pub(crate) fn insert_verb(conn: &Connection, guide_id: &GuideId, new: &NewVerb) -> Result<Verb> {
+    let id = VerbId::generate();
+    let def = validate_verb(conn, guide_id, new, None)?;
+    conn.execute(
+        "INSERT INTO verb (id, guide_id, label, label_norm, inverse_label, inverse_norm, symmetric,
+                           subject_default_tag_id, object_default_tag_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            id,
+            guide_id,
+            def.label,
+            normalize(&def.label),
+            def.inverse,
+            def.inverse.as_deref().map(normalize),
+            new.symmetric,
+            new.subject_default_tag_id,
+            new.object_default_tag_id,
+        ],
+    )?;
+    load_verb(conn, &id)
+}
+
+/// Inserts a qualifier label after the pool check. Callers own the transaction.
+pub(crate) fn insert_qualifier_label(
+    conn: &Connection,
+    guide_id: &GuideId,
+    new: &NewQualifierLabel,
+) -> Result<QualifierLabel> {
+    let id = QualifierLabelId::generate();
+    let def = validate_qualifier_label(conn, guide_id, new, None)?;
+    conn.execute(
+        "INSERT INTO qualifier_label (id, guide_id, label, label_norm, inverse_label, inverse_norm)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            id,
+            guide_id,
+            def.label,
+            normalize(&def.label),
+            def.inverse,
+            def.inverse.as_deref().map(normalize),
+        ],
+    )?;
+    load_qualifier_label(conn, &id)
 }

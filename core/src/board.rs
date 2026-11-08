@@ -253,3 +253,30 @@ fn ensure_name_free(
         None => Ok(()),
     }
 }
+
+/// Rewrites every board's saved tag filter when a tag is merged (`to` is the survivor) or
+/// deleted (`to` is `None`), so filters never point at a tag that no longer exists.
+pub(crate) fn retag_filters(conn: &Connection, from: &TagId, to: Option<&TagId>) -> Result<()> {
+    let boards: Vec<(BoardId, String)> = {
+        let mut stmt = conn.prepare("SELECT id, filters_json FROM board")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (id, json) in boards {
+        let mut filters: BoardFilters = serde_json::from_str(&json)?;
+        if !filters.tag_ids.contains(from) {
+            continue;
+        }
+        filters.tag_ids.retain(|t| t != from);
+        if let Some(to) = to
+            && !filters.tag_ids.contains(to)
+        {
+            filters.tag_ids.push(to.clone());
+        }
+        conn.execute(
+            "UPDATE board SET filters_json = ?2 WHERE id = ?1",
+            params![id, serde_json::to_string(&filters)?],
+        )?;
+    }
+    Ok(())
+}

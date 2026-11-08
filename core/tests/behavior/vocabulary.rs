@@ -384,3 +384,27 @@ fn default_tags_must_belong_to_the_verbs_guide() {
     ));
     assert!(v.list_verbs(&g).unwrap().is_empty());
 }
+
+#[test]
+fn merging_labels_drops_qualifiers_that_become_exact_duplicates() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    let drops = verb(&mut v, &g, "DROPS", None);
+    let tool = qualifier_label(&mut v, &g, "tool", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    relate_with(
+        &mut v,
+        &a,
+        &drops,
+        &b,
+        vec![
+            q_text(&tool, "pick"),
+            q_text(&with, "pick"),
+            q_text(&with, "axe"),
+        ],
+    );
+    v.merge_qualifier_labels(&with, &tool).unwrap();
+    assert_eq!(views(&v, &a), ["DROPS B · tool pick · tool axe"]);
+}

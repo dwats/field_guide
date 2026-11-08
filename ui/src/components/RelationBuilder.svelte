@@ -9,12 +9,16 @@
     api,
     errorMessage,
     type Guide,
+    type LabelSpec,
     type NewQualifier,
     type Entry,
     type QualifierLabel,
+    type QualifierValue,
     type Target,
     type Verb,
+    type VerbSpec,
   } from "../lib/api";
+  import { verbSlot } from "../lib/format";
   import {
     EMPTY,
     commitQualifierLabel,
@@ -61,6 +65,9 @@
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Only the newest suggestion request may land; slower earlier ones are dropped. */
+  let suggestionRequest = 0;
+  const listId = `suggestions-${Math.random().toString(36).slice(2)}`;
 
   const stage = $derived(stageOf(staged));
   const placeholder = $derived(
@@ -97,6 +104,7 @@
   const norm = (s: string) => s.trim().toLowerCase();
 
   async function computeSuggestions(s: Staged, typed: string) {
+    const request = ++suggestionRequest;
     const { stage, text: query } = interpret(s, typed);
     const key = norm(query);
     let next: Suggestion[] = [];
@@ -114,7 +122,7 @@
           .slice(0, 8)
           .map((p) => ({
             key: `${p.verb.id}:${p.direction}`,
-            text: p.label.toUpperCase(),
+            text: verbSlot(p.label),
             detail: p.direction === "inverse" ? `inverse of ${p.verb.label}` : undefined,
             apply: () => {
               staged = commitVerb(staged, { id: p.verb.id, label: p.label, direction: p.direction });
@@ -200,6 +208,7 @@
     } catch (e) {
       error = errorMessage(e);
     }
+    if (request !== suggestionRequest) return;
     suggestions = next;
     highlight = 0;
   }
@@ -307,28 +316,26 @@
     busy = true;
     error = "";
     try {
-      const verbId =
-        staged.verb.id ??
-        (
-          await api.createVerb(
-            guide.id,
-            staged.verb.label,
-            staged.verb.inverse_label ?? null,
-            staged.verb.symmetric ?? false,
-          )
-        ).id;
+      // One request: core creates any new verb, label, or stub with the edge, in one transaction.
+      const verb: VerbSpec = staged.verb.id
+        ? { kind: "existing", id: staged.verb.id }
+        : {
+            kind: "new",
+            label: staged.verb.label,
+            inverse_label: staged.verb.inverse_label ?? null,
+            symmetric: staged.verb.symmetric ?? false,
+            subject_default_tag_id: null,
+            object_default_tag_id: null,
+          };
       const qualifiers: NewQualifier[] = [];
       for (const q of staged.qualifiers) {
-        const labelId =
-          q.label.id ??
-          (await api.createQualifierLabel(guide.id, q.label.label, q.label.inverse_label ?? null))
-            .id;
-        let value = await api.resolveQualifierValue(guide.id, q.value);
-        if (q.stub && value.kind !== "entry") {
-          const stub = await api.createStub(guide.id, q.value);
-          value = { kind: "entry", value: stub.id };
-        }
-        qualifiers.push({ label_id: labelId, value });
+        const label: LabelSpec = q.label.id
+          ? { kind: "existing", id: q.label.id }
+          : { kind: "new", label: q.label.label, inverse_label: q.label.inverse_label ?? null };
+        const value: QualifierValue = q.stub
+          ? { kind: "stub", value: { title: q.value, tag_id: null } }
+          : await api.resolveQualifierValue(guide.id, q.value);
+        qualifiers.push({ label, value });
       }
       const target: Target =
         staged.target.kind === "entry"
@@ -336,7 +343,7 @@
           : { kind: "stub", title: staged.target.title, tag_id: staged.target.tag_id };
       await api.createRelation({
         origin: entry.id,
-        verb_id: verbId,
+        verb,
         direction: staged.verb.direction,
         target,
         qualifiers,
@@ -357,7 +364,7 @@
 <div class="builder">
   <div class="line" class:focused>
     {#if staged.verb}
-      <span class="chip verb">{staged.verb.label.toUpperCase()}</span>
+      <span class="chip verb">{verbSlot(staged.verb.label)}</span>
     {/if}
     {#if staged.target}
       <span class="chip">
@@ -386,15 +393,19 @@
       }}
       disabled={busy}
       aria-label="Relation input"
+      role="combobox"
+      aria-expanded={focused && suggestions.length > 0}
+      aria-controls={listId}
+      aria-activedescendant={focused && suggestions.length > 0 ? `${listId}-${highlight}` : undefined}
     />
     {#if stage === "ready"}
       <button class="primary" onclick={save} disabled={busy}>Save</button>
     {/if}
   </div>
   {#if focused && suggestions.length > 0}
-    <ul class="suggestions" role="listbox">
+    <ul class="suggestions" role="listbox" id={listId}>
       {#each suggestions as s, i (s.key)}
-        <li role="option" aria-selected={i === highlight}>
+        <li role="option" id={`${listId}-${i}`} aria-selected={i === highlight}>
           <button class="link" class:on={i === highlight} onmousedown={(e) => { e.preventDefault(); void s.apply(); }}>
             {s.text}
             {#if s.detail}<span class="muted">{s.detail}</span>{/if}

@@ -21,9 +21,9 @@ use crate::frontmatter;
 use crate::guide::NewGuide;
 use crate::media::{self, NewMedia};
 use crate::names::normalize;
-use crate::relation::{self, NewQualifier, QualifierValue};
+use crate::relation::{self, LabelSpec, NewQualifier, QualifierValue};
 use crate::similarity::{self, Similarity};
-use crate::vocabulary::{NewQualifierLabel, NewVerb};
+use crate::vocabulary::{Direction, NewQualifierLabel, NewVerb, Verb};
 use crate::{
     EntryId, Error, GuideId, QualifierLabelId, RelationId, Result, TagId, Vault, VerbId, clock,
     fsutil, wikilink,
@@ -219,7 +219,10 @@ pub fn read_archive(path: &Path) -> Result<Archive> {
         let Some((sha256, ext)) = file.split_once('.') else {
             continue;
         };
-        if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) || ext.is_empty() {
+        // The extension is spliced into a path later; only letters and digits may pass.
+        let valid_ext =
+            !ext.is_empty() && ext.len() <= 16 && ext.chars().all(|c| c.is_ascii_alphanumeric());
+        if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) || !valid_ext {
             return Err(Error::Archive(format!("unexpected media entry {name}")));
         }
         let bytes = zip.by_name(name).map_err(zip_error)?.size();
@@ -406,11 +409,17 @@ impl Vault {
                         .iter()
                         .flat_map(collect_tag_paths)
                         .collect();
-                    let local_verbs: Vec<(String, String)> = self
-                        .list_verbs(id)?
-                        .into_iter()
-                        .map(|v| (v.id.0, v.label))
-                        .collect();
+                    // Inverse labels are candidates too: an archive's DROPPED BY maps onto a
+                    // local DROPS, and the edge is stored the other way round when applied.
+                    let mut local_verbs: Vec<(String, String)> = Vec::new();
+                    for v in self.list_verbs(id)? {
+                        if let Some(inverse) = &v.inverse_label
+                            && !v.symmetric
+                        {
+                            local_verbs.push((v.id.0.clone(), inverse.clone()));
+                        }
+                        local_verbs.push((v.id.0, v.label));
+                    }
                     let local_labels: Vec<(String, String)> = self
                         .list_qualifier_labels(id)?
                         .into_iter()
@@ -471,7 +480,7 @@ impl Vault {
         plan: &ImportPlan,
         options: &ImportOptions,
     ) -> Result<ImportReport> {
-        let staging = self.stage_media(archive)?;
+        let mut staging = self.stage_media(archive)?;
         let result = self.atomically(|v| {
             let mut report = ImportReport::default();
             v.import_media_rows(archive, &mut report)?;
@@ -491,15 +500,23 @@ impl Vault {
                     })?;
                 contexts.push(v.import_guide(ag, mapping, &mut report)?);
             }
+            // Archive entry id to the local entry it became, across every guide in the archive.
+            let ids: HashMap<String, EntryId> = contexts
+                .iter()
+                .flat_map(|c| c.entry_ids.iter().map(|(a, l)| (a.clone(), l.clone())))
+                .collect();
             for (ag, context) in archive.guides.iter().zip(&contexts) {
-                v.import_relations(ag, context, options, &mut report)?;
+                v.import_relations(ag, context, &ids, options, &mut report)?;
             }
             for (ag, context) in archive.guides.iter().zip(&contexts) {
-                v.import_boards(ag, context, &mut report)?;
+                v.import_boards(ag, context, &ids, &mut report)?;
             }
             staging.commit()?;
             Ok(report)
         });
+        if result.is_err() {
+            staging.rollback_moved();
+        }
         staging.cleanup();
         result
     }
@@ -609,8 +626,33 @@ struct GuideContext {
     add_tag: Option<TagId>,
     /// Archive tag path to local tag.
     tags_by_path: HashMap<String, TagId>,
-    verbs: HashMap<String, VerbId>,
+    /// Archive verb id to the local verb, and whether the archive's label reads like the local
+    /// verb's inverse, in which case every edge using it is stored the other way round.
+    verbs: HashMap<String, (VerbId, Direction)>,
     labels: HashMap<String, QualifierLabelId>,
+    /// Archive entry id to the local entry it became. Differs from the archive id when the same
+    /// entry already lives in another guide and this guide received its own copy.
+    entry_ids: HashMap<String, EntryId>,
+}
+
+/// How an archive label reads against a local verb: forward when it is the label, inverse when it
+/// is the inverse label. Symmetric verbs read the same from both sides.
+fn reading_direction(local: &Verb, archive_label: &str) -> Direction {
+    let key = normalize(archive_label);
+    if !local.symmetric
+        && normalize(&local.label) != key
+        && local.inverse_label.as_deref().map(normalize) == Some(key)
+    {
+        Direction::Inverse
+    } else {
+        Direction::Forward
+    }
+}
+
+/// What an archive endpoint became.
+enum Resolved {
+    Found(EntryId),
+    Missing(&'static str),
 }
 
 impl Vault {
@@ -674,6 +716,7 @@ impl Vault {
             tags_by_path: HashMap::new(),
             verbs: HashMap::new(),
             labels: HashMap::new(),
+            entry_ids: HashMap::new(),
         };
         if let Some(tag_id) = &mapping.add_tag {
             let tag = self.get_tag(tag_id)?;
@@ -685,7 +728,7 @@ impl Vault {
         }
         self.import_tags(&ag.tags, None, "", mapping, &mut context, report)?;
         self.import_vocabulary(ag, mapping, &mut context, report)?;
-        self.import_entries(ag, &context, report)?;
+        self.import_entries(ag, &mut context, report)?;
         Ok(context)
     }
 
@@ -822,7 +865,8 @@ impl Vault {
                             verb.label
                         )));
                     }
-                    found.id
+                    let direction = reading_direction(&found, &verb.label);
+                    (found.id, direction)
                 }
                 _ => {
                     let new = NewVerb {
@@ -841,11 +885,11 @@ impl Vault {
                     match self.create_verb(&context.guide_id, new.clone()) {
                         Ok(created) => {
                             report.verbs_created += 1;
-                            created.id
+                            (created.id, Direction::Forward)
                         }
                         Err(Error::LabelTaken { .. }) => {
                             match self.lookup_verb(&context.guide_id, &verb.label)? {
-                                Some(found) => found.verb.id,
+                                Some(found) => (found.verb.id, found.direction),
                                 None => {
                                     // The label is free but the inverse collides: keep the label.
                                     let created = self.create_verb(
@@ -856,7 +900,7 @@ impl Vault {
                                         },
                                     )?;
                                     report.verbs_created += 1;
-                                    created.id
+                                    (created.id, Direction::Forward)
                                 }
                             }
                         }
@@ -922,7 +966,7 @@ impl Vault {
     fn import_entries(
         &mut self,
         ag: &ArchiveGuide,
-        context: &GuideContext,
+        context: &mut GuideContext,
         report: &mut ImportReport,
     ) -> Result<()> {
         enum Action {
@@ -932,22 +976,26 @@ impl Vault {
         }
         // Decide every entry's fate and final title before writing anything, so link rewrites
         // for renamed entries can be applied to all incoming bodies.
-        let mut actions: Vec<(Action, String)> = Vec::new();
+        let mut actions: Vec<(Action, String, EntryId)> = Vec::new();
         let mut renames: Vec<(String, String)> = Vec::new();
         let mut claimed: Vec<String> = Vec::new();
         for entry in &ag.entries {
-            let id = EntryId(entry.id.clone());
-            let action = match self.get_entry(&id) {
-                Ok(local) => {
+            let archive_id = EntryId(entry.id.clone());
+            // Identity is per guide: the same id in another guide means this guide gets its own
+            // copy, as happens when one archive is imported as a new guide twice.
+            let (action, id) = match self.get_entry(&archive_id) {
+                Ok(local) if local.guide_id == context.guide_id => {
                     if entry.updated > local.updated_at {
-                        Action::Update
+                        (Action::Update, archive_id)
                     } else {
-                        Action::Skip
+                        (Action::Skip, archive_id)
                     }
                 }
-                Err(Error::NotFound { .. }) => Action::Create,
+                Ok(_) => (Action::Create, EntryId::generate()),
+                Err(Error::NotFound { .. }) => (Action::Create, archive_id),
                 Err(e) => return Err(e),
             };
+            context.entry_ids.insert(entry.id.clone(), id.clone());
             let title = match action {
                 Action::Create => {
                     let holder = entry::name_holder(
@@ -993,11 +1041,10 @@ impl Vault {
                 Action::Skip => entry.title.clone(),
             };
             claimed.push(normalize(&title));
-            actions.push((action, title));
+            actions.push((action, title, id));
         }
 
-        for (entry, (action, title)) in ag.entries.iter().zip(actions) {
-            let id = EntryId(entry.id.clone());
+        for (entry, (action, title, id)) in ag.entries.iter().zip(actions) {
             let mut body = entry.body.clone();
             for (from, to) in &renames {
                 body = wikilink::rewrite_targets(&body, from, to).0;
@@ -1075,27 +1122,44 @@ impl Vault {
         &mut self,
         ag: &ArchiveGuide,
         context: &GuideContext,
+        ids: &HashMap<String, EntryId>,
         options: &ImportOptions,
         report: &mut ImportReport,
     ) -> Result<()> {
         for line in &ag.relations {
-            let Some(verb_id) = context.verbs.get(&line.verb.id).cloned().or(self
-                .lookup_verb(&context.guide_id, &line.verb.label)?
-                .map(|m| m.verb.id))
-            else {
+            let mapped = match context.verbs.get(&line.verb.id).cloned() {
+                Some(found) => Some(found),
+                None => self
+                    .lookup_verb(&context.guide_id, &line.verb.label)?
+                    .map(|m| (m.verb.id, m.direction)),
+            };
+            let Some((verb_id, reading)) = mapped else {
                 report
                     .relations_unresolved
                     .push(unresolved(line, "verb is not in the guide"));
                 continue;
             };
             let verb = self.get_verb(&verb_id)?;
-            let subject = self.resolve_endpoint(&line.subject, context, options, report)?;
-            let object = self.resolve_endpoint(&line.object, context, options, report)?;
-            let (Some(subject), Some(object)) = (subject, object) else {
-                report
-                    .relations_unresolved
-                    .push(unresolved(line, "an endpoint could not be found"));
-                continue;
+            let subject =
+                match self.resolve_endpoint(&line.subject, context, ids, options, report)? {
+                    Resolved::Found(id) => id,
+                    Resolved::Missing(reason) => {
+                        report.relations_unresolved.push(unresolved(line, reason));
+                        continue;
+                    }
+                };
+            let object = match self.resolve_endpoint(&line.object, context, ids, options, report)? {
+                Resolved::Found(id) => id,
+                Resolved::Missing(reason) => {
+                    report.relations_unresolved.push(unresolved(line, reason));
+                    continue;
+                }
+            };
+            // The archive wrote the line under its own verb; when that word is this guide's
+            // inverse, the canonical edge runs the other way.
+            let (subject, object) = match reading {
+                Direction::Forward => (subject, object),
+                Direction::Inverse => (object, subject),
             };
             let mut qualifiers = Vec::new();
             for q in &line.qualifiers {
@@ -1106,9 +1170,9 @@ impl Vault {
                     continue;
                 };
                 let value = if let Some(entry_ref) = &q.entry {
-                    match self.resolve_endpoint(entry_ref, context, options, report)? {
-                        Some(id) => QualifierValue::Entry(id),
-                        None => {
+                    match self.resolve_endpoint(entry_ref, context, ids, options, report)? {
+                        Resolved::Found(id) => QualifierValue::Entry(id),
+                        Resolved::Missing(_) => {
                             report.qualifier_values_kept_as_text += 1;
                             QualifierValue::Text(entry_ref.title.clone())
                         }
@@ -1118,7 +1182,10 @@ impl Vault {
                 } else {
                     QualifierValue::Text(q.text.clone().unwrap_or_default())
                 };
-                qualifiers.push(NewQualifier { label_id, value });
+                qualifiers.push(NewQualifier {
+                    label: LabelSpec::Existing { id: label_id },
+                    value,
+                });
             }
             let existing =
                 relation::find_edge(self.conn(), &subject, &verb.id, &object, verb.symmetric)?;
@@ -1148,20 +1215,22 @@ impl Vault {
         Ok(())
     }
 
-    /// By id when the entry exists, then by guide name and title, then as a stub when asked.
+    /// By id when the entry exists (through the archive's id map first), then by guide name and
+    /// title, then as a stub when asked.
     fn resolve_endpoint(
         &mut self,
         endpoint: &Endpoint,
         context: &GuideContext,
+        ids: &HashMap<String, EntryId>,
         options: &ImportOptions,
         report: &mut ImportReport,
-    ) -> Result<Option<EntryId>> {
+    ) -> Result<Resolved> {
         if let Some(id) = &endpoint.id {
-            let id = EntryId(id.clone());
+            let id = ids.get(id).cloned().unwrap_or_else(|| EntryId(id.clone()));
             if let Ok(entry) = self.get_entry(&id)
                 && entry.deleted_at.is_none()
             {
-                return Ok(Some(id));
+                return Ok(Resolved::Found(id));
             }
         }
         let guide_id = match &endpoint.guide {
@@ -1175,20 +1244,29 @@ impl Vault {
         if let Some(guide_id) = &guide_id
             && let Some(found) = self.lookup_entry(guide_id, &endpoint.title)?
         {
-            return Ok(Some(found.id));
+            return Ok(Resolved::Found(found.id));
         }
         if options.create_stubs_for_unresolved {
+            // A live holder would have resolved above, so a holder here is in the trash.
+            if entry::name_holder(self.conn(), &context.guide_id, &normalize(&endpoint.title))?
+                .is_some()
+            {
+                return Ok(Resolved::Missing(
+                    "the title belongs to an entry in the trash",
+                ));
+            }
             let stub = entry::create_stub(self.conn(), &context.guide_id, &endpoint.title, None)?;
             report.stubs_created += 1;
-            return Ok(Some(stub));
+            return Ok(Resolved::Found(stub));
         }
-        Ok(None)
+        Ok(Resolved::Missing("an endpoint could not be found"))
     }
 
     fn import_boards(
         &mut self,
         ag: &ArchiveGuide,
         context: &GuideContext,
+        ids: &HashMap<String, EntryId>,
         report: &mut ImportReport,
     ) -> Result<()> {
         for file in &ag.boards {
@@ -1225,7 +1303,10 @@ impl Vault {
                 show_mentions: file.filters.show_mentions,
             };
             for topic in &file.filters.topic_entry_ids {
-                let id = EntryId(topic.clone());
+                let id = ids
+                    .get(topic)
+                    .cloned()
+                    .unwrap_or_else(|| EntryId(topic.clone()));
                 if self.get_entry(&id).is_ok() {
                     filters.topic_entry_ids.push(id);
                 }
@@ -1233,7 +1314,10 @@ impl Vault {
             self.set_board_filters(&board.id, &filters)?;
             let mut nodes = Vec::new();
             for node in &file.nodes {
-                let id = EntryId(node.entry_id.clone());
+                let id = ids
+                    .get(&node.entry_id)
+                    .cloned()
+                    .unwrap_or_else(|| EntryId(node.entry_id.clone()));
                 if self.get_entry(&id).is_ok() {
                     nodes.push(BoardNode {
                         entry_id: id,
@@ -1283,7 +1367,9 @@ impl Vault {
             if final_path.exists() {
                 continue;
             }
-            let mut bytes = Vec::with_capacity(item.bytes as usize);
+            // The header's size claim is not trusted for allocation; a lying archive must fail
+            // its hash check, not abort the process.
+            let mut bytes = Vec::new();
             zip.by_name(&item.entry)
                 .map_err(zip_error)?
                 .read_to_end(&mut bytes)
@@ -1312,34 +1398,38 @@ struct Staging {
 }
 
 impl Staging {
-    /// Moves staged files into place. On failure, the ones already moved are removed again so the
-    /// transaction that is about to roll back leaves no new files behind.
-    fn commit(&self) -> Result<()> {
-        let mut moved = Vec::new();
-        for (staged, final_path) in &self.files {
+    /// Moves staged files into place and remembers them, so a failure before or during the
+    /// database commit can take them out again.
+    fn commit(&mut self) -> Result<()> {
+        for index in 0..self.files.len() {
+            let (staged, final_path) = self.files[index].clone();
             if final_path.exists() {
                 continue;
             }
-            if let Err(source) = fs::rename(staged, final_path) {
-                for path in &moved {
-                    let _ = fs::remove_file(path);
-                }
+            if let Err(source) = fs::rename(&staged, &final_path) {
+                self.rollback_moved();
                 return Err(Error::Io {
                     context: "writing",
-                    path: final_path.clone(),
+                    path: final_path,
                     source,
                 });
             }
-            moved.push(final_path.clone());
+            self.moved.push(final_path);
         }
         Ok(())
+    }
+
+    /// Removes the files `commit` moved into `media/`. Only files this import added are touched.
+    fn rollback_moved(&mut self) {
+        for path in self.moved.drain(..) {
+            let _ = fs::remove_file(path);
+        }
     }
 
     fn cleanup(&self) {
         if let Some(dir) = &self.dir {
             let _ = fs::remove_dir_all(dir);
         }
-        let _ = &self.moved;
     }
 }
 

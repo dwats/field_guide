@@ -2,10 +2,10 @@ use std::slice::from_ref;
 
 use fieldguide_core::entry::EntryQuery;
 use fieldguide_core::relation::{
-    CreateRelation, Perspective, QualifierValue, QualifierValueView, RelationFilter, Section,
-    Target,
+    CreateRelation, LabelSpec, NewQualifier, Perspective, QualifierValue, QualifierValueView,
+    RelationFilter, Section, Target, VerbSpec,
 };
-use fieldguide_core::vocabulary::{Direction, NewVerb};
+use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb};
 use fieldguide_core::{EntryId, Error, GuideId, QualifierLabelId, Vault, VerbId};
 
 use crate::common::*;
@@ -66,7 +66,9 @@ fn an_edge_entered_from_either_side_is_stored_once_in_canonical_direction() {
     let again = v
         .create_relation(CreateRelation {
             origin: f.cobble.clone(),
-            verb_id: matched.verb.id,
+            verb: VerbSpec::Existing {
+                id: matched.verb.id,
+            },
             direction: matched.direction,
             target: Target::Entry {
                 id: f.stone.clone(),
@@ -300,7 +302,7 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
                 tag_id: Option<fieldguide_core::TagId>| {
         v.create_relation(CreateRelation {
             origin: zombie.clone(),
-            verb_id: drops.clone(),
+            verb: VerbSpec::Existing { id: drops.clone() },
             direction,
             target: Target::Stub {
                 title: title.to_owned(),
@@ -360,7 +362,7 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
     assert!(matches!(
         v.create_relation(CreateRelation {
             origin: zombie.clone(),
-            verb_id: drops.clone(),
+            verb: VerbSpec::Existing { id: drops.clone() },
             direction: Direction::Forward,
             target: Target::Stub {
                 title: "zombie".to_owned(),
@@ -427,7 +429,9 @@ fn trash_hides_edges_and_qualifiers_restore_shows_them_and_purge_deletes_them() 
     assert!(matches!(
         v.create_relation(CreateRelation {
             origin: f.stone.clone(),
-            verb_id: f.drops.clone(),
+            verb: VerbSpec::Existing {
+                id: f.drops.clone()
+            },
             direction: Direction::Forward,
             target: Target::Entry { id: ore.clone() },
             qualifiers: Vec::new(),
@@ -462,7 +466,7 @@ fn cross_guide_edges_are_external_and_use_the_origin_guides_verb() {
     assert!(matches!(
         v.create_relation(CreateRelation {
             origin: ore.clone(),
-            verb_id: drops.clone(),
+            verb: VerbSpec::Existing { id: drops.clone() },
             direction: Direction::Forward,
             target: Target::Entry { id: stone.clone() },
             qualifiers: Vec::new(),
@@ -587,4 +591,92 @@ fn a_stub_made_for_a_qualifier_value_reads_the_edge_from_its_own_page() {
         v.lookup_entry(&g, "pickaxe").unwrap().map(|s| s.id),
         Some(pickaxe.id.clone())
     );
+}
+
+#[test]
+fn one_request_creates_the_verb_the_label_and_a_stub_value_together() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone Block", "");
+    let cobble = entry(&mut v, &g, "Cobblestone Block", "");
+    let edge = v
+        .create_relation(CreateRelation {
+            origin: stone.clone(),
+            verb: VerbSpec::New(NewVerb {
+                label: "drops".to_owned(),
+                inverse_label: Some("dropped by".to_owned()),
+                ..NewVerb::default()
+            }),
+            direction: Direction::Forward,
+            target: Target::Entry { id: cobble.clone() },
+            qualifiers: vec![NewQualifier {
+                label: LabelSpec::New(NewQualifierLabel {
+                    label: "mined with".to_owned(),
+                    inverse_label: Some("mines".to_owned()),
+                }),
+                value: QualifierValue::Stub {
+                    title: "Pickaxe".to_owned(),
+                    tag_id: None,
+                },
+            }],
+        })
+        .unwrap();
+    assert_eq!(
+        views(&v, &stone),
+        ["DROPS Cobblestone Block · mined with Pickaxe"]
+    );
+    let pickaxe = v.lookup_entry(&g, "Pickaxe").unwrap().unwrap();
+    assert!(pickaxe.is_stub);
+    assert_eq!(
+        views(&v, &pickaxe.id),
+        ["MINES Stone Block → Cobblestone Block"]
+    );
+    assert_eq!(v.list_verbs(&g).unwrap().len(), 1);
+    assert_eq!(v.list_qualifier_labels(&g).unwrap().len(), 1);
+
+    // Typing the inverse as if it were new reuses the verb, read from the other side.
+    let again = v
+        .create_relation(CreateRelation {
+            origin: cobble,
+            verb: VerbSpec::New(NewVerb {
+                label: "DROPPED BY".to_owned(),
+                ..NewVerb::default()
+            }),
+            direction: Direction::Forward,
+            target: Target::Entry { id: stone },
+            qualifiers: Vec::new(),
+        })
+        .unwrap();
+    assert_eq!(again.id, edge.id, "merged into the same edge");
+    assert_eq!(v.list_verbs(&g).unwrap().len(), 1);
+}
+
+#[test]
+fn a_failed_save_leaves_no_new_words_behind() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone Block", "");
+    let gone = entry(&mut v, &g, "Cobblestone Block", "");
+    v.trash_entry(&gone).unwrap();
+    let err = v
+        .create_relation(CreateRelation {
+            origin: stone,
+            verb: VerbSpec::New(NewVerb {
+                label: "drops".to_owned(),
+                ..NewVerb::default()
+            }),
+            direction: Direction::Forward,
+            target: Target::Entry { id: gone },
+            qualifiers: vec![NewQualifier {
+                label: LabelSpec::New(NewQualifierLabel {
+                    label: "mined with".to_owned(),
+                    inverse_label: None,
+                }),
+                value: QualifierValue::Text("pick".to_owned()),
+            }],
+        })
+        .unwrap_err();
+    assert!(matches!(err, Error::Invalid(_)), "{err}");
+    assert!(v.list_verbs(&g).unwrap().is_empty());
+    assert!(v.list_qualifier_labels(&g).unwrap().is_empty());
 }

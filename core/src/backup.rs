@@ -119,6 +119,17 @@ fn validate_backup(path: &Path) -> Result<()> {
             supported: SCHEMA_VERSION,
         });
     }
+    let is_field_guide: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entry')",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == 0 || !is_field_guide {
+        return Err(Error::Invalid(format!(
+            "{} is not a Field Guide backup",
+            path.display()
+        )));
+    }
     conn.close().map_err(|(_, e)| Error::Sqlite(e))
 }
 

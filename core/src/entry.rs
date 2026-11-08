@@ -48,12 +48,15 @@ pub struct NewEntry {
     pub tag_ids: Vec<TagId>,
 }
 
-/// Browse filter for one guide. Conditions combine with AND. The tag includes its descendants;
-/// the text is a prefix query over title, aliases, and body.
+/// Browse filter for one guide. Conditions combine with AND. Every tag includes its descendants
+/// and each one narrows further; the text is a prefix query over title, aliases, and body.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntryQuery {
-    pub tag_id: Option<TagId>,
+    #[serde(default)]
+    pub tag_ids: Vec<TagId>,
+    #[serde(default)]
     pub text: Option<String>,
+    #[serde(default)]
     pub stubs_only: bool,
 }
 
@@ -288,7 +291,7 @@ impl Vault {
             values.push(Value::Text(expression.clone()));
             conditions.push(format!("entries_fts MATCH ?{}", values.len()));
         }
-        if let Some(tag_id) = &query.tag_id {
+        for tag_id in &query.tag_ids {
             values.push(Value::Text(tag_id.0.clone()));
             conditions.push(format!(
                 "EXISTS (SELECT 1 FROM entry_tag nt WHERE nt.entry_id = n.id AND nt.tag_id IN (
@@ -534,7 +537,7 @@ pub(crate) fn name_holder(
 
 /// Resolves link text to an entry in the guide by title or alias. Trashed entries count only when
 /// asked: the mention cache wants them so restore and rename keep working; the UI does not.
-fn resolve_name(
+pub(crate) fn resolve_name(
     conn: &Connection,
     guide_id: &GuideId,
     text: &str,

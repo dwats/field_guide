@@ -7,6 +7,7 @@
   import { api, errorMessage, type Guide, type EntrySummary } from "../lib/api";
   import { parseFilter } from "../lib/filter";
   import { navigate, routeHash } from "../lib/router";
+  import { whenTime } from "../lib/format";
   import { findByPath, flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
@@ -21,6 +22,8 @@
   let stubsOnly = $state(false);
   let unknownTags = $state<string[]>([]);
   let error = $state("");
+  /** Only the newest list request may land. */
+  let listRequest = 0;
 
   let editing = $state(false);
   let nameDraft = $state("");
@@ -54,13 +57,12 @@
   async function loadEntries(text: string, tagPaths: string[], stubs: boolean, options: TagOption[]) {
     const resolved = tagPaths.map((p) => ({ path: p, option: findByPath(options, p) }));
     unknownTags = resolved.filter((r) => !r.option).map((r) => r.path);
-    const first = resolved.find((r) => r.option)?.option;
+    const tag_ids = resolved.flatMap((r) => (r.option ? [r.option.id] : []));
+    const request = ++listRequest;
     try {
-      entries = await api.listEntries(guideId, {
-        text: text || null,
-        tag_id: first?.id ?? null,
-        stubs_only: stubs,
-      });
+      const result = await api.listEntries(guideId, { text: text || null, tag_ids, stubs_only: stubs });
+      if (request !== listRequest) return;
+      entries = result;
     } catch (e) {
       error = errorMessage(e);
     }
@@ -111,9 +113,6 @@
     }
   }
 
-  function when(iso: string): string {
-    return new Date(iso).toLocaleString();
-  }
 </script>
 
 <div class="page">
@@ -189,9 +188,6 @@
     {#if unknownTags.length > 0}
       <p class="muted">No tag named {unknownTags.map((t) => `"${t}"`).join(", ")} in this guide.</p>
     {/if}
-    {#if parseFilter(filterLine).tags.length > 1}
-      <p class="muted">Only the first tag chip filters until the category browse arrives.</p>
-    {/if}
 
     {#if error}<p class="error">{error}</p>{/if}
 
@@ -207,7 +203,7 @@
                 <a href={routeHash({ view: "entry", entryId: entry.id })}>{entry.title}</a>
                 {#if entry.is_stub}<span class="chip">stub</span>{/if}
               </td>
-              <td class="muted">{when(entry.updated_at)}</td>
+              <td class="muted">{whenTime(entry.updated_at)}</td>
             </tr>
           {/each}
         </tbody>

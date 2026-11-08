@@ -138,3 +138,37 @@ fn the_oldest_of_five_backups_can_be_restored() {
     assert_eq!(browse(&restored, &g), ["First"]);
     assert_eq!(backup::list_backups(&backups).unwrap().len(), 5);
 }
+
+#[test]
+fn restoring_a_foreign_database_or_a_newer_schema_is_refused() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    let mut v = Vault::open(&db).unwrap();
+    let g = guide(&mut v, "G");
+    entry(&mut v, &g, "First", "");
+    let backups = dir.path().join("backups");
+
+    let foreign = dir.path().join("foreign.db");
+    rusqlite::Connection::open(&foreign)
+        .unwrap()
+        .execute_batch("CREATE TABLE t (x); PRAGMA user_version = 2;")
+        .unwrap();
+    let err = v
+        .restore_from_backup(&foreign, &backups, BACKUPS_TO_KEEP)
+        .unwrap_err();
+    assert!(matches!(err, Error::Invalid(_)), "{err}");
+
+    let newer = dir.path().join("newer.db");
+    rusqlite::Connection::open(&newer)
+        .unwrap()
+        .execute_batch("CREATE TABLE entry (id); PRAGMA user_version = 99;")
+        .unwrap();
+    let v = Vault::open(&db).unwrap();
+    let err = v
+        .restore_from_backup(&newer, &backups, BACKUPS_TO_KEEP)
+        .unwrap_err();
+    assert!(matches!(err, Error::NewerSchema { .. }), "{err}");
+
+    assert!(backup::list_backups(&backups).unwrap().is_empty());
+    assert_eq!(browse(&Vault::open(&db).unwrap(), &g), ["First"]);
+}

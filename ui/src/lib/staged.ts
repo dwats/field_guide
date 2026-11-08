@@ -3,6 +3,7 @@
 // does autocomplete, prompts, and the final write.
 
 import type { Id } from "./api";
+import { verbSlot } from "./format";
 
 export type Direction = "forward" | "inverse";
 
@@ -105,7 +106,7 @@ export function interpret(s: Staged, text: string): { stage: Stage; text: string
 /** The line as it will read from the origin entry once saved. */
 export function summary(s: Staged, originTitle: string): string {
   if (!s.verb) return "";
-  const parts = [`${originTitle} ${s.verb.label.toUpperCase()}`];
+  const parts = [`${originTitle} ${verbSlot(s.verb.label)}`];
   if (s.target) parts[0] += ` ${s.target.title}`;
   for (const q of s.qualifiers) parts.push(`${q.label.label} ${q.value}`);
   if (s.pendingLabel) parts.push(`${s.pendingLabel.label} …`);
