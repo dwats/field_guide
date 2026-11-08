@@ -7,7 +7,7 @@
   import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
   import { session } from "../lib/session.svelte";
-  import { whenDate } from "../lib/format";
+  import { when } from "../lib/format";
   import { flattenTags, type TagOption } from "../lib/tags";
 
   let guides = $state<Guide[]>([]);
@@ -178,7 +178,7 @@
             <td>
               {#each tagPaths(guide) as tag (tag.id)}<span class="chip">{tag.path}</span>{/each}
             </td>
-            <td class="muted">{whenDate(guide.updated_at)}</td>
+            <td class="muted">{when(guide.updated_at)}</td>
           </tr>
         {/each}
       </tbody>

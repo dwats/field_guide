@@ -9,7 +9,15 @@
   import RelationBuilder from "../components/RelationBuilder.svelte";
   import RelationList from "../components/RelationList.svelte";
   import TagPicker from "../components/TagPicker.svelte";
-  import { api, errorMessage, type Guide, type Entry, type EntrySummary, type Rendered } from "../lib/api";
+  import {
+    api,
+    errorMessage,
+    isAppError,
+    type Guide,
+    type Entry,
+    type EntrySummary,
+    type Rendered,
+  } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
   import { notify, session } from "../lib/session.svelte";
 
@@ -26,6 +34,7 @@
   let draft = $state("");
   let saveState = $state<"saved" | "dirty" | "saving" | "error">("saved");
   let error = $state("");
+  let missing = $state(false);
   let relationsVersion = $state(0);
 
   let renaming = $state(false);
@@ -46,6 +55,7 @@
     await flush();
     mode = "read";
     renaming = false;
+    missing = false;
     try {
       entry = await api.getEntry(id);
       guide = await api.getGuide(entry.guide_id);
@@ -53,7 +63,13 @@
       await refresh();
       error = "";
     } catch (e) {
-      error = errorMessage(e);
+      // A stale route after a purge or a restore: say so instead of showing an id.
+      if (isAppError(e) && e.kind === "not_found") {
+        missing = true;
+        entry = null;
+      } else {
+        error = errorMessage(e);
+      }
     }
   }
 
@@ -224,7 +240,7 @@
   });
 </script>
 
-<div class="page" class:wide={mode === "edit"}>
+<div class="page">
   {#if entry && guide}
     <p class="muted crumbs">
       <a href={routeHash({ view: "guides" })}>Guides</a> /
@@ -346,15 +362,22 @@
         <button class="primary" onclick={rename}>Rename</button>
       {/snippet}
     </Modal>
+  {:else if missing}
+    <h1>This entry no longer exists</h1>
+    <p class="muted">It was purged or the vault was restored from a backup.</p>
+    <p>
+      {#if guide}
+        <a href={routeHash({ view: "guide", guideId: guide.id })}>Back to {guide.name}</a>
+      {:else}
+        <a href={routeHash({ view: "guides" })}>Back to Guides</a>
+      {/if}
+    </p>
   {:else if error}
     <p class="error">{error}</p>
   {/if}
 </div>
 
 <style>
-  .page.wide {
-    max-width: none;
-  }
   .crumbs {
     margin-bottom: 4px;
   }

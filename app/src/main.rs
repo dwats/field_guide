@@ -39,6 +39,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(saved) = saved {
                     apply_window_state(&window, &saved);
                 }
+                disable_browser_accelerator_keys(&window)?;
                 // The window starts hidden so it appears where it was, not at the default spot.
                 let _ = window.show();
             }
@@ -183,4 +184,28 @@ fn save_window_state(window: &WebviewWindow) {
         config.window = Some(next);
         ((), changed)
     });
+}
+
+/// The webview must not reload on F5 or Ctrl+R, print on Ctrl+P, or open its find bar on Ctrl+F;
+/// the app owns its keyboard. Only WebView2 has these keys, so this is a no-op elsewhere.
+#[cfg(windows)]
+fn disable_browser_accelerator_keys(window: &WebviewWindow) -> tauri::Result<()> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+    use windows_core::Interface;
+    window.with_webview(|webview| {
+        // SAFETY: COM calls on the controller this webview owns, made on its own thread.
+        unsafe {
+            if let Ok(core) = webview.controller().CoreWebView2()
+                && let Ok(settings) = core.Settings()
+                && let Ok(settings) = settings.cast::<ICoreWebView2Settings3>()
+            {
+                let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
+            }
+        }
+    })
+}
+
+#[cfg(not(windows))]
+fn disable_browser_accelerator_keys(_window: &WebviewWindow) -> tauri::Result<()> {
+    Ok(())
 }

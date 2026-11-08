@@ -152,10 +152,7 @@ impl Vault {
             && alias_promoted.is_none()
             && let Some(holder) = name_holder(&tx, &guide_id, &normalize(&new_title))?
         {
-            return Err(Error::NameTaken {
-                name: new_title,
-                entry_id: holder,
-            });
+            return Err(name_taken(new_title, holder));
         }
         if alias_promoted.is_some() {
             tx.execute(
@@ -198,12 +195,9 @@ impl Vault {
             )?;
         }
         if let Some(holder) = name_holder(&tx, &guide_id, &normalize(&record.old_title))?
-            && holder != record.entry_id
+            && holder.id != record.entry_id
         {
-            return Err(Error::NameTaken {
-                name: record.old_title.clone(),
-                entry_id: holder,
-            });
+            return Err(name_taken(record.old_title.clone(), holder));
         }
         // Nothing keeps the undone title, so links through it become unresolved again.
         retitle(
@@ -512,21 +506,45 @@ fn guide_and_title(conn: &Connection, id: &EntryId) -> Result<(GuideId, String)>
 }
 
 /// The entry holding `key` as its title or an alias in the guide, trashed or not.
+/// The entry that holds a normalized name in a guide, and whether it holds it as an alias.
+pub(crate) struct NameHolder {
+    pub id: EntryId,
+    pub title: String,
+    pub via_alias: bool,
+}
+
 pub(crate) fn name_holder(
     conn: &Connection,
     guide_id: &GuideId,
     key: &str,
-) -> Result<Option<EntryId>> {
+) -> Result<Option<NameHolder>> {
     Ok(conn
         .query_row(
-            "SELECT id FROM entry WHERE guide_id = ?1 AND title_norm = ?2
+            "SELECT id, title, 0 FROM entry WHERE guide_id = ?1 AND title_norm = ?2
              UNION ALL
-             SELECT entry_id FROM entry_alias WHERE guide_id = ?1 AND alias_norm = ?2
+             SELECT e.id, e.title, 1 FROM entry_alias a JOIN entry e ON e.id = a.entry_id
+             WHERE a.guide_id = ?1 AND a.alias_norm = ?2
              LIMIT 1",
             params![guide_id, key],
-            |row| row.get(0),
+            |row| {
+                Ok(NameHolder {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    via_alias: row.get::<_, i64>(2)? != 0,
+                })
+            },
         )
         .optional()?)
+}
+
+/// The error for a name that `holder` already has.
+pub(crate) fn name_taken(name: impl Into<String>, holder: NameHolder) -> Error {
+    Error::NameTaken {
+        name: name.into(),
+        holder_id: holder.id,
+        holder_title: holder.title,
+        held_as_alias: holder.via_alias,
+    }
 }
 
 /// Resolves link text to an entry in the guide by title or alias. Trashed entries count only when
@@ -559,10 +577,7 @@ pub(crate) fn insert_alias(
 ) -> Result<()> {
     let key = normalize(alias);
     if let Some(holder) = name_holder(conn, guide_id, &key)? {
-        return Err(Error::NameTaken {
-            name: alias.to_owned(),
-            entry_id: holder,
-        });
+        return Err(name_taken(alias, holder));
     }
     conn.execute(
         "INSERT INTO entry_alias (entry_id, guide_id, alias, alias_norm) VALUES (?1, ?2, ?3, ?4)",
@@ -585,10 +600,7 @@ pub(crate) fn insert_entry(
     let title_norm = normalize(&title);
     guide::ensure_guide_exists(conn, guide_id)?;
     if let Some(holder) = name_holder(conn, guide_id, &title_norm)? {
-        return Err(Error::NameTaken {
-            name: title,
-            entry_id: holder,
-        });
+        return Err(name_taken(title, holder));
     }
     let id = EntryId::generate();
     conn.execute(
@@ -630,10 +642,7 @@ pub(crate) fn insert_imported(conn: &Connection, entry: &ImportedEntry<'_>) -> R
     let title = names::clean_entry_name("title", entry.title)?;
     let title_norm = normalize(&title);
     if let Some(holder) = name_holder(conn, entry.guide_id, &title_norm)? {
-        return Err(Error::NameTaken {
-            name: title,
-            entry_id: holder,
-        });
+        return Err(name_taken(title, holder));
     }
     conn.execute(
         "INSERT INTO entry (id, guide_id, title, title_norm, body_md, is_stub, created_at, updated_at)

@@ -76,9 +76,15 @@ pub enum Error {
     #[error("invalid {kind}: {reason}")]
     InvalidName { kind: &'static str, reason: String },
 
-    /// Titles and aliases share one namespace per guide.
-    #[error("\"{name}\" is already used by entry {entry_id} in this guide")]
-    NameTaken { name: String, entry_id: EntryId },
+    /// Titles and aliases share one namespace per guide. The message names the entry that holds
+    /// the word and how, so the UI never has to show an id.
+    #[error("\"{name}\" is already {} of \"{holder_title}\"", held_as(.held_as_alias))]
+    NameTaken {
+        name: String,
+        holder_id: EntryId,
+        holder_title: String,
+        held_as_alias: bool,
+    },
 
     #[error("a guide named \"{0}\" already exists")]
     GuideNameTaken(String),
@@ -118,4 +124,8 @@ pub(crate) fn not_found(kind: &'static str, id: impl Display) -> Error {
         kind,
         id: id.to_string(),
     }
+}
+
+fn held_as(alias: &bool) -> &'static str {
+    if *alias { "an alias" } else { "the title" }
 }

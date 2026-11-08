@@ -7,7 +7,7 @@
   import { api, errorMessage, type Guide, type EntrySummary } from "../lib/api";
   import { parseFilter } from "../lib/filter";
   import { navigate, routeHash } from "../lib/router";
-  import { whenTime } from "../lib/format";
+  import { when } from "../lib/format";
   import { findByPath, flattenTags, type TagOption } from "../lib/tags";
 
   interface Props {
@@ -203,7 +203,7 @@
                 <a href={routeHash({ view: "entry", entryId: entry.id })}>{entry.title}</a>
                 {#if entry.is_stub}<span class="chip">stub</span>{/if}
               </td>
-              <td class="muted">{whenTime(entry.updated_at)}</td>
+              <td class="muted">{when(entry.updated_at)}</td>
             </tr>
           {/each}
         </tbody>

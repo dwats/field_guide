@@ -10,6 +10,42 @@
   import SettingsView from "./views/SettingsView.svelte";
   import TagsView from "./views/TagsView.svelte";
 
+  /** Sentences for the start-up failures core can report, keyed on the error kind. */
+  function fatalText(kind: string, message: string): { what: string; next: string } {
+    switch (kind) {
+      case "vault_locked":
+        return {
+          what: "The vault is open in another Field Guide.",
+          next: "Close the other window, then start this one again.",
+        };
+      case "newer_schema":
+        return {
+          what: "This vault was written by a newer Field Guide.",
+          next: "Update Field Guide to open it.",
+        };
+      case "portable_dir_not_writable":
+        return {
+          what: "Portable mode is on, and the folder beside the executable cannot be written.",
+          next: "Move Field Guide to a writable folder, or remove the file named portable.",
+        };
+      case "data_dir_not_writable":
+        return {
+          what: "The data folder cannot be written.",
+          next: "Check the folder's permissions, then start Field Guide again.",
+        };
+      case "config_parse":
+        return {
+          what: "The settings file could not be read.",
+          next: "Fix or delete config.toml, then start Field Guide again.",
+        };
+      default: {
+        const sentence = message.trim();
+        const cased = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+        return { what: cased.endsWith(".") ? cased : `${cased}.`, next: "" };
+      }
+    }
+  }
+
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
 
@@ -62,19 +98,14 @@
 {#if loading}
   <main class="centered"><p>Opening your vault.</p></main>
 {:else if session.startup?.fatal}
+  {@const fatal = fatalText(session.startup.fatal.kind, session.startup.fatal.message)}
   <main class="centered fatal">
     <h1>Field Guide cannot start</h1>
-    <p>{session.startup.fatal.message}</p>
-    {#if session.startup.fatal.kind === "vault_locked"}
-      <p>Close the other Field Guide window, then start this one again.</p>
-    {:else if session.startup.fatal.kind === "newer_schema"}
-      <p>This vault was written by a newer version. Update Field Guide to open it.</p>
-    {:else if session.startup.fatal.kind === "portable_dir_not_writable"}
-      <p>
-        Portable mode keeps everything beside the executable, and that folder cannot be written.
-        Move Field Guide to a writable folder or remove the <code>portable</code> file.
-      </p>
+    <p>{fatal.what}</p>
+    {#if session.startup.fatal.path}
+      <p><code class="path">{session.startup.fatal.path}</code></p>
     {/if}
+    {#if fatal.next}<p>{fatal.next}</p>{/if}
   </main>
 {:else}
   <header class="topbar">
@@ -154,5 +185,12 @@
   .fatal {
     max-width: 48em;
     margin: 0 auto;
+  }
+  .fatal .path {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--surface);
+    word-break: break-all;
   }
 </style>

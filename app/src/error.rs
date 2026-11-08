@@ -7,6 +7,10 @@ use serde::Serialize;
 pub struct AppError {
     pub kind: &'static str,
     pub message: String,
+    /// The file or folder the error is about, when there is one, so the UI can show it apart
+    /// from the sentence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 impl AppError {
@@ -14,6 +18,7 @@ impl AppError {
         AppError {
             kind,
             message: message.into(),
+            path: None,
         }
     }
 
@@ -37,6 +42,14 @@ impl std::fmt::Display for AppError {
 
 impl From<CoreError> for AppError {
     fn from(e: CoreError) -> Self {
+        let path = match &e {
+            CoreError::Io { path, .. }
+            | CoreError::VaultLocked(path)
+            | CoreError::PortableDirNotWritable { path, .. }
+            | CoreError::DataDirNotWritable { path, .. }
+            | CoreError::ConfigParse { path, .. } => Some(path.display().to_string()),
+            _ => None,
+        };
         let kind = match &e {
             CoreError::Sqlite(_) => "sqlite",
             CoreError::Io { .. } => "io",
@@ -63,7 +76,11 @@ impl From<CoreError> for AppError {
             CoreError::NotTrashed => "not_trashed",
             CoreError::UndoFailed(_) => "undo_failed",
         };
-        AppError::new(kind, e.to_string())
+        AppError {
+            kind,
+            message: e.to_string(),
+            path,
+        }
     }
 }
 

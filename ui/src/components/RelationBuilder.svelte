@@ -435,7 +435,7 @@
   {/if}
   {#snippet actions()}
     <button onclick={() => (verbPrompt = null)}>Cancel</button>
-    <button class="primary" onclick={confirmVerbPrompt}>Use verb</button>
+    <button class="primary" onclick={confirmVerbPrompt}>Add verb</button>
   {/snippet}
 </Modal>
 
@@ -453,7 +453,7 @@
   {/if}
   {#snippet actions()}
     <button onclick={() => (labelPrompt = null)}>Cancel</button>
-    <button class="primary" onclick={confirmLabelPrompt}>Use label</button>
+    <button class="primary" onclick={confirmLabelPrompt}>Add label</button>
   {/snippet}
 </Modal>
 
@@ -481,7 +481,7 @@
   {/if}
   {#snippet actions()}
     <button onclick={() => (stubPrompt = null)}>Cancel</button>
-    <button class="primary" onclick={confirmStubPrompt}>Create and use</button>
+    <button class="primary" onclick={confirmStubPrompt}>Create entry</button>
   {/snippet}
 </Modal>
 

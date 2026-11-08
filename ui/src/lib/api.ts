@@ -9,6 +9,8 @@ export type Id = string;
 export interface AppError {
   kind: string;
   message: string;
+  /** The file or folder the error is about, when the shell knows one. */
+  path?: string;
 }
 
 export function isAppError(e: unknown): e is AppError {

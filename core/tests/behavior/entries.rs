@@ -19,9 +19,11 @@ fn titles_are_unique_per_guide_case_insensitively() {
     let h = guide(&mut v, "H");
     let oak = entry(&mut v, &g, "Oak Log", "");
     match v.create_entry(new_entry(&g, " oak log ")) {
-        Err(Error::NameTaken { name, entry_id }) => {
+        Err(Error::NameTaken {
+            name, holder_id, ..
+        }) => {
             assert_eq!(name, "oak log");
-            assert_eq!(entry_id, oak);
+            assert_eq!(holder_id, oak);
         }
         other => panic!("expected NameTaken, got {other:?}"),
     }
@@ -188,4 +190,22 @@ fn a_body_edit_is_stored_verbatim_and_bumps_updated_at() {
     assert_eq!(after.body_md, body);
     assert!(after.updated_at > before.updated_at);
     assert_eq!(after.created_at, before.created_at);
+}
+
+#[test]
+fn a_taken_name_says_which_entry_holds_it_and_how() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone Block", "");
+    v.add_alias(&stone, "Stone").unwrap();
+    let by_title = v.create_entry(new_entry(&g, "stone block")).unwrap_err();
+    assert_eq!(
+        by_title.to_string(),
+        "\"stone block\" is already the title of \"Stone Block\""
+    );
+    let by_alias = v.create_entry(new_entry(&g, "Stone")).unwrap_err();
+    assert_eq!(
+        by_alias.to_string(),
+        "\"Stone\" is already an alias of \"Stone Block\""
+    );
 }

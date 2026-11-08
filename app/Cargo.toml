@@ -22,3 +22,9 @@ serde_json = { workspace = true }
 tauri = { version = "2", features = ["protocol-asset"] }
 # A second launch focuses the running window instead of opening a second writer.
 tauri-plugin-single-instance = "2"
+
+# The WebView2 settings object, to turn off the browser's own accelerator keys (F5 reloads,
+# Ctrl+P prints) so the app owns its keyboard. Same versions wry uses.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"

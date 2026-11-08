@@ -5,10 +5,10 @@ export function verbSlot(label: string): string {
   return label.toUpperCase();
 }
 
-export function whenDate(iso: string): string {
-  return new Date(iso).toLocaleDateString();
-}
-
-export function whenTime(iso: string): string {
-  return new Date(iso).toLocaleString();
+/** The one timestamp format: local time, to the minute, `YYYY-MM-DD HH:mm`. */
+export function when(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

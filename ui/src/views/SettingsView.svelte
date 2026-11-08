@@ -4,7 +4,7 @@
 
   import { api, errorMessage, type BackupInfo } from "../lib/api";
   import { navigate } from "../lib/router";
-  import { whenTime } from "../lib/format";
+  import { when } from "../lib/format";
   import { session } from "../lib/session.svelte";
 
   let backups = $state<BackupInfo[]>([]);
@@ -42,7 +42,7 @@
 
   async function restore(backup: BackupInfo) {
     const ok = confirm(
-      `Replace the current vault with the backup from ${whenTime(backup.created_at)}?\n\n` +
+      `Replace the current vault with the backup from ${when(backup.created_at)}?\n\n` +
         `The current vault is backed up first, so this can be undone from this list.`,
     );
     if (!ok) return;
@@ -50,7 +50,7 @@
     error = "";
     try {
       backups = await api.restoreBackup(backup.path);
-      message = `Restored the backup from ${whenTime(backup.created_at)}.`;
+      message = `Restored the backup from ${when(backup.created_at)}.`;
       navigate({ view: "guides" });
     } catch (e) {
       error = errorMessage(e);
@@ -121,7 +121,7 @@
         <tbody>
           {#each backups as backup (backup.path)}
             <tr>
-              <td>{whenTime(backup.created_at)}</td>
+              <td>{when(backup.created_at)}</td>
               <td>{size(backup.bytes)}</td>
               <td><code>{fileName(backup.path)}</code></td>
               <td><button onclick={() => restore(backup)} disabled={busy}>Restore</button></td>
