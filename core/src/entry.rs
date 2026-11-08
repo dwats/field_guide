@@ -294,14 +294,8 @@ impl Vault {
         for tag_id in &query.tag_ids {
             values.push(Value::Text(tag_id.0.clone()));
             conditions.push(format!(
-                "EXISTS (SELECT 1 FROM entry_tag nt WHERE nt.entry_id = n.id AND nt.tag_id IN (
-                     WITH RECURSIVE sub(id) AS (
-                         SELECT ?{n}
-                         UNION ALL
-                         SELECT t.id FROM tag t JOIN sub ON t.parent_id = sub.id
-                     )
-                     SELECT id FROM sub))",
-                n = values.len()
+                "EXISTS (SELECT 1 FROM entry_tag nt WHERE nt.entry_id = n.id AND nt.tag_id IN ({}))",
+                tag::subtree_query(&format!("?{}", values.len()))
             ));
         }
         if query.stubs_only {
@@ -724,11 +718,7 @@ pub(crate) fn set_updated_at(conn: &Connection, id: &EntryId, updated_at: &str) 
 }
 
 pub(crate) fn touch(conn: &Connection, id: &EntryId) -> Result<()> {
-    conn.execute(
-        "UPDATE entry SET updated_at = ?2 WHERE id = ?1",
-        params![id, clock::now()],
-    )?;
-    Ok(())
+    set_updated_at(conn, id, &clock::now())
 }
 
 fn replace_tags(

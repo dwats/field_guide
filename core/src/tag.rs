@@ -55,12 +55,8 @@ impl Vault {
         let tx = self.savepoint()?;
         let mut current: Option<Tag> = None;
         for segment in path.split(PATH_SEPARATOR) {
-            let name = names::clean_tag_name(segment)?;
             let parent_id = current.map(|t| t.id);
-            let tag = match find_child(&tx, scope, parent_id.as_ref(), &normalize(&name))? {
-                Some(tag) => tag,
-                None => insert_tag(&tx, scope, parent_id.as_ref(), &name)?,
-            };
+            let (tag, _) = find_or_insert_child(&tx, scope, parent_id.as_ref(), segment)?;
             current = Some(tag);
         }
         tx.commit()?;
@@ -68,6 +64,20 @@ impl Vault {
             kind: "tag path",
             reason: "must not be empty".to_owned(),
         })
+    }
+
+    /// The child of `parent` named `name`, matched case-insensitively, created when missing.
+    /// The flag says whether it was created.
+    pub fn find_or_create_child(
+        &mut self,
+        scope: Option<&GuideId>,
+        parent: Option<&TagId>,
+        name: &str,
+    ) -> Result<(Tag, bool)> {
+        let tx = self.savepoint()?;
+        let found = find_or_insert_child(&tx, scope, parent, name)?;
+        tx.commit()?;
+        Ok(found)
     }
 
     pub fn find_tag_by_path(&self, scope: Option<&GuideId>, path: &str) -> Result<Option<Tag>> {
@@ -237,6 +247,19 @@ pub(crate) fn load_tag(conn: &Connection, id: &TagId) -> Result<Tag> {
     .ok_or_else(|| not_found("tag", id))
 }
 
+fn find_or_insert_child(
+    conn: &Connection,
+    scope: Option<&GuideId>,
+    parent: Option<&TagId>,
+    raw_name: &str,
+) -> Result<(Tag, bool)> {
+    let name = names::clean_tag_name(raw_name)?;
+    match find_child(conn, scope, parent, &normalize(&name))? {
+        Some(tag) => Ok((tag, false)),
+        None => Ok((insert_tag(conn, scope, parent, &name)?, true)),
+    }
+}
+
 fn find_child(
     conn: &Connection,
     scope: Option<&GuideId>,
@@ -307,15 +330,21 @@ fn children_of(conn: &Connection, id: &TagId) -> Result<Vec<Tag>> {
 }
 
 /// The tag and all its descendants.
-pub(crate) fn subtree_ids(conn: &Connection, id: &TagId) -> Result<Vec<TagId>> {
-    let mut stmt = conn.prepare(
+/// A query for the ids of a tag and everything under it; `root` is the placeholder that holds
+/// the tag id, such as `?1`.
+pub(crate) fn subtree_query(root: &str) -> String {
+    format!(
         "WITH RECURSIVE sub(id) AS (
-             SELECT ?1
+             SELECT {root}
              UNION ALL
              SELECT t.id FROM tag t JOIN sub ON t.parent_id = sub.id
          )
-         SELECT id FROM sub",
-    )?;
+         SELECT id FROM sub"
+    )
+}
+
+pub(crate) fn subtree_ids(conn: &Connection, id: &TagId) -> Result<Vec<TagId>> {
+    let mut stmt = conn.prepare(&subtree_query("?1"))?;
     let rows = stmt.query_map(params![id], |row| row.get(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
@@ -434,4 +463,14 @@ pub(crate) fn tags_of_guide(conn: &Connection, guide_id: &GuideId) -> Result<Vec
     )?;
     let rows = stmt.query_map(params![guide_id], |row| row.get(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Every tag in a tree with its display path, parents before children.
+pub fn paths(nodes: &[TagNode]) -> Vec<(TagId, String)> {
+    let mut out = Vec::new();
+    for node in nodes {
+        out.push((node.tag.id.clone(), node.path.clone()));
+        out.extend(paths(&node.children));
+    }
+    out
 }

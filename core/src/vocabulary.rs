@@ -498,21 +498,14 @@ fn validate_verb(
         new.inverse_label.as_deref(),
         new.symmetric,
     )?;
-    for word in std::iter::once(&def.label).chain(def.inverse.iter()) {
-        let taken: Option<String> = conn
-            .query_row(
-                "SELECT label FROM verb WHERE guide_id = ?1 AND (label_norm = ?2 OR inverse_norm = ?2) AND id IS NOT ?3",
-                params![guide_id, normalize(word), except],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if taken.is_some() {
-            return Err(Error::LabelTaken {
-                kind: "verb",
-                label: word.clone(),
-            });
-        }
-    }
+    ensure_pool_free(
+        conn,
+        "verb",
+        "verb",
+        guide_id,
+        &def,
+        except.map(|id| id.as_str()),
+    )?;
     for tag_id in [&new.subject_default_tag_id, &new.object_default_tag_id]
         .into_iter()
         .flatten()
@@ -539,22 +532,44 @@ fn validate_qualifier_label(
         new.inverse_label.as_deref(),
         false,
     )?;
+    ensure_pool_free(
+        conn,
+        "qualifier_label",
+        "qualifier",
+        guide_id,
+        &def,
+        except.map(|id| id.as_str()),
+    )?;
+    Ok(def)
+}
+
+/// Labels and inverses share one pool per guide and per table: neither word of `def` may already
+/// be a label or an inverse there, except on the row being edited.
+fn ensure_pool_free(
+    conn: &Connection,
+    table: &str,
+    kind: &'static str,
+    guide_id: &GuideId,
+    def: &Definition,
+    except: Option<&str>,
+) -> Result<()> {
+    let sql = format!(
+        "SELECT label FROM {table} WHERE guide_id = ?1 AND (label_norm = ?2 OR inverse_norm = ?2) AND id IS NOT ?3"
+    );
     for word in std::iter::once(&def.label).chain(def.inverse.iter()) {
         let taken: Option<String> = conn
-            .query_row(
-                "SELECT label FROM qualifier_label WHERE guide_id = ?1 AND (label_norm = ?2 OR inverse_norm = ?2) AND id IS NOT ?3",
-                params![guide_id, normalize(word), except],
-                |row| row.get(0),
-            )
+            .query_row(&sql, params![guide_id, normalize(word), except], |row| {
+                row.get(0)
+            })
             .optional()?;
         if taken.is_some() {
             return Err(Error::LabelTaken {
-                kind: "qualifier",
+                kind,
                 label: word.clone(),
             });
         }
     }
-    Ok(def)
+    Ok(())
 }
 
 /// Inserts a verb after the pool check. Callers own the transaction.

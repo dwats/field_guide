@@ -21,7 +21,7 @@ use crate::archive::{
 use crate::frontmatter::{self, FrontMatter};
 use crate::relation::{self, QualifierValueView, Relation};
 use crate::slug::SlugSet;
-use crate::tag::TagNode;
+use crate::tag::{self, TagNode};
 use crate::{EntryId, Error, GuideId, RelationId, Result, TagId, Vault, clock, fsutil};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -486,13 +486,13 @@ impl Vault {
     /// Display paths for every tag in a guide.
     fn tag_paths(&self, guide_id: &GuideId) -> Result<HashMap<TagId, String>> {
         let mut paths = HashMap::new();
-        collect_paths(&self.tag_tree(Some(guide_id))?, &mut paths);
+        paths.extend(tag::paths(&self.tag_tree(Some(guide_id))?));
         Ok(paths)
     }
 
     fn tag_paths_global(&self) -> Result<HashMap<TagId, String>> {
         let mut paths = HashMap::new();
-        collect_paths(&self.tag_tree(None)?, &mut paths);
+        paths.extend(tag::paths(&self.tag_tree(None)?));
         Ok(paths)
     }
 
@@ -516,24 +516,13 @@ impl Vault {
             .collect::<rusqlite::Result<_>>()?;
         let mut relations = Vec::new();
         for id in ids {
-            let mut relation = relation::load_relation(self.conn(), &id)?;
+            let relation = relation::load_relation(self.conn(), &id)?;
             if !exported.contains(&relation.subject.id) && !exported.contains(&relation.object.id) {
                 continue;
             }
-            relation.qualifiers.retain(|q| match &q.value {
-                QualifierValueView::Entry(entry) => entry.deleted_at.is_none(),
-                _ => true,
-            });
-            relations.push(relation);
+            relations.push(relation.without_trashed_values());
         }
         Ok(relations)
-    }
-}
-
-fn collect_paths(nodes: &[TagNode], into: &mut HashMap<TagId, String>) {
-    for node in nodes {
-        into.insert(node.tag.id.clone(), node.path.clone());
-        collect_paths(&node.children, into);
     }
 }
 

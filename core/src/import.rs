@@ -404,11 +404,11 @@ impl Vault {
                         .collect(),
                 ),
                 GuideTarget::Existing { id } => {
-                    let local_tags: Vec<(String, String)> = self
-                        .tag_tree(Some(id))?
-                        .iter()
-                        .flat_map(collect_tag_paths)
-                        .collect();
+                    let local_tags: Vec<(String, String)> =
+                        crate::tag::paths(&self.tag_tree(Some(id))?)
+                            .into_iter()
+                            .map(|(id, path)| (id.0, path))
+                            .collect();
                     // Inverse labels are candidates too: an archive's DROPPED BY maps onto a
                     // local DROPS, and the edge is stored the other way round when applied.
                     let mut local_verbs: Vec<(String, String)> = Vec::new();
@@ -610,14 +610,6 @@ fn flatten_tags(nodes: &[TagTree], prefix: &str) -> Vec<(String, String)> {
     out
 }
 
-fn collect_tag_paths(node: &crate::tag::TagNode) -> Vec<(String, String)> {
-    let mut out = vec![(node.tag.id.0.clone(), node.path.clone())];
-    for child in &node.children {
-        out.extend(collect_tag_paths(child));
-    }
-    out
-}
-
 // ---- applying ----
 
 /// Local ids for one archive guide while it is being applied.
@@ -810,36 +802,14 @@ impl Vault {
         color: Option<&str>,
         report: &mut ImportReport,
     ) -> Result<TagId> {
-        match self.create_tag(Some(guide_id), parent, name) {
-            Ok(tag) => {
-                if color.is_some() {
-                    self.set_tag_color(&tag.id, color)?;
-                }
-                report.tags_created += 1;
-                Ok(tag.id)
+        let (tag, created) = self.find_or_create_child(Some(guide_id), parent, name)?;
+        if created {
+            if color.is_some() {
+                self.set_tag_color(&tag.id, color)?;
             }
-            Err(Error::TagNameTaken(_)) => {
-                let siblings = match parent {
-                    Some(parent) => self
-                        .tag_tree(Some(guide_id))?
-                        .into_iter()
-                        .flat_map(flatten_nodes)
-                        .filter(|t| t.parent_id.as_ref() == Some(parent))
-                        .collect::<Vec<_>>(),
-                    None => self
-                        .list_tags(Some(guide_id))?
-                        .into_iter()
-                        .filter(|t| t.parent_id.is_none())
-                        .collect(),
-                };
-                siblings
-                    .into_iter()
-                    .find(|t| normalize(&t.name) == normalize(name))
-                    .map(|t| t.id)
-                    .ok_or_else(|| Error::Invalid(format!("tag \"{name}\" could not be placed")))
-            }
-            Err(e) => Err(e),
+            report.tags_created += 1;
         }
+        Ok(tag.id)
     }
 
     fn import_vocabulary(
@@ -1441,14 +1411,6 @@ fn remove_stale_staging(media_dir: &Path) {
             }
         }
     }
-}
-
-fn flatten_nodes(node: crate::tag::TagNode) -> Vec<crate::tag::Tag> {
-    let mut out = vec![node.tag];
-    for child in node.children {
-        out.extend(flatten_nodes(child));
-    }
-    out
 }
 
 /// `wanted`, or `wanted (imported)`, `wanted (imported 2)`, ... until `taken` says no.

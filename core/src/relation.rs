@@ -119,6 +119,18 @@ pub struct Relation {
     pub created_at: String,
 }
 
+impl Relation {
+    /// The edge without qualifiers whose value entry is in the trash, which is how every reader
+    /// sees it until that entry is restored.
+    pub fn without_trashed_values(mut self) -> Relation {
+        self.qualifiers.retain(|q| match &q.value {
+            QualifierValueView::Entry(value) => value.deleted_at.is_none(),
+            _ => true,
+        });
+        self
+    }
+}
+
 /// Which role the viewing entry plays in the edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -332,14 +344,11 @@ impl Vault {
         };
         let mut views = Vec::new();
         for id in ids {
-            let mut relation = load_relation(conn, &id)?;
+            let relation = load_relation(conn, &id)?;
             if relation.subject.deleted_at.is_some() || relation.object.deleted_at.is_some() {
                 continue;
             }
-            relation.qualifiers.retain(|q| match &q.value {
-                QualifierValueView::Entry(value) => value.deleted_at.is_none(),
-                _ => true,
-            });
+            let relation = relation.without_trashed_values();
             let external = relation.subject.guide_id != viewer.guide_id
                 || relation.object.guide_id != viewer.guide_id;
             if external && !filter.include_external {
