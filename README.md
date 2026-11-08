@@ -1,0 +1,3 @@
+# Field Guide
+
+Field Guide is a local-only wiki for building up knowledge of a subject as you learn it. A guide holds notes, nested tags, and typed relations between notes (`Oak Tree DROPS Oak Log`), with an optional board view of those relations. It is a desktop app with a Tauri 2 shell, a Rust core, and a Svelte UI. Data stays on your machine in one SQLite file, exports to a zip of markdown and JSON that reads fine without the app, and nothing leaves the computer unless you click "Check for updates". A file named `portable` next to the executable keeps everything beside it. Build with `cargo tauri build`; `docs/design.md` holds the design and `docs/plan.md` the build order. MIT licensed.

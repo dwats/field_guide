@@ -1,0 +1,15 @@
+# Rust
+/target/
+
+# Node
+node_modules/
+/ui/dist/
+
+# Tauri build output
+/app/gen/
+
+# Local overrides and noise
+.claude/settings.local.json
+*.log
+.DS_Store
+Thumbs.db
