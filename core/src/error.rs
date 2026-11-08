@@ -1,6 +1,9 @@
 //! Error type for the core crate.
 
+use std::fmt::Display;
 use std::path::PathBuf;
+
+use crate::NoteId;
 
 /// Every failure the core can report. Variants carry what the UI needs to say something useful.
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +55,42 @@ pub enum Error {
 
     #[error("config could not be serialized: {0}")]
     ConfigSerialize(#[from] toml::ser::Error),
+
+    #[error("{kind} {id} not found")]
+    NotFound { kind: &'static str, id: String },
+
+    #[error("invalid {kind}: {reason}")]
+    InvalidName { kind: &'static str, reason: String },
+
+    /// Titles and aliases share one namespace per guide.
+    #[error("\"{name}\" is already used by note {note_id} in this guide")]
+    NameTaken { name: String, note_id: NoteId },
+
+    #[error("a guide named \"{0}\" already exists")]
+    GuideNameTaken(String),
+
+    #[error("a tag named \"{0}\" already exists at that level")]
+    TagNameTaken(String),
+
+    #[error("a tag cannot be moved or merged into itself or one of its descendants")]
+    TagCycle,
+
+    /// A rule violation with its own message, such as a tag from another guide.
+    #[error("{0}")]
+    Invalid(String),
+
+    #[error("note is not in the trash")]
+    NotTrashed,
+
+    #[error("rename cannot be undone: {0}")]
+    UndoFailed(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+pub(crate) fn not_found(kind: &'static str, id: impl Display) -> Error {
+    Error::NotFound {
+        kind,
+        id: id.to_string(),
+    }
+}

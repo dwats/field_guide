@@ -4,7 +4,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction};
 
 use crate::{Error, Result, db};
 
@@ -59,6 +59,14 @@ impl Vault {
         Ok(self
             .conn
             .query_row("PRAGMA user_version;", [], |row| row.get(0))?)
+    }
+
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    pub(crate) fn transaction(&mut self) -> Result<Transaction<'_>> {
+        Ok(self.conn.transaction()?)
     }
 }
 

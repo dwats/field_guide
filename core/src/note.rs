@@ -1,0 +1,605 @@
+//! Notes: titles, bodies, aliases, tags, wikilink mentions, rename with link rewriting, trash.
+
+use std::collections::HashSet;
+
+use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
+use serde::{Deserialize, Serialize};
+
+use crate::error::not_found;
+use crate::names::{self, normalize};
+use crate::{Error, GuideId, NoteId, Result, TagId, Vault, clock, guide, search, tag, wikilink};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Note {
+    pub id: NoteId,
+    pub guide_id: GuideId,
+    pub title: String,
+    pub body_md: String,
+    /// Created as a relation target and never described. Any body edit clears it.
+    pub is_stub: bool,
+    /// Set while the note is in the trash.
+    pub deleted_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub aliases: Vec<String>,
+    pub tag_ids: Vec<TagId>,
+}
+
+/// A note without its body, aliases, or tags, for lists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteSummary {
+    pub id: NoteId,
+    pub guide_id: GuideId,
+    pub title: String,
+    pub is_stub: bool,
+    pub deleted_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewNote {
+    pub guide_id: GuideId,
+    pub title: String,
+    #[serde(default)]
+    pub body_md: String,
+    #[serde(default)]
+    pub tag_ids: Vec<TagId>,
+}
+
+/// Browse filter for one guide. Conditions combine with AND. The tag includes its descendants;
+/// the text is a prefix query over title, aliases, and body.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteQuery {
+    pub tag_id: Option<TagId>,
+    pub text: Option<String>,
+    pub stubs_only: bool,
+}
+
+/// What a rename did, enough to reverse it with [`Vault::undo_rename`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenameRecord {
+    pub note_id: NoteId,
+    pub old_title: String,
+    pub new_title: String,
+    /// False when only the casing changed, since the old title would collide with the new one.
+    pub alias_added: bool,
+    /// Notes whose bodies had links rewritten.
+    pub rewritten_note_ids: Vec<NoteId>,
+}
+
+impl Vault {
+    pub fn create_note(&mut self, new: NewNote) -> Result<Note> {
+        let title = names::clean_note_name("title", &new.title)?;
+        let title_norm = normalize(&title);
+        let id = NoteId::generate();
+        let now = clock::now();
+        let tx = self.transaction()?;
+        guide::ensure_guide_exists(&tx, &new.guide_id)?;
+        if let Some(holder) = name_holder(&tx, &new.guide_id, &title_norm)? {
+            return Err(Error::NameTaken {
+                name: title,
+                note_id: holder,
+            });
+        }
+        tx.execute(
+            "INSERT INTO note (id, guide_id, title, title_norm, body_md, is_stub, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?6)",
+            params![id, new.guide_id, title, title_norm, new.body_md, now],
+        )?;
+        replace_tags(&tx, &id, &new.guide_id, &new.tag_ids)?;
+        refresh_mentions(&tx, &id, &new.guide_id, &new.body_md)?;
+        adopt_mentions(&tx, &id, &new.guide_id, &title)?;
+        tx.commit()?;
+        load_note(self.conn(), &id)
+    }
+
+    pub fn get_note(&self, id: &NoteId) -> Result<Note> {
+        load_note(self.conn(), id)
+    }
+
+    /// Replaces the body verbatim, clears the stub flag, and re-derives mentions.
+    pub fn update_note_body(&mut self, id: &NoteId, body_md: &str) -> Result<Note> {
+        let tx = self.transaction()?;
+        let (guide_id, _) = guide_and_title(&tx, id)?;
+        tx.execute(
+            "UPDATE note SET body_md = ?2, is_stub = 0, updated_at = ?3 WHERE id = ?1",
+            params![id, body_md, clock::now()],
+        )?;
+        refresh_mentions(&tx, id, &guide_id, body_md)?;
+        tx.commit()?;
+        load_note(self.conn(), id)
+    }
+
+    /// Renames a note in one transaction: changes the title, rewrites `[[Old]]` and `[[Old|text]]`
+    /// in every note that mentions it (only the target changes), and keeps the old title as an alias.
+    pub fn rename_note(&mut self, id: &NoteId, new_title: &str) -> Result<RenameRecord> {
+        let new_title = names::clean_note_name("title", new_title)?;
+        let tx = self.transaction()?;
+        let (guide_id, old_title) = guide_and_title(&tx, id)?;
+        let same_key = normalize(&old_title) == normalize(&new_title);
+        if !same_key && let Some(holder) = name_holder(&tx, &guide_id, &normalize(&new_title))? {
+            return Err(Error::NameTaken {
+                name: new_title,
+                note_id: holder,
+            });
+        }
+        // The old title lives on as an alias, so links through it stay resolved.
+        let rewritten_note_ids = retitle(&tx, id, &guide_id, &old_title, &new_title, true)?;
+        if !same_key {
+            insert_alias(&tx, id, &guide_id, &old_title)?;
+        }
+        tx.commit()?;
+        Ok(RenameRecord {
+            note_id: id.clone(),
+            old_title,
+            new_title,
+            alias_added: !same_key,
+            rewritten_note_ids,
+        })
+    }
+
+    /// Reverses a rename: removes the alias it added and rewrites the links back. Works on the
+    /// current bodies rather than restoring snapshots, so edits made since the rename survive.
+    /// Only the most recent rename of a note can be undone.
+    pub fn undo_rename(&mut self, record: &RenameRecord) -> Result<Note> {
+        let tx = self.transaction()?;
+        let (guide_id, current_title) = guide_and_title(&tx, &record.note_id)?;
+        if current_title != record.new_title {
+            return Err(Error::UndoFailed(format!(
+                "the note is now titled \"{current_title}\", not \"{}\"",
+                record.new_title
+            )));
+        }
+        if record.alias_added {
+            tx.execute(
+                "DELETE FROM note_alias WHERE note_id = ?1 AND alias_norm = ?2",
+                params![record.note_id, normalize(&record.old_title)],
+            )?;
+        }
+        if let Some(holder) = name_holder(&tx, &guide_id, &normalize(&record.old_title))?
+            && holder != record.note_id
+        {
+            return Err(Error::NameTaken {
+                name: record.old_title.clone(),
+                note_id: holder,
+            });
+        }
+        // Nothing keeps the undone title, so links through it become unresolved again.
+        retitle(
+            &tx,
+            &record.note_id,
+            &guide_id,
+            &record.new_title,
+            &record.old_title,
+            false,
+        )?;
+        tx.commit()?;
+        load_note(self.conn(), &record.note_id)
+    }
+
+    pub fn add_alias(&mut self, id: &NoteId, alias: &str) -> Result<Note> {
+        let alias = names::clean_note_name("alias", alias)?;
+        let tx = self.transaction()?;
+        let (guide_id, _) = guide_and_title(&tx, id)?;
+        insert_alias(&tx, id, &guide_id, &alias)?;
+        touch(&tx, id)?;
+        tx.commit()?;
+        load_note(self.conn(), id)
+    }
+
+    pub fn remove_alias(&mut self, id: &NoteId, alias: &str) -> Result<Note> {
+        let tx = self.transaction()?;
+        guide_and_title(&tx, id)?;
+        let removed = tx.execute(
+            "DELETE FROM note_alias WHERE note_id = ?1 AND alias_norm = ?2",
+            params![id, normalize(alias)],
+        )?;
+        if removed == 0 {
+            return Err(not_found("alias", alias));
+        }
+        release_mentions(&tx, id, alias)?;
+        touch(&tx, id)?;
+        tx.commit()?;
+        load_note(self.conn(), id)
+    }
+
+    /// Replaces the note's tags. Every tag must belong to the note's guide.
+    pub fn set_note_tags(&mut self, id: &NoteId, tag_ids: &[TagId]) -> Result<Note> {
+        let tx = self.transaction()?;
+        let (guide_id, _) = guide_and_title(&tx, id)?;
+        replace_tags(&tx, id, &guide_id, tag_ids)?;
+        touch(&tx, id)?;
+        tx.commit()?;
+        load_note(self.conn(), id)
+    }
+
+    pub fn add_note_tag(&mut self, id: &NoteId, tag_id: &TagId) -> Result<Note> {
+        let mut tags = tag::tags_of_note(self.conn(), id)?;
+        if !tags.contains(tag_id) {
+            tags.push(tag_id.clone());
+        }
+        self.set_note_tags(id, &tags)
+    }
+
+    pub fn remove_note_tag(&mut self, id: &NoteId, tag_id: &TagId) -> Result<Note> {
+        let tags: Vec<TagId> = tag::tags_of_note(self.conn(), id)?
+            .into_iter()
+            .filter(|t| t != tag_id)
+            .collect();
+        self.set_note_tags(id, &tags)
+    }
+
+    /// Live notes in a guide that pass the query: by relevance when there is text, else by title.
+    pub fn list_notes(&self, guide_id: &GuideId, query: &NoteQuery) -> Result<Vec<NoteSummary>> {
+        let mut sql = format!("SELECT {SUMMARY_COLUMNS} FROM note n");
+        let mut values: Vec<Value> = vec![Value::Text(guide_id.0.clone())];
+        let mut conditions = vec![
+            "n.guide_id = ?1".to_owned(),
+            "n.deleted_at IS NULL".to_owned(),
+        ];
+        let text = query.text.as_deref().and_then(search::match_expression);
+        if let Some(expression) = &text {
+            sql.push_str(" JOIN notes_fts ON notes_fts.note_id = n.id");
+            values.push(Value::Text(expression.clone()));
+            conditions.push(format!("notes_fts MATCH ?{}", values.len()));
+        }
+        if let Some(tag_id) = &query.tag_id {
+            values.push(Value::Text(tag_id.0.clone()));
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM note_tag nt WHERE nt.note_id = n.id AND nt.tag_id IN (
+                     WITH RECURSIVE sub(id) AS (
+                         SELECT ?{n}
+                         UNION ALL
+                         SELECT t.id FROM tag t JOIN sub ON t.parent_id = sub.id
+                     )
+                     SELECT id FROM sub))",
+                n = values.len()
+            ));
+        }
+        if query.stubs_only {
+            conditions.push("n.is_stub = 1".to_owned());
+        }
+        sql.push_str(" WHERE ");
+        sql.push_str(&conditions.join(" AND "));
+        sql.push_str(if text.is_some() {
+            " ORDER BY bm25(notes_fts, 0.0, 10.0, 5.0, 1.0), n.title_norm, n.id"
+        } else {
+            " ORDER BY n.title_norm, n.id"
+        });
+        let mut stmt = self.conn().prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), summary_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Resolves link text against titles and aliases in the guide, case-insensitively. Live notes only.
+    pub fn lookup_note(&self, guide_id: &GuideId, text: &str) -> Result<Option<NoteSummary>> {
+        match resolve_name(self.conn(), guide_id, text, false)? {
+            Some(id) => load_summary(self.conn(), &id).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// The same lookup across every guide, for callers that ask for external targets.
+    pub fn lookup_note_any_guide(&self, text: &str) -> Result<Vec<NoteSummary>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {SUMMARY_COLUMNS} FROM note n
+             WHERE n.deleted_at IS NULL
+               AND (n.title_norm = ?1 OR n.id IN (SELECT note_id FROM note_alias WHERE alias_norm = ?1))
+             ORDER BY n.title_norm, n.id"
+        ))?;
+        let rows = stmt.query_map(params![normalize(text)], summary_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Live notes whose bodies link to this note.
+    pub fn mentioned_by(&self, id: &NoteId) -> Result<Vec<NoteSummary>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {SUMMARY_COLUMNS} FROM mention m JOIN note n ON n.id = m.note_id
+             WHERE m.target_note_id = ?1 AND n.deleted_at IS NULL ORDER BY n.title_norm, n.id"
+        ))?;
+        let rows = stmt.query_map(params![id], summary_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Live notes this note's body links to.
+    pub fn mentions_from(&self, id: &NoteId) -> Result<Vec<NoteSummary>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {SUMMARY_COLUMNS} FROM mention m JOIN note n ON n.id = m.target_note_id
+             WHERE m.note_id = ?1 AND n.deleted_at IS NULL ORDER BY n.title_norm, n.id"
+        ))?;
+        let rows = stmt.query_map(params![id], summary_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Moves a note to the trash: hidden from browse, search, and link resolution, with
+    /// everything attached to it kept. Trashing a trashed note changes nothing.
+    pub fn trash_note(&mut self, id: &NoteId) -> Result<NoteSummary> {
+        self.conn().execute(
+            "UPDATE note SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+            params![id, clock::now()],
+        )?;
+        load_summary(self.conn(), id)
+    }
+
+    pub fn restore_note(&mut self, id: &NoteId) -> Result<NoteSummary> {
+        if load_summary(self.conn(), id)?.deleted_at.is_none() {
+            return Err(Error::NotTrashed);
+        }
+        self.conn().execute(
+            "UPDATE note SET deleted_at = NULL WHERE id = ?1",
+            params![id],
+        )?;
+        load_summary(self.conn(), id)
+    }
+
+    /// Deletes a trashed note for good, with its aliases, tags, gallery rows, and the mentions it
+    /// made. Links pointing at it stay in the other notes' text and become unresolved. Live notes
+    /// must be trashed first.
+    pub fn purge_note(&mut self, id: &NoteId) -> Result<()> {
+        if load_summary(self.conn(), id)?.deleted_at.is_none() {
+            return Err(Error::NotTrashed);
+        }
+        self.conn()
+            .execute("DELETE FROM note WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Trashed notes in a guide, most recently trashed first.
+    pub fn list_trash(&self, guide_id: &GuideId) -> Result<Vec<NoteSummary>> {
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {SUMMARY_COLUMNS} FROM note n
+             WHERE n.guide_id = ?1 AND n.deleted_at IS NOT NULL
+             ORDER BY n.deleted_at DESC, n.title_norm, n.id"
+        ))?;
+        let rows = stmt.query_map(params![guide_id], summary_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Purges every trashed note in the guide. Returns how many went.
+    pub fn empty_trash(&mut self, guide_id: &GuideId) -> Result<usize> {
+        Ok(self.conn().execute(
+            "DELETE FROM note WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
+            params![guide_id],
+        )?)
+    }
+}
+
+const SUMMARY_COLUMNS: &str =
+    "n.id, n.guide_id, n.title, n.is_stub, n.deleted_at, n.created_at, n.updated_at";
+
+fn summary_from_row(row: &Row<'_>) -> rusqlite::Result<NoteSummary> {
+    Ok(NoteSummary {
+        id: row.get(0)?,
+        guide_id: row.get(1)?,
+        title: row.get(2)?,
+        is_stub: row.get(3)?,
+        deleted_at: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+pub(crate) fn load_summary(conn: &Connection, id: &NoteId) -> Result<NoteSummary> {
+    conn.query_row(
+        &format!("SELECT {SUMMARY_COLUMNS} FROM note n WHERE n.id = ?1"),
+        params![id],
+        summary_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| not_found("note", id))
+}
+
+pub(crate) fn load_note(conn: &Connection, id: &NoteId) -> Result<Note> {
+    let mut note = conn
+        .query_row(
+            "SELECT id, guide_id, title, body_md, is_stub, deleted_at, created_at, updated_at
+             FROM note WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(Note {
+                    id: row.get(0)?,
+                    guide_id: row.get(1)?,
+                    title: row.get(2)?,
+                    body_md: row.get(3)?,
+                    is_stub: row.get(4)?,
+                    deleted_at: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                    aliases: Vec::new(),
+                    tag_ids: Vec::new(),
+                })
+            },
+        )
+        .optional()?
+        .ok_or_else(|| not_found("note", id))?;
+    note.aliases = aliases_of(conn, id)?;
+    note.tag_ids = tag::tags_of_note(conn, id)?;
+    Ok(note)
+}
+
+fn aliases_of(conn: &Connection, id: &NoteId) -> Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT alias FROM note_alias WHERE note_id = ?1 ORDER BY alias_norm")?;
+    let rows = stmt.query_map(params![id], |row| row.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+fn guide_and_title(conn: &Connection, id: &NoteId) -> Result<(GuideId, String)> {
+    conn.query_row(
+        "SELECT guide_id, title FROM note WHERE id = ?1",
+        params![id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .optional()?
+    .ok_or_else(|| not_found("note", id))
+}
+
+/// The note holding `key` as its title or an alias in the guide, trashed or not.
+fn name_holder(conn: &Connection, guide_id: &GuideId, key: &str) -> Result<Option<NoteId>> {
+    Ok(conn
+        .query_row(
+            "SELECT id FROM note WHERE guide_id = ?1 AND title_norm = ?2
+             UNION ALL
+             SELECT note_id FROM note_alias WHERE guide_id = ?1 AND alias_norm = ?2
+             LIMIT 1",
+            params![guide_id, key],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+/// Resolves link text to a note in the guide by title or alias. Trashed notes count only when
+/// asked: the mention cache wants them so restore and rename keep working; the UI does not.
+fn resolve_name(
+    conn: &Connection,
+    guide_id: &GuideId,
+    text: &str,
+    include_trashed: bool,
+) -> Result<Option<NoteId>> {
+    Ok(conn
+        .query_row(
+            "SELECT n.id FROM note n
+             WHERE n.guide_id = ?1 AND n.title_norm = ?2 AND (?3 OR n.deleted_at IS NULL)
+             UNION ALL
+             SELECT n.id FROM note_alias a JOIN note n ON n.id = a.note_id
+             WHERE a.guide_id = ?1 AND a.alias_norm = ?2 AND (?3 OR n.deleted_at IS NULL)
+             LIMIT 1",
+            params![guide_id, normalize(text), include_trashed],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+fn insert_alias(conn: &Connection, id: &NoteId, guide_id: &GuideId, alias: &str) -> Result<()> {
+    let key = normalize(alias);
+    if let Some(holder) = name_holder(conn, guide_id, &key)? {
+        return Err(Error::NameTaken {
+            name: alias.to_owned(),
+            note_id: holder,
+        });
+    }
+    conn.execute(
+        "INSERT INTO note_alias (note_id, guide_id, alias, alias_norm) VALUES (?1, ?2, ?3, ?4)",
+        params![id, guide_id, alias, key],
+    )?;
+    adopt_mentions(conn, id, guide_id, alias)?;
+    Ok(())
+}
+
+pub(crate) fn touch(conn: &Connection, id: &NoteId) -> Result<()> {
+    conn.execute(
+        "UPDATE note SET updated_at = ?2 WHERE id = ?1",
+        params![id, clock::now()],
+    )?;
+    Ok(())
+}
+
+fn replace_tags(
+    conn: &Connection,
+    id: &NoteId,
+    guide_id: &GuideId,
+    tag_ids: &[TagId],
+) -> Result<()> {
+    for tag_id in tag_ids {
+        let tag = tag::load_tag(conn, tag_id)?;
+        if tag.scope_guide_id.as_ref() != Some(guide_id) {
+            return Err(Error::Invalid(format!(
+                "tag {tag_id} does not belong to this guide"
+            )));
+        }
+    }
+    conn.execute("DELETE FROM note_tag WHERE note_id = ?1", params![id])?;
+    for tag_id in tag_ids {
+        conn.execute(
+            "INSERT OR IGNORE INTO note_tag (note_id, tag_id) VALUES (?1, ?2)",
+            params![id, tag_id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Re-derives the mention rows for a note from its body: one row per distinct link text, resolved
+/// when something in the guide carries that name and left unresolved otherwise.
+fn refresh_mentions(conn: &Connection, id: &NoteId, guide_id: &GuideId, body: &str) -> Result<()> {
+    conn.execute("DELETE FROM mention WHERE note_id = ?1", params![id])?;
+    let mut seen = HashSet::new();
+    for link in wikilink::find_wikilinks(body) {
+        let key = normalize(link.target);
+        if !seen.insert(key.clone()) {
+            continue;
+        }
+        let target = resolve_name(conn, guide_id, &key, true)?;
+        conn.execute(
+            "INSERT INTO mention (note_id, target_norm, target_note_id) VALUES (?1, ?2, ?3)",
+            params![id, key, target],
+        )?;
+    }
+    Ok(())
+}
+
+/// A note gained a name (title or alias): links in the guide that were waiting for it now resolve.
+fn adopt_mentions(conn: &Connection, id: &NoteId, guide_id: &GuideId, name: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE mention SET target_note_id = ?1
+         WHERE target_note_id IS NULL AND target_norm = ?2
+           AND note_id IN (SELECT id FROM note WHERE guide_id = ?3)",
+        params![id, normalize(name), guide_id],
+    )?;
+    Ok(())
+}
+
+/// A note lost a name: links that reached it through that name are unresolved again.
+fn release_mentions(conn: &Connection, id: &NoteId, name: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE mention SET target_note_id = NULL WHERE target_note_id = ?1 AND target_norm = ?2",
+        params![id, normalize(name)],
+    )?;
+    Ok(())
+}
+
+/// Changes the title and rewrites links in every note the mention cache says references it.
+/// With `keep_old_name` false the old title stops resolving. Returns the notes whose bodies changed.
+fn retitle(
+    conn: &Connection,
+    id: &NoteId,
+    guide_id: &GuideId,
+    old_title: &str,
+    new_title: &str,
+    keep_old_name: bool,
+) -> Result<Vec<NoteId>> {
+    let now = clock::now();
+    conn.execute(
+        "UPDATE note SET title = ?2, title_norm = ?3, updated_at = ?4 WHERE id = ?1",
+        params![id, new_title, normalize(new_title), now],
+    )?;
+    let referencing: Vec<NoteId> = {
+        let mut stmt =
+            conn.prepare("SELECT note_id FROM mention WHERE target_note_id = ?1 ORDER BY note_id")?;
+        stmt.query_map(params![id], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let mut rewritten = Vec::new();
+    for note_id in referencing {
+        let body: String = conn.query_row(
+            "SELECT body_md FROM note WHERE id = ?1",
+            params![note_id],
+            |row| row.get(0),
+        )?;
+        let (new_body, changed) = wikilink::rewrite_targets(&body, old_title, new_title);
+        if changed > 0 {
+            conn.execute(
+                "UPDATE note SET body_md = ?2, updated_at = ?3 WHERE id = ?1",
+                params![note_id, new_body, now],
+            )?;
+            refresh_mentions(conn, &note_id, guide_id, &new_body)?;
+            rewritten.push(note_id);
+        }
+    }
+    adopt_mentions(conn, id, guide_id, new_title)?;
+    if !keep_old_name && normalize(old_title) != normalize(new_title) {
+        release_mentions(conn, id, old_title)?;
+    }
+    Ok(rewritten)
+}
