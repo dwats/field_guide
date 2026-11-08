@@ -92,9 +92,9 @@ Done when: typing in the filter updates the list on each keystroke with no visib
 
 ## Phase 7: Board
 
-SVG pan and zoom, force layout for unplaced nodes, persisted positions, named boards with saved filters, external and mentions toggles, tag, text, and topic filters.
+Manual cork boards (`docs/design.md` section 6): a picker with the guide's search and tag filters to add entries one at a time or in bulk, instant-photo cards with the primary image and the title as caption, edges between members drawn as entries arrive, external and mentions toggles, SVG pan and zoom, persisted positions, several named boards per guide. Decorations and textures are in Later.
 
-Done when: a guide with a few hundred entries stays responsive while dragging, and reopening a board restores positions.
+Done when: a board with a few hundred cards stays responsive while dragging; reopening a board restores membership and positions; adding an entry whose relations reach members already on the board draws those edges with no further action.
 
 ## Phase 8: Media
 
@@ -132,5 +132,5 @@ Not scheduled. Candidates that need their own decision before they get a phase.
 
 - Video: drag-and-drop of `.webm` into entries, playback in the preview. The renderer already turns `media/*.webm` into a video element, so an archive that carries one plays. Without transcoding, which the binary cannot carry, every clip is stored as recorded, so this may not be worth its weight.
 - Lossy WebP as a setting beside the lossless default (`docs/design.md` section 11).
-- Cork boards (raised 2026-11-08). A board the user fills by hand, one entry or many at a time, with the edges between the chosen entries drawn as they arrive. On top of entries: free-standing notes with a background colour that render markdown (check lists, tables, text), dropped images positioned by hand with a thin white border so they read as photographs, icon push pins (arrows, checks, crosses, key, lock, skull, and more), and drawings. Items connect with edges styled as twine in several colours. Backgrounds: cork, grid, or blank, each light or dark. Several boards per guide already exist in the data model; manual membership and decorations do not, so this is decided before Phase 7 starts: filter-driven boards as in `docs/design.md` section 6, manual boards, or both.
+- Board decorations (raised 2026-11-08; the boards themselves are Phase 7). Free-standing notes with a background colour that render markdown (check lists, tables, text), dropped images positioned by hand with a thin white border so they read as photographs, icon push pins (arrows, checks, crosses, key, lock, skull, and more), and drawings. Items connect with edges styled as twine in several colours. Backgrounds: cork, grid, or blank, each light or dark.
 - Drawing tool (raised 2026-11-08). A simple, fast canvas for a map, a cross section, or a room layout: layers, bucket fill, shapes (circle, square, triangle, line), and the usual paint-tool key combinations for snapping angles and keeping symmetry. Output is an image stored as media, so it drops into entries and boards like any other picture.

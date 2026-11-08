@@ -1,5 +1,7 @@
 # UX review
 
+The owner decided on the open questions and on the change list on 2026-11-08; `docs/design.md` section 5, "Interface principles", records the decisions and wins where it differs from this review (tabs with Contents first; the panel collapses in Edit; contents shown from one heading; manual boards).
+
 Reviewed 2026-11-08 against commit `1bcbb25` (phases 0 to 5) and the screenshots of the portable build taken 2026-11-07. The screenshots predate commit `95a4c38`, so they still say "note" where the source now says "entry"; the source is clean. Fixed requirements come from the owner interview recorded in `docs/design.md` section 5, "Interface principles". Every proposal below is designed for those requirements. Where this review disagrees with one, it says so once, in section 7.
 
 Terms used throughout: **top bar**, **sidebar** (left), **content** (middle column), **right panel**, **relation line** (the staged input), **relation list**, **command palette**, **notice**, **More menu**, **Read mode**, **Edit mode**, **Split**, **In place**, **Tag editor**, **Trash**. **Mod** means Ctrl on Windows and Linux and Cmd on macOS. Effort: S is under half a day, M is one to three days, L is a week or more.

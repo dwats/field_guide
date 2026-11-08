@@ -186,24 +186,32 @@ None. A new guide has zero verbs and zero qualifier labels. Vocabulary arrives t
 
 ### Interface principles
 
-Decided with the owner on 2026-11-08, before the UX pass that turns them into layouts.
+Decided with the owner on 2026-11-08, first in an interview and then over the UX review in `docs/ux-review.md`. Where a choice here differs from the review, the choice here wins.
 
 - Audience: the owner first, friends through export second. Nothing waits on feedback from others.
-- Navigation inside a guide: a persistent left sidebar with the tag tree and search, breadcrumbs above the content, and a right-hand table of contents built from the entry's headings.
+- Shell: one top bar with breadcrumbs, a left sidebar, the content column, and a right panel. Column widths never change when the mode or the view changes; the sidebar and the right panel can each be collapsed by the user, and the choice is remembered.
+- Sidebar inside a guide: search, the tag tree, and the entries under the selected tag, so an entry is reachable from the sidebar without leaving the page. Breadcrumbs sit above the content.
+- Right panel on an entry page: two tabs, "Contents" and "Relations", with Contents selected on arrival. The relation line sits at the top of the Relations tab. While editing in Split the panel collapses; a setting keeps it open instead.
+- Contents: built from the entry's headings; shown whenever the body has at least one heading; a display setting hides it always, off by default.
+- Lists: selecting a row enables one fixed action row per list. No control appears or disappears on hover.
+- Aliases: a muted line under the tags, present only when the entry has aliases, edited from the More menu.
 - Density: a setting with a compact and a roomy preset.
 - Theme: follow the operating system's light or dark setting; a manual override comes later.
-- Entry page: relations live in a right-hand panel beside the body, with the relation line at the top of that panel.
 - Editing: Read and Edit modes stay; Edit offers a toggle between the split live preview and a single pane that renders in place.
 - Input: keyboard first, with a command palette for search, jump, and new entry on the shortcut each platform expects (Ctrl on Windows and Linux, Cmd on macOS); every action also reachable by mouse.
 - Attention: minimal chrome, no animation, fixed placement, confirmations only for destructive actions. Revisit after use.
+- Settings: appearance choices are toggles, each with a small picture of what it changes, so a choice can be made without trying it first.
 
 ## 6. Board
 
-- Scope: current guide. Toggles for external edges and mentions.
-- Filters, all live: tag chips (ancestor-inclusive), free text (FTS5), and topics: a set of selected entries plus a hop depth. The board shows entries that pass the filter and every edge whose endpoints are both visible.
-- Nodes are cards: title, cover thumbnail if the entry has gallery media, tag chips. Edges are labeled with the verb; qualifiers render as a second line on the label. Mentions are dashed.
-- Layout: SVG with pan and zoom. Unplaced nodes get force-directed positions on open. Dragging persists `(x, y)` to `board_node` on drag end. A guide can have several named boards, each with its own layout and saved filters. Board names are unique per guide, case-insensitively. Filters are stored as JSON and read back into a typed struct by `core`; a position may be saved for an entry from another guide, since the external toggle can show one.
-- Canvas rendering is a later optimization if SVG falls over past a few hundred nodes.
+A board is a cork board the user fills by hand (decided 2026-11-08; it replaces the filter-driven board of the first design). Scope: one guide. A guide can have several named boards; names are unique per guide, case-insensitively.
+
+- Membership is manual. Entries are added one at a time or in bulk through a picker that offers the guide's search and tag filters, the same filters the browse views use, and removed from the board without touching the entry. `board_node` holds membership and position; `filters_json` holds the picker's last filters and the display toggles, never a membership rule.
+- A card is an instant photo: the entry's primary image as the picture, the title as a caption along the bottom edge, proportions following the image rather than a fixed ratio. An entry without an image is a plain card with the title. Until the model has an explicit choice, the primary image is the first gallery item.
+- Edges: every relation whose endpoints are both on the board is drawn as members arrive, labelled with the verb, qualifiers on a second line. Mentions are a dashed, hideable layer. Edges to entries in other guides show when the external toggle is on, and a card from another guide may sit on the board for that reason.
+- Layout: SVG with pan and zoom. A new card lands near the point it was added from. Dragging persists `(x, y)` on drag end.
+- Later (`docs/plan.md`, Later): free-standing notes, dropped images, icon push pins, drawings, background textures, and twine-styled edges.
+- Canvas rendering is a later optimization if SVG falls over past a few hundred cards.
 
 ## 7. Export
 
