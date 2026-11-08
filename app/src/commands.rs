@@ -16,7 +16,7 @@ use fieldguide_core::import::{
 };
 use fieldguide_core::markdown::Rendered;
 use fieldguide_core::media::{Media, MediaDimensions};
-use fieldguide_core::note::{NewNote, Note, NoteQuery, NoteSummary, RenameRecord};
+use fieldguide_core::note::{NameMatch, NewNote, Note, NoteQuery, NoteSummary, RenameRecord};
 use fieldguide_core::relation::{
     CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, RelationView,
 };
@@ -179,6 +179,16 @@ pub fn create_note(state: S<'_>, new: NewNote) -> CmdResult<Note> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn create_stub(
+    state: S<'_>,
+    guide_id: GuideId,
+    title: String,
+    tag_id: Option<TagId>,
+) -> CmdResult<Note> {
+    state.with_vault(|v| v.create_stub_note(&guide_id, &title, tag_id.as_ref()))
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_note(state: S<'_>, id: NoteId) -> CmdResult<Note> {
     state.with_vault(|v| v.get_note(&id))
 }
@@ -239,6 +249,16 @@ pub fn lookup_note(
     text: String,
 ) -> CmdResult<Option<NoteSummary>> {
     state.with_vault(|v| v.lookup_note(&guide_id, &text))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn suggest_names(
+    state: S<'_>,
+    guide_id: GuideId,
+    prefix: String,
+    limit: usize,
+) -> CmdResult<Vec<NameMatch>> {
+    state.with_vault(|v| v.suggest_names(&guide_id, &prefix, limit))
 }
 
 #[tauri::command(rename_all = "snake_case")]

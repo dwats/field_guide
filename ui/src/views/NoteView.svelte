@@ -1,10 +1,13 @@
 <script lang="ts">
-  // A note: title with rename and undo, aliases, tags, the rendered body, and an editor with a
-  // live preview. Edits save on a short delay and when the page is left.
+  // A note: title with rename and undo, aliases, tags, the relation line and list, the rendered
+  // body, and an editor with a live preview. Edits save on a short delay and when the page is left.
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
+  import Modal from "../components/Modal.svelte";
   import Preview from "../components/Preview.svelte";
+  import RelationBuilder from "../components/RelationBuilder.svelte";
+  import RelationList from "../components/RelationList.svelte";
   import TagPicker from "../components/TagPicker.svelte";
   import { api, errorMessage, type Guide, type Note, type NoteSummary, type Rendered } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
@@ -23,6 +26,7 @@
   let draft = $state("");
   let saveState = $state<"saved" | "dirty" | "saving" | "error">("saved");
   let error = $state("");
+  let relationsVersion = $state(0);
 
   let renaming = $state(false);
   let titleDraft = $state("");
@@ -108,6 +112,12 @@
     mode = next;
   }
 
+  function openRename() {
+    if (!note) return;
+    titleDraft = note.title;
+    renaming = true;
+  }
+
   async function rename() {
     if (!note) return;
     const title = titleDraft.trim();
@@ -119,6 +129,7 @@
       const record = await api.renameNote(note.id, title);
       session.renames[note.id] = record;
       renaming = false;
+      error = "";
       await load(note.id);
     } catch (e) {
       error = errorMessage(e);
@@ -192,6 +203,15 @@
     }
   }
 
+  async function relationSaved() {
+    relationsVersion += 1;
+    // A stub may have been created or the body's links may now resolve.
+    if (note) {
+      note = await api.getNote(note.id);
+      await refresh();
+    }
+  }
+
   onDestroy(() => {
     clearTimeout(previewTimer);
     clearTimeout(saveTimer);
@@ -207,33 +227,11 @@
     </p>
 
     <div class="row header">
-      {#if renaming}
-        <form
-          class="row"
-          onsubmit={(e) => {
-            e.preventDefault();
-            void rename();
-          }}
-        >
-          <input type="text" bind:value={titleDraft} required />
-          <button type="submit" class="primary">Rename</button>
-          <button type="button" onclick={() => (renaming = false)}>Cancel</button>
-        </form>
-      {:else}
-        <h1>{note.title}</h1>
-        {#if note.is_stub}<span class="chip">stub</span>{/if}
-        <button
-          class="link"
-          onclick={() => {
-            titleDraft = note!.title;
-            renaming = true;
-          }}
-        >
-          Rename
-        </button>
-        {#if undoable}
-          <button class="link" onclick={undoRename}>Undo rename from "{undoable.old_title}"</button>
-        {/if}
+      <h1>{note.title}</h1>
+      {#if note.is_stub}<span class="chip">stub</span>{/if}
+      <button class="link" onclick={openRename}>Rename</button>
+      {#if undoable}
+        <button class="link" onclick={undoRename}>Undo rename from "{undoable.old_title}"</button>
       {/if}
       <span class="spacer"></span>
       <div class="segmented" role="group" aria-label="Mode">
@@ -264,6 +262,8 @@
       <span class="muted">Tags</span>
       <TagPicker scope={guide.id} selected={note.tag_ids} onchange={setTags} />
     </div>
+
+    <RelationBuilder {note} {guide} onsaved={relationSaved} />
 
     {#if error}<p class="error">{error}</p>{/if}
 
@@ -306,6 +306,8 @@
       </p>
     {/if}
 
+    <RelationList noteId={note.id} guideId={guide.id} version={relationsVersion} />
+
     {#if mentionedBy.length > 0}
       <section class="mentions">
         <h2>Mentioned by</h2>
@@ -316,6 +318,29 @@
         </ul>
       </section>
     {/if}
+
+    <Modal open={renaming} title="Rename note" onclose={() => (renaming = false)}>
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+          void rename();
+        }}
+      >
+        <label>
+          New title
+          <!-- svelte-ignore a11y_autofocus -->
+          <input type="text" bind:value={titleDraft} required autofocus />
+        </label>
+        <p class="muted">
+          Links to this note are rewritten and the old title stays as an alias. Undo is available
+          until Field Guide closes.
+        </p>
+      </form>
+      {#snippet actions()}
+        <button onclick={() => (renaming = false)}>Cancel</button>
+        <button class="primary" onclick={rename}>Rename</button>
+      {/snippet}
+    </Modal>
   {:else if error}
     <p class="error">{error}</p>
   {/if}
@@ -374,5 +399,9 @@
     margin-top: 24px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
+  }
+  label {
+    display: grid;
+    gap: 2px;
   }
 </style>

@@ -57,6 +57,17 @@ pub struct NoteQuery {
     pub stubs_only: bool,
 }
 
+/// A title or alias that starts with what the user typed, for autocomplete.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NameMatch {
+    pub note_id: NoteId,
+    pub title: String,
+    /// The title or alias that matched, as stored.
+    pub matched: String,
+    pub is_alias: bool,
+    pub is_stub: bool,
+}
+
 /// What a rename did, enough to reverse it with [`Vault::undo_rename`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenameRecord {
@@ -84,6 +95,20 @@ impl Vault {
             false,
             &new.tag_ids,
         )?;
+        tx.commit()?;
+        load_note(self.conn(), &id)
+    }
+
+    /// Creates a stub: a note with an empty body and `is_stub` set, as the relation builder does
+    /// for a target. Used for qualifier values that name a note nobody has described yet.
+    pub fn create_stub_note(
+        &mut self,
+        guide_id: &GuideId,
+        title: &str,
+        tag_id: Option<&TagId>,
+    ) -> Result<Note> {
+        let tx = self.savepoint()?;
+        let id = create_stub(&tx, guide_id, title, tag_id)?;
         tx.commit()?;
         load_note(self.conn(), &id)
     }
@@ -293,6 +318,41 @@ impl Vault {
             Some(id) => load_summary(self.conn(), &id).map(Some),
             None => Ok(None),
         }
+    }
+
+    /// Live notes in the guide whose title or an alias starts with `prefix`, case-insensitively,
+    /// ordered by the matched text. An empty prefix matches nothing.
+    pub fn suggest_names(
+        &self,
+        guide_id: &GuideId,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<NameMatch>> {
+        let key = normalize(prefix);
+        if key.is_empty() {
+            return Ok(Vec::new());
+        }
+        let pattern = format!("{}%", escape_like(&key));
+        let mut stmt = self.conn().prepare(
+            "SELECT n.id, n.title, n.title AS matched, 0 AS is_alias, n.is_stub FROM note n
+             WHERE n.guide_id = ?1 AND n.deleted_at IS NULL AND n.title_norm LIKE ?2 ESCAPE '\\'
+             UNION ALL
+             SELECT n.id, n.title, a.alias, 1, n.is_stub FROM note_alias a
+             JOIN note n ON n.id = a.note_id
+             WHERE a.guide_id = ?1 AND n.deleted_at IS NULL AND a.alias_norm LIKE ?2 ESCAPE '\\'
+             ORDER BY matched COLLATE NOCASE, id
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![guide_id, pattern, limit as i64], |row| {
+            Ok(NameMatch {
+                note_id: row.get(0)?,
+                title: row.get(1)?,
+                matched: row.get(2)?,
+                is_alias: row.get::<_, i64>(3)? != 0,
+                is_stub: row.get::<_, i64>(4)? != 0,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// The same lookup across every guide, for callers that ask for external targets.
@@ -775,4 +835,16 @@ pub(crate) fn retitle(
         release_mentions(conn, id, old_title)?;
     }
     Ok(rewritten)
+}
+
+/// Escapes `%`, `_`, and `\\` so user text is matched literally inside a LIKE pattern.
+fn escape_like(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }

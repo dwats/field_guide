@@ -119,3 +119,38 @@ fn search_is_scoped_to_the_guide_and_combines_with_tags() {
     assert_eq!(search(&v, &h, "pick"), ["Pickaxe"]);
     assert_eq!(v.list_notes(&h, &NoteQuery::default()).unwrap().len(), 1);
 }
+
+#[test]
+fn name_suggestions_match_title_and_alias_prefixes_and_skip_the_trash() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let oak = note(&mut v, &g, "Oak Log", "");
+    v.add_alias(&oak, "Lumber").unwrap();
+    note(&mut v, &g, "Oak Planks", "");
+    let fence = note(&mut v, &g, "Oak Fence", "");
+    v.trash_note(&fence).unwrap();
+    let other = guide(&mut v, "Other");
+    note(&mut v, &other, "Oak Sapling", "");
+
+    let names = |prefix: &str| -> Vec<(String, String, bool)> {
+        v.suggest_names(&g, prefix, 10)
+            .unwrap()
+            .into_iter()
+            .map(|m| (m.title, m.matched, m.is_alias))
+            .collect()
+    };
+    assert_eq!(
+        names("oa"),
+        [
+            ("Oak Log".to_owned(), "Oak Log".to_owned(), false),
+            ("Oak Planks".to_owned(), "Oak Planks".to_owned(), false),
+        ]
+    );
+    assert_eq!(
+        names("LUM"),
+        [("Oak Log".to_owned(), "Lumber".to_owned(), true)]
+    );
+    assert!(names("").is_empty());
+    assert!(names("100%").is_empty(), "wildcards are literal");
+    assert_eq!(v.suggest_names(&g, "oak", 1).unwrap().len(), 1);
+}

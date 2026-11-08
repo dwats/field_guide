@@ -131,6 +131,16 @@ pub struct RelationView {
     pub external: bool,
     /// The whole line, e.g. `DROPS Cobblestone Block · mined with Pickaxe`.
     pub text: String,
+    /// The same line split so a UI can link the note titles. Concatenated, equals `text`.
+    pub segments: Vec<Segment>,
+}
+
+/// A run of the display line: plain words, or a note title with the note it names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Segment {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_id: Option<NoteId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -374,34 +384,25 @@ fn render(
     external: bool,
 ) -> RelationView {
     let verb = &relation.verb;
-    let qualifier_texts = |skip: Option<&QualifierId>| -> Vec<String> {
-        relation
-            .qualifiers
-            .iter()
-            .filter(|q| Some(&q.id) != skip)
-            .map(|q| format!("{} {}", q.label.label, value_text(&q.value)))
-            .collect()
-    };
-    let (section, label, inverted, mut parts) = match perspective {
+    let mut line = Line::default();
+    let (section, label, inverted) = match perspective {
         Perspective::Subject => {
             let label = verb_slot(&verb.label);
-            let head = format!("{label} {}", relation.object.title);
-            (Section::Relations, label, false, vec![head])
+            line.plain(format!("{label} ")).note(&relation.object);
+            line.qualifiers(&relation.qualifiers, None);
+            (Section::Relations, label, false)
         }
         Perspective::Object => {
-            if verb.symmetric {
-                let label = verb_slot(&verb.label);
-                let head = format!("{label} {}", relation.subject.title);
-                (Section::Relations, label, false, vec![head])
+            let (label, inverted) = if verb.symmetric {
+                (verb_slot(&verb.label), false)
             } else if let Some(inverse) = &verb.inverse_label {
-                let label = verb_slot(inverse);
-                let head = format!("{label} {}", relation.subject.title);
-                (Section::Relations, label, false, vec![head])
+                (verb_slot(inverse), false)
             } else {
-                let label = format!("← {}", verb_slot(&verb.label));
-                let head = format!("{label} {}", relation.subject.title);
-                (Section::Relations, label, true, vec![head])
-            }
+                (format!("← {}", verb_slot(&verb.label)), true)
+            };
+            line.plain(format!("{label} ")).note(&relation.subject);
+            line.qualifiers(&relation.qualifiers, None);
+            (Section::Relations, label, inverted)
         }
         Perspective::QualifierValue => {
             let qualifier = relation
@@ -412,48 +413,27 @@ fn render(
             match &qualifier.label.inverse_label {
                 Some(inverse) => {
                     let label = verb_slot(inverse);
-                    let head = format!(
-                        "{label} {} → {}",
-                        relation.subject.title, relation.object.title
-                    );
-                    let mut parts = vec![head];
-                    parts.extend(qualifier_texts(Some(&qualifier.id)));
-                    return RelationView {
-                        text: parts.join(" · "),
-                        relation: relation.clone(),
-                        perspective,
-                        qualifier_id,
-                        section: Section::Relations,
-                        label,
-                        inverted: false,
-                        external,
-                    };
+                    line.plain(format!("{label} "))
+                        .note(&relation.subject)
+                        .plain(" → ")
+                        .note(&relation.object);
+                    line.qualifiers(&relation.qualifiers, Some(&qualifier.id));
+                    (Section::Relations, label, false)
                 }
                 None => {
                     let label = qualifier.label.label.clone();
-                    let text = format!(
-                        "{label} · {} {} {}",
-                        relation.subject.title,
-                        verb_slot(&verb.label),
-                        relation.object.title
-                    );
-                    return RelationView {
-                        text,
-                        relation: relation.clone(),
-                        perspective,
-                        qualifier_id,
-                        section: Section::ReferencedBy,
-                        label,
-                        inverted: false,
-                        external,
-                    };
+                    line.plain(format!("{label} · "))
+                        .note(&relation.subject)
+                        .plain(format!(" {} ", verb_slot(&verb.label)))
+                        .note(&relation.object);
+                    (Section::ReferencedBy, label, false)
                 }
             }
         }
     };
-    parts.extend(qualifier_texts(None));
     RelationView {
-        text: parts.join(" · "),
+        text: line.text(),
+        segments: line.segments,
         relation: relation.clone(),
         perspective,
         qualifier_id,
@@ -461,6 +441,49 @@ fn render(
         label,
         inverted,
         external,
+    }
+}
+
+/// A display line under construction.
+#[derive(Default)]
+struct Line {
+    segments: Vec<Segment>,
+}
+
+impl Line {
+    fn plain(&mut self, text: impl Into<String>) -> &mut Self {
+        self.segments.push(Segment {
+            text: text.into(),
+            note_id: None,
+        });
+        self
+    }
+
+    fn note(&mut self, note: &NoteRef) -> &mut Self {
+        self.segments.push(Segment {
+            text: note.title.clone(),
+            note_id: Some(note.id.clone()),
+        });
+        self
+    }
+
+    /// ` · label value` for every qualifier except `skip`, note values linked.
+    fn qualifiers(&mut self, qualifiers: &[Qualifier], skip: Option<&QualifierId>) {
+        for q in qualifiers.iter().filter(|q| Some(&q.id) != skip) {
+            self.plain(format!(" · {} ", q.label.label));
+            match &q.value {
+                QualifierValueView::Note(note) => {
+                    self.note(note);
+                }
+                other => {
+                    self.plain(value_text(other));
+                }
+            }
+        }
+    }
+
+    fn text(&self) -> String {
+        self.segments.iter().map(|s| s.text.as_str()).collect()
     }
 }
 

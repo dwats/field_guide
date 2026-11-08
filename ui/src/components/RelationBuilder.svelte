@@ -1,0 +1,551 @@
+<script lang="ts">
+  // The staged relation input from design section 4: verb, then target, then qualifiers, one
+  // line with autocomplete. Core resolves and writes; this component stages and prompts.
+  import { untrack } from "svelte";
+
+  import Modal from "./Modal.svelte";
+  import TagPicker from "./TagPicker.svelte";
+  import {
+    api,
+    errorMessage,
+    type Guide,
+    type NewQualifier,
+    type Note,
+    type QualifierLabel,
+    type Target,
+    type Verb,
+  } from "../lib/api";
+  import {
+    EMPTY,
+    commitQualifierLabel,
+    commitQualifierValue,
+    commitTarget,
+    commitVerb,
+    interpret,
+    popLast,
+    stageOf,
+    summary,
+    type LabelChoice,
+    type Staged,
+    type VerbChoice,
+  } from "../lib/staged";
+
+  interface Props {
+    note: Note;
+    guide: Guide;
+    onsaved: () => void;
+  }
+  let { note, guide, onsaved }: Props = $props();
+
+  interface Suggestion {
+    key: string;
+    text: string;
+    detail?: string;
+    apply: () => void | Promise<void>;
+  }
+
+  let staged = $state<Staged>(EMPTY);
+  let text = $state("");
+  let verbs = $state<Verb[]>([]);
+  let labels = $state<QualifierLabel[]>([]);
+  let suggestions = $state<Suggestion[]>([]);
+  let highlight = $state(0);
+  let focused = $state(false);
+  let busy = $state(false);
+  let error = $state("");
+  let input: HTMLInputElement;
+
+  let verbPrompt = $state<{ label: string; inverse: string; symmetric: boolean } | null>(null);
+  let labelPrompt = $state<{ label: string; inverse: string } | null>(null);
+  let stubPrompt = $state<{ title: string; tag_id: string | null } | null>(null);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let blurTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const stage = $derived(stageOf(staged));
+  const placeholder = $derived(
+    {
+      verb: "Relation: verb, e.g. DROPS",
+      target: "Target note",
+      ready: "+ qualifier, or Enter to save",
+      qualifier_label: "Qualifier label",
+      qualifier_value: `Value for "${staged.pendingLabel?.label ?? ""}"`,
+    }[stage],
+  );
+
+  $effect(() => {
+    void guide.id;
+    untrack(() => void loadVocabulary());
+  });
+
+  $effect(() => {
+    const current = text;
+    const s = staged;
+    clearTimeout(timer);
+    timer = setTimeout(() => void computeSuggestions(s, current), 120);
+  });
+
+  async function loadVocabulary() {
+    try {
+      verbs = await api.listVerbs(guide.id);
+      labels = await api.listQualifierLabels(guide.id);
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  const norm = (s: string) => s.trim().toLowerCase();
+
+  async function computeSuggestions(s: Staged, typed: string) {
+    const { stage, text: query } = interpret(s, typed);
+    const key = norm(query);
+    let next: Suggestion[] = [];
+    try {
+      if (stage === "verb") {
+        const pool: { label: string; verb: Verb; direction: "forward" | "inverse" }[] = [];
+        for (const v of verbs) {
+          pool.push({ label: v.label, verb: v, direction: "forward" });
+          if (v.inverse_label && !v.symmetric) {
+            pool.push({ label: v.inverse_label, verb: v, direction: "inverse" });
+          }
+        }
+        next = pool
+          .filter((p) => !key || norm(p.label).includes(key))
+          .slice(0, 8)
+          .map((p) => ({
+            key: `${p.verb.id}:${p.direction}`,
+            text: p.label.toUpperCase(),
+            detail: p.direction === "inverse" ? `inverse of ${p.verb.label}` : undefined,
+            apply: () => {
+              staged = commitVerb(staged, { id: p.verb.id, label: p.label, direction: p.direction });
+              text = "";
+            },
+          }));
+        if (key && !pool.some((p) => norm(p.label) === key)) {
+          next.push({
+            key: "new-verb",
+            text: `Create verb "${query}"`,
+            apply: () => {
+              verbPrompt = { label: query, inverse: "", symmetric: false };
+            },
+          });
+        }
+      } else if (stage === "target" || stage === "qualifier_value") {
+        const matches = key ? await api.suggestNames(guide.id, query, 8) : [];
+        next = matches
+          .filter((m) => stage === "qualifier_value" || m.note_id !== note.id)
+          .map((m) => ({
+            key: m.note_id + m.matched,
+            text: m.title,
+            detail: m.is_alias ? `alias: ${m.matched}` : m.is_stub ? "stub" : undefined,
+            apply: () => {
+              if (stage === "target") {
+                staged = commitTarget(staged, { kind: "note", id: m.note_id, title: m.title });
+              } else {
+                staged = commitQualifierValue(staged, m.title);
+              }
+              text = "";
+            },
+          }));
+        if (key && !matches.some((m) => norm(m.matched) === key)) {
+          if (stage === "target") {
+            next.push({
+              key: "new-stub",
+              text: `Create "${query}" as a new note`,
+              apply: () => void openStubPrompt(query),
+            });
+          } else {
+            next.push({
+              key: "text-value",
+              text: `Use "${query}"`,
+              detail: "text or number",
+              apply: () => {
+                staged = commitQualifierValue(staged, query);
+                text = "";
+              },
+            });
+            next.push({
+              key: "stub-value",
+              text: `Create "${query}" as a new note`,
+              apply: () => {
+                staged = commitQualifierValue(staged, query, true);
+                text = "";
+              },
+            });
+          }
+        }
+      } else if (stage === "qualifier_label") {
+        next = labels
+          .filter((l) => !key || norm(l.label).includes(key))
+          .slice(0, 8)
+          .map((l) => ({
+            key: l.id,
+            text: l.label,
+            detail: l.inverse_label ? `inverse: ${l.inverse_label}` : undefined,
+            apply: () => {
+              staged = commitQualifierLabel(staged, { id: l.id, label: l.label });
+              text = "";
+            },
+          }));
+        if (key && !labels.some((l) => norm(l.label) === key)) {
+          next.push({
+            key: "new-label",
+            text: `Create qualifier "${query}"`,
+            apply: () => {
+              labelPrompt = { label: query, inverse: "" };
+            },
+          });
+        }
+      }
+    } catch (e) {
+      error = errorMessage(e);
+    }
+    suggestions = next;
+    highlight = 0;
+  }
+
+  /**
+   * Puts the caret back in the line after a prompt closes. The dialog closes in an effect after
+   * this tick, and the webview keeps reporting the input as focused while keystrokes go nowhere,
+   * so the focus is dropped and taken again once the dialog is gone.
+   */
+  function refocus() {
+    setTimeout(() => {
+      input?.blur();
+      input?.focus();
+    }, 0);
+  }
+
+  async function openStubPrompt(title: string) {
+    let tag_id: string | null = null;
+    if (staged.verb?.id) {
+      try {
+        tag_id = await api.suggestedStubTag(staged.verb.id, staged.verb.direction);
+      } catch {
+        tag_id = null;
+      }
+    }
+    stubPrompt = { title, tag_id };
+  }
+
+  function confirmVerbPrompt() {
+    if (!verbPrompt) return;
+    const choice: VerbChoice = {
+      id: null,
+      label: verbPrompt.label.trim(),
+      direction: "forward",
+      inverse_label: verbPrompt.symmetric ? null : verbPrompt.inverse.trim() || null,
+      symmetric: verbPrompt.symmetric,
+    };
+    verbPrompt = null;
+    if (!choice.label) return;
+    staged = commitVerb(staged, choice);
+    text = "";
+    refocus();
+  }
+
+  function confirmLabelPrompt() {
+    if (!labelPrompt) return;
+    const choice: LabelChoice = {
+      id: null,
+      label: labelPrompt.label.trim(),
+      inverse_label: labelPrompt.inverse.trim() || null,
+    };
+    labelPrompt = null;
+    if (!choice.label) return;
+    staged = commitQualifierLabel(staged, choice);
+    text = "";
+    refocus();
+  }
+
+  function confirmStubPrompt() {
+    if (!stubPrompt) return;
+    const title = stubPrompt.title.trim();
+    const tag_id = stubPrompt.tag_id;
+    stubPrompt = null;
+    if (!title) return;
+    staged = commitTarget(staged, { kind: "stub", title, tag_id });
+    text = "";
+    refocus();
+  }
+
+  async function onkeydown(event: KeyboardEvent) {
+    if (event.key === "ArrowDown" && suggestions.length > 0) {
+      event.preventDefault();
+      highlight = (highlight + 1) % suggestions.length;
+    } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+      event.preventDefault();
+      highlight = (highlight - 1 + suggestions.length) % suggestions.length;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      await onEnter();
+    } else if (event.key === "Backspace" && text === "") {
+      event.preventDefault();
+      staged = popLast(staged);
+    } else if (event.key === "Escape") {
+      if (text) text = "";
+      else staged = EMPTY;
+    }
+  }
+
+  async function onEnter() {
+    const { stage, text: typed } = interpret(staged, text);
+    if (stage === "ready") {
+      await save();
+      return;
+    }
+    if (!typed) return;
+    // Prefer an exact match, then the highlighted suggestion, then whatever "create" offers.
+    const key = norm(typed);
+    const exact = suggestions.find((s) => norm(s.text) === key || norm(s.detail ?? "") === `alias: ${key}`);
+    const pick = exact ?? suggestions[highlight] ?? suggestions[0];
+    if (pick) await pick.apply();
+  }
+
+  async function save() {
+    if (!staged.verb || !staged.target || busy) return;
+    busy = true;
+    error = "";
+    try {
+      const verbId =
+        staged.verb.id ??
+        (
+          await api.createVerb(
+            guide.id,
+            staged.verb.label,
+            staged.verb.inverse_label ?? null,
+            staged.verb.symmetric ?? false,
+          )
+        ).id;
+      const qualifiers: NewQualifier[] = [];
+      for (const q of staged.qualifiers) {
+        const labelId =
+          q.label.id ??
+          (await api.createQualifierLabel(guide.id, q.label.label, q.label.inverse_label ?? null))
+            .id;
+        let value = await api.resolveQualifierValue(guide.id, q.value);
+        if (q.stub && value.kind !== "note") {
+          const stub = await api.createStub(guide.id, q.value);
+          value = { kind: "note", value: stub.id };
+        }
+        qualifiers.push({ label_id: labelId, value });
+      }
+      const target: Target =
+        staged.target.kind === "note"
+          ? { kind: "note", id: staged.target.id }
+          : { kind: "stub", title: staged.target.title, tag_id: staged.target.tag_id };
+      await api.createRelation({
+        origin: note.id,
+        verb_id: verbId,
+        direction: staged.verb.direction,
+        target,
+        qualifiers,
+      });
+      staged = EMPTY;
+      text = "";
+      await loadVocabulary();
+      onsaved();
+      refocus();
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      busy = false;
+    }
+  }
+</script>
+
+<div class="builder">
+  <div class="line" class:focused>
+    {#if staged.verb}
+      <span class="chip verb">{staged.verb.label.toUpperCase()}</span>
+    {/if}
+    {#if staged.target}
+      <span class="chip">
+        {staged.target.title}{#if staged.target.kind === "stub"} <em>(new)</em>{/if}
+      </span>
+    {/if}
+    {#each staged.qualifiers as q, i (i)}
+      <span class="chip qualifier">{q.label.label} {q.value}{#if q.stub} <em>(new)</em>{/if}</span>
+    {/each}
+    {#if staged.pendingLabel}
+      <span class="chip qualifier">{staged.pendingLabel.label} …</span>
+    {/if}
+    <input
+      type="text"
+      bind:this={input}
+      bind:value={text}
+      {placeholder}
+      {onkeydown}
+      onfocus={() => {
+        clearTimeout(blurTimer);
+        focused = true;
+      }}
+      onblur={() => {
+        clearTimeout(blurTimer);
+        blurTimer = setTimeout(() => (focused = false), 150);
+      }}
+      disabled={busy}
+      aria-label="Relation input"
+    />
+    {#if stage === "ready"}
+      <button class="primary" onclick={save} disabled={busy}>Save</button>
+    {/if}
+  </div>
+  {#if focused && suggestions.length > 0}
+    <ul class="suggestions" role="listbox">
+      {#each suggestions as s, i (s.key)}
+        <li role="option" aria-selected={i === highlight}>
+          <button class="link" class:on={i === highlight} onmousedown={(e) => { e.preventDefault(); void s.apply(); }}>
+            {s.text}
+            {#if s.detail}<span class="muted">{s.detail}</span>{/if}
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if staged.verb}
+    <p class="muted preview">{summary(staged, note.title)}</p>
+  {/if}
+  {#if error}<p class="error">{error}</p>{/if}
+</div>
+
+<Modal open={verbPrompt !== null} title="New verb" onclose={() => (verbPrompt = null)}>
+  {#if verbPrompt}
+    <form class="prompt" onsubmit={(e) => { e.preventDefault(); confirmVerbPrompt(); }}>
+      <label>Label <input type="text" bind:value={verbPrompt.label} /></label>
+      <label>
+        Inverse label (optional, read from the other side)
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" bind:value={verbPrompt.inverse} disabled={verbPrompt.symmetric} placeholder="e.g. DROPPED BY" autofocus />
+      </label>
+      <label class="row"><input type="checkbox" bind:checked={verbPrompt.symmetric} /> Symmetric (reads the same from both sides)</label>
+      <button type="submit" hidden aria-label="Confirm"></button>
+    </form>
+  {/if}
+  {#snippet actions()}
+    <button onclick={() => (verbPrompt = null)}>Cancel</button>
+    <button class="primary" onclick={confirmVerbPrompt}>Use verb</button>
+  {/snippet}
+</Modal>
+
+<Modal open={labelPrompt !== null} title="New qualifier label" onclose={() => (labelPrompt = null)}>
+  {#if labelPrompt}
+    <form class="prompt" onsubmit={(e) => { e.preventDefault(); confirmLabelPrompt(); }}>
+      <label>Label <input type="text" bind:value={labelPrompt.label} /></label>
+      <label>
+        Inverse label (optional, read from the value's page)
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" bind:value={labelPrompt.inverse} placeholder="e.g. mines" autofocus />
+      </label>
+      <button type="submit" hidden aria-label="Confirm"></button>
+    </form>
+  {/if}
+  {#snippet actions()}
+    <button onclick={() => (labelPrompt = null)}>Cancel</button>
+    <button class="primary" onclick={confirmLabelPrompt}>Use label</button>
+  {/snippet}
+</Modal>
+
+<Modal open={stubPrompt !== null} title="New note" onclose={() => (stubPrompt = null)}>
+  {#if stubPrompt}
+    <form class="prompt" onsubmit={(e) => { e.preventDefault(); confirmStubPrompt(); }}>
+      <p class="muted">No note has this name. It will be created as a stub you can describe later.</p>
+      <label>
+        Title
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" bind:value={stubPrompt.title} autofocus />
+      </label>
+      <button type="submit" hidden aria-label="Confirm"></button>
+    </form>
+    <div class="row">
+      <span class="muted">Tag (optional)</span>
+      <TagPicker
+        scope={guide.id}
+        selected={stubPrompt.tag_id ? [stubPrompt.tag_id] : []}
+        onchange={(ids) => {
+          if (stubPrompt) stubPrompt.tag_id = ids.at(-1) ?? null;
+        }}
+      />
+    </div>
+  {/if}
+  {#snippet actions()}
+    <button onclick={() => (stubPrompt = null)}>Cancel</button>
+    <button class="primary" onclick={confirmStubPrompt}>Create and use</button>
+  {/snippet}
+</Modal>
+
+<style>
+  .builder {
+    position: relative;
+    margin: 10px 0;
+  }
+  .line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+  }
+  .line.focused {
+    border-color: var(--muted);
+  }
+  .line input {
+    flex: 1;
+    min-width: 14em;
+    border: none;
+    background: transparent;
+    padding: 4px;
+  }
+  .line input:focus {
+    outline: none;
+  }
+  .chip.verb {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .chip.qualifier {
+    font-style: normal;
+  }
+  .suggestions {
+    position: absolute;
+    z-index: 5;
+    left: 0;
+    right: 0;
+    margin: 2px 0 0;
+    padding: 4px 0;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+    max-height: 260px;
+    overflow: auto;
+  }
+  .suggestions button {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 4px 10px;
+    color: inherit;
+  }
+  .suggestions button.on,
+  .suggestions button:hover {
+    background: var(--chip-bg);
+  }
+  .preview {
+    margin: 4px 0 0;
+    font-size: 0.9em;
+  }
+  label {
+    display: grid;
+    gap: 2px;
+  }
+  .prompt {
+    display: grid;
+    gap: 10px;
+  }
+</style>

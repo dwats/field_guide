@@ -122,7 +122,7 @@ Deleting a note sets `deleted_at`. A trashed note is hidden from browse, search,
 ### Media
 
 - Dropped or pasted files are hashed, copied to `vault/media/<sha256>.<ext>`, deduplicated by hash, and a `media` row is created. Clipboard paste of an image is a first-class path, since Print Screen then Ctrl+V is the common capture flow for game notes.
-- Images are converted to WebP on ingest (decided 2026-11-08) so a vault of screenshots stays small; the hash is taken over the stored WebP bytes, so the same source image still deduplicates. Video is stored as dropped; `.webm` is the only format the preview plays.
+- Images are converted to lossless WebP on ingest (decided 2026-11-08) so a vault of screenshots stays small without changing pixels; the hash is taken over the stored WebP bytes, so the same source image still deduplicates. A setting for lossy WebP may follow; it would add a C dependency (libwebp), so it is a separate decision. Video is stored as dropped; `.webm` is the only format the preview plays.
 - Inline placement inserts the markdown reference at the cursor. Gallery placement adds a `note_media` row. A file can be in both.
 - Media is vault-scoped, not guide-scoped, so the same screenshot can serve two guides. Export only includes media referenced by the exported notes.
 - Media is never deleted automatically. "Clean up unused media" in Settings lists files that no live or trashed note references, with sizes and a total, and deletes them on confirmation. A non-modal notice appears when unreferenced media exceeds 250 MB (adjustable) or free space on the vault's drive drops below 1 GB.
@@ -159,7 +159,9 @@ One input line on any note page, staged with autocomplete:
 2. **Target.** Suggestions from titles and aliases in this guide, then other guides marked as external. Enter on no match opens the stub prompt: title prefilled, suggested tag prefilled from the verb's default for that side, both editable, tag not required.
 3. **Qualifiers.** `+` starts one. Label autocompletes from the pool; a new label prompts for an optional inverse. Value autocompletes against notes; anything that does not resolve is stored as text, or as a number if it parses as one.
 
-`core` exposes `lookup_note(guide, text)` and `create_relation(CreateRelation)` where the request carries the resolved verb id, direction, target id or stub spec, and qualifiers. The UI does staging and prompts; `core` does resolution, validation, and writes. Resolution rules are tested in `core`.
+`core` exposes `lookup_note(guide, text)`, `suggest_names(guide, prefix)` for the autocomplete, and `create_relation(CreateRelation)` where the request carries the resolved verb id, direction, target id or stub spec, and qualifiers. The UI does staging and prompts; `core` does resolution, validation, and writes. Resolution rules are tested in `core`.
+
+A new verb or qualifier label typed at the line is created when the relation is saved, not when it is typed, so cancelling the line leaves no vocabulary behind. On an existing edge, qualifiers are edited in place; changing the verb or an endpoint is delete and re-enter, so an edge's identity never changes underneath the user. Display lines come from `core` as text plus segments, so the UI can link titles without re-deriving the wording.
 
 ### Rules
 
@@ -264,6 +266,6 @@ A menu item, "Check for updates", fetches `latest.json` from the release URL, co
 ## 11. Open questions
 
 - Whether qualifier values should support dates as a distinct type.
-- Whether image ingest uses lossless WebP (pure-Rust encoder from the `image` project, pixels unchanged, roughly a quarter smaller than PNG) or lossy WebP (`libwebp` through a C binding, several times smaller, pixels changed). Decide when phase 8 starts.
+- Whether to offer lossy WebP as a setting beside the lossless default (section 3). Lossy needs `libwebp` through a C binding; lossless is pure Rust.
 - Whether export should offer a hop-depth scope (a note plus everything within N edges) with a preview of what it will include (phase 9). The archive format needs no change for it.
 - Whether import into an existing guide should ask per field (cover, description, guide tags) before overwriting (phase 9). Today the cover is set only when the local guide has none and the description is left alone.

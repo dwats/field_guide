@@ -2,6 +2,7 @@
   // One guide: header, note list with the live filter line, and the way into its tag editor.
   import { untrack } from "svelte";
 
+  import Modal from "../components/Modal.svelte";
   import TagPicker from "../components/TagPicker.svelte";
   import { api, errorMessage, type Guide, type NoteSummary } from "../lib/api";
   import { parseFilter } from "../lib/filter";
@@ -25,6 +26,8 @@
   let nameDraft = $state("");
   let descriptionDraft = $state("");
   let newTitle = $state("");
+  let creatingNote = $state(false);
+  let createError = $state("");
 
   $effect(() => {
     void guideId;
@@ -101,9 +104,10 @@
     try {
       const note = await api.createNote(guideId, title);
       newTitle = "";
+      creatingNote = false;
       navigate({ view: "note", noteId: note.id });
     } catch (e) {
-      error = errorMessage(e);
+      createError = errorMessage(e);
     }
   }
 
@@ -139,20 +143,39 @@
         <span class="spacer"></span>
         <a href={routeHash({ view: "tags", guideId })}>Tags</a>
         <button onclick={startEdit}>Edit guide</button>
+        <button
+          class="primary"
+          onclick={() => {
+            newTitle = "";
+            createError = "";
+            creatingNote = true;
+          }}
+        >
+          New note
+        </button>
       </div>
       {#if guide.description}<p class="muted">{guide.description}</p>{/if}
     {/if}
 
-    <form
-      class="row new-note"
-      onsubmit={(e) => {
-        e.preventDefault();
-        void createNote();
-      }}
-    >
-      <input type="text" placeholder="New note title" bind:value={newTitle} />
-      <button type="submit" class="primary" disabled={!newTitle.trim()}>Create note</button>
-    </form>
+    <Modal open={creatingNote} title="New note" onclose={() => (creatingNote = false)}>
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+          void createNote();
+        }}
+      >
+        <label class="field">
+          Title
+          <!-- svelte-ignore a11y_autofocus -->
+          <input type="text" bind:value={newTitle} required autofocus />
+        </label>
+        {#if createError}<p class="error">{createError}</p>{/if}
+      </form>
+      {#snippet actions()}
+        <button onclick={() => (creatingNote = false)}>Cancel</button>
+        <button class="primary" onclick={createNote} disabled={!newTitle.trim()}>Create</button>
+      {/snippet}
+    </Modal>
 
     <div class="row toolbar">
       <input
@@ -216,15 +239,12 @@
     gap: 2px;
     max-width: 480px;
   }
-  .new-note {
-    margin: 12px 0;
-  }
-  .new-note input {
-    flex: 1;
-    max-width: 480px;
+  .field {
+    display: grid;
+    gap: 2px;
   }
   .toolbar {
-    margin-bottom: 8px;
+    margin: 12px 0 8px;
   }
   .filter {
     flex: 1;

@@ -3,6 +3,7 @@
   // global tags applied to guides.
   import { untrack } from "svelte";
 
+  import Modal from "../components/Modal.svelte";
   import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
   import { navigate, routeHash } from "../lib/router";
   import { session } from "../lib/session.svelte";
@@ -91,7 +92,7 @@
     <button class="primary" onclick={() => (creating = !creating)}>New guide</button>
   </div>
 
-  {#if creating}
+  <Modal open={creating} title="New guide" onclose={() => (creating = false)}>
     <form
       class="new-guide"
       onsubmit={(e) => {
@@ -101,7 +102,8 @@
     >
       <label>
         Name
-        <input type="text" bind:value={newName} required />
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" bind:value={newName} required autofocus />
       </label>
       <label>
         Description
@@ -116,12 +118,13 @@
           {/each}
         </select>
       </label>
-      <div class="row">
-        <button type="submit" class="primary">Create</button>
-        <button type="button" onclick={() => (creating = false)}>Cancel</button>
-      </div>
+      {#if error}<p class="error">{error}</p>{/if}
     </form>
-  {/if}
+    {#snippet actions()}
+      <button onclick={() => (creating = false)}>Cancel</button>
+      <button class="primary" onclick={create} disabled={!newName.trim()}>Create</button>
+    {/snippet}
+  </Modal>
 
   <div class="row toolbar">
     <input type="search" placeholder="Filter by name" bind:value={nameFilter} />
@@ -198,12 +201,6 @@
   .new-guide {
     display: grid;
     gap: 8px;
-    max-width: 480px;
-    padding: 12px;
-    margin-bottom: 16px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--surface);
   }
   .new-guide label {
     display: grid;

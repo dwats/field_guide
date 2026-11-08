@@ -553,3 +553,33 @@ fn edges_and_qualifiers_can_be_edited_and_removed() {
         Err(Error::NotFound { .. })
     ));
 }
+
+#[test]
+fn a_stub_made_for_a_qualifier_value_reads_the_edge_from_its_own_page() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = note(&mut v, &g, "Stone Block", "");
+    let cobble = note(&mut v, &g, "Cobblestone Block", "");
+    let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+    let mined_with = qualifier_label(&mut v, &g, "mined with", Some("mines"));
+
+    let pickaxe = v.create_stub_note(&g, "Pickaxe", None).unwrap();
+    assert!(pickaxe.is_stub);
+    assert_eq!(pickaxe.body_md, "");
+
+    relate_with(
+        &mut v,
+        &stone,
+        &drops,
+        &cobble,
+        vec![q_note(&mined_with, &pickaxe.id)],
+    );
+    assert_eq!(
+        views(&v, &pickaxe.id),
+        ["MINES Stone Block → Cobblestone Block"]
+    );
+    assert_eq!(
+        v.lookup_note(&g, "pickaxe").unwrap().map(|s| s.id),
+        Some(pickaxe.id.clone())
+    );
+}

@@ -121,6 +121,14 @@ export interface RenameRecord {
   rewritten_note_ids: Id[];
 }
 
+export interface NameMatch {
+  note_id: Id;
+  title: string;
+  matched: string;
+  is_alias: boolean;
+  is_stub: boolean;
+}
+
 export interface Rendered {
   html: string;
   unresolved_links: string[];
@@ -175,6 +183,11 @@ export interface Relation {
   created_at: string;
 }
 
+export interface Segment {
+  text: string;
+  note_id?: Id;
+}
+
 export interface RelationView {
   relation: Relation;
   perspective: "subject" | "object" | "qualifier_value";
@@ -184,6 +197,47 @@ export interface RelationView {
   inverted: boolean;
   external: boolean;
   text: string;
+  segments: Segment[];
+}
+
+export type Direction = "forward" | "inverse";
+
+export interface VerbMatch {
+  verb: Verb;
+  direction: Direction;
+}
+
+export interface NewVerb {
+  label: string;
+  inverse_label: string | null;
+  symmetric: boolean;
+  subject_default_tag_id: Id | null;
+  object_default_tag_id: Id | null;
+}
+
+export interface NewQualifierLabel {
+  label: string;
+  inverse_label: string | null;
+}
+
+export type QualifierValue =
+  | { kind: "note"; value: Id }
+  | { kind: "text"; value: string }
+  | { kind: "number"; value: number };
+
+export interface NewQualifier {
+  label_id: Id;
+  value: QualifierValue;
+}
+
+export type Target = { kind: "note"; id: Id } | { kind: "stub"; title: string; tag_id: Id | null };
+
+export interface CreateRelation {
+  origin: Id;
+  verb_id: Id;
+  direction: Direction;
+  target: Target;
+  qualifiers: NewQualifier[];
 }
 
 // ---- calls ----
@@ -228,6 +282,8 @@ export const api = {
 
   createNote: (guide_id: Id, title: string, body_md = "", tag_ids: Id[] = []) =>
     invoke<Note>("create_note", { new: { guide_id, title, body_md, tag_ids } }),
+  createStub: (guide_id: Id, title: string, tag_id: Id | null = null) =>
+    invoke<Note>("create_stub", { guide_id, title, tag_id }),
   getNote: (id: Id) => invoke<Note>("get_note", { id }),
   updateNoteBody: (id: Id, body_md: string) =>
     invoke<Note>("update_note_body", { id, body_md }),
@@ -262,11 +318,44 @@ export const api = {
   renderMarkdown: (guide_id: Id, body: string) =>
     invoke<Rendered>("render_markdown", { guide_id, body }),
 
+  suggestNames: (guide_id: Id, prefix: string, limit = 8) =>
+    invoke<NameMatch[]>("suggest_names", { guide_id, prefix, limit }),
+
   relationsForNote: (id: Id, include_external = false) =>
     invoke<RelationView[]>("relations_for_note", { id, filter: { include_external } }),
+  createRelation: (request: CreateRelation) =>
+    invoke<Relation>("create_relation", { request }),
+  deleteRelation: (id: Id) => invoke<void>("delete_relation", { id }),
+  replaceQualifiers: (id: Id, qualifiers: NewQualifier[]) =>
+    invoke<Relation>("replace_qualifiers", { id, qualifiers }),
+  suggestedStubTag: (verb_id: Id, direction: Direction) =>
+    invoke<Id | null>("suggested_stub_tag", { verb_id, direction }),
+  resolveQualifierValue: (guide_id: Id, text: string) =>
+    invoke<QualifierValue>("resolve_qualifier_value", { guide_id, text }),
+
   listVerbs: (guide_id: Id) => invoke<Verb[]>("list_verbs", { guide_id }),
+  lookupVerb: (guide_id: Id, text: string) =>
+    invoke<VerbMatch | null>("lookup_verb", { guide_id, text }),
+  createVerb: (guide_id: Id, label: string, inverse_label: string | null, symmetric: boolean) =>
+    invoke<Verb>("create_verb", {
+      guide_id,
+      new: {
+        label,
+        inverse_label,
+        symmetric,
+        subject_default_tag_id: null,
+        object_default_tag_id: null,
+      } satisfies NewVerb,
+    }),
   listQualifierLabels: (guide_id: Id) =>
     invoke<QualifierLabel[]>("list_qualifier_labels", { guide_id }),
+  lookupQualifierLabel: (guide_id: Id, text: string) =>
+    invoke<QualifierLabel | null>("lookup_qualifier_label", { guide_id, text }),
+  createQualifierLabel: (guide_id: Id, label: string, inverse_label: string | null) =>
+    invoke<QualifierLabel>("create_qualifier_label", {
+      guide_id,
+      new: { label, inverse_label } satisfies NewQualifierLabel,
+    }),
 
   listBackups: () => invoke<BackupInfo[]>("list_backups"),
   backupNow: () => invoke<BackupInfo>("backup_now"),

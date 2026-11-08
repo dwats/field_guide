@@ -44,6 +44,16 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] The guide note list filters by text and by `#Tag/Path`, and "Stubs only" hides described notes.
 - [ ] Delete moves a note to the trash after confirmation and leaves the guide page (Trash view arrives in phase 6).
 
+## Relations
+
+- [ ] On Stone Block, type `drops` and pick "Create verb", inverse `dropped by`; type `Cobblestone Block` and create it as a new note; type `mined with`, create the label with inverse `mines`; type `Pickaxe` and create it; press Enter. The line reads `DROPS Cobblestone Block · mined with Pickaxe`.
+- [ ] Cobblestone Block reads `DROPPED BY Stone Block · mined with Pickaxe`; Pickaxe reads `MINES Stone Block → Cobblestone Block`.
+- [ ] From Cobblestone Block, type `dropped by` then `Stone Block` and save; no second edge appears on either page.
+- [ ] Backspace on the empty input removes the last staged item; Escape clears the line.
+- [ ] Qualifiers on an edge: add one, change a value, remove one; all three pages follow.
+- [ ] Delete an edge; it disappears from all three pages.
+- [ ] The stub created for Cobblestone Block shows the "stub" chip until its body is edited.
+
 ## Tags
 
 - [ ] Rename, add child, delete with children (children move up a level).
