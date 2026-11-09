@@ -7,6 +7,7 @@ use fieldguide_core::board::{BoardFilters, BoardNode};
 use fieldguide_core::entry::NewEntry;
 use fieldguide_core::export::ExportScope;
 use fieldguide_core::guide::CoverCrop;
+use fieldguide_core::guide::GuideFilter;
 use fieldguide_core::guide::GuideUpdate;
 use fieldguide_core::import::{
     self, GuideChoice, GuideTarget, ImportOptions, ImportReport, MappingChoice,
@@ -1295,4 +1296,77 @@ fn importing_into_a_guide_that_has_a_cover_keeps_that_cover() {
     let after = target.get_guide(&local).unwrap();
     assert_eq!(after.cover_media_id, Some(own));
     assert_eq!(after.cover_crop, Some(own_crop));
+}
+
+#[test]
+fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it() {
+    let mut f = fixture();
+    let board = f.v.list_boards(&f.mc).unwrap()[0].id.clone();
+    let gone = entry(&mut f.v, &f.mc, "Gone Soon", "");
+    f.v.set_board_positions(
+        &board,
+        &[BoardNode {
+            entry_id: gone.clone(),
+            x: 9.0,
+            y: 9.0,
+        }],
+    )
+    .unwrap();
+    f.v.trash_entry(&gone).unwrap();
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+
+    // The file names only live members; the trashed one is not in the archive at all.
+    let parsed = import::read_archive(&archive).unwrap();
+    let file = &parsed.guides[0].boards[0];
+    assert_eq!(file.nodes.len(), 2);
+    assert!(file.nodes.iter().all(|n| n.entry_id != gone.0));
+
+    // Importing twice into the same guide replaces the board instead of adding a copy.
+    let (_d, mut target) = empty_vault();
+    let first = import_all(&mut target, &archive, &[], &ImportOptions::default());
+    assert_eq!((first.boards_created, first.boards_updated), (1, 0));
+    let local = target
+        .list_guides(&GuideFilter::default())
+        .unwrap()
+        .into_iter()
+        .find(|g| g.name == "Minecraft")
+        .unwrap()
+        .id;
+    let imported = target.list_boards(&local).unwrap();
+    assert_eq!(imported.len(), 1);
+    // Move a card and change a toggle locally; the second import puts the archive's state back.
+    let moved = target.board_layout(&imported[0].id).unwrap()[0]
+        .entry_id
+        .clone();
+    target
+        .set_board_position(&imported[0].id, &moved, 500.0, 500.0)
+        .unwrap();
+    let archive_id = parsed.guides[0].guide.id.clone();
+    let second = import_all(
+        &mut target,
+        &archive,
+        &[GuideChoice {
+            archive_guide_id: archive_id,
+            target: Some(GuideTarget::Existing { id: local.clone() }),
+            add_tag: None,
+        }],
+        &ImportOptions::default(),
+    );
+    assert_eq!((second.boards_created, second.boards_updated), (0, 1));
+    let boards = target.list_boards(&local).unwrap();
+    assert_eq!(boards.len(), 1);
+    assert_eq!(
+        boards[0].filters.text,
+        f.v.get_board(&board).unwrap().filters.text
+    );
+    let layout = target.board_layout(&boards[0].id).unwrap();
+    assert_eq!(layout.len(), 2);
+    let positions: Vec<(f64, f64)> = layout.iter().map(|n| (n.x, n.y)).collect();
+    assert!(positions.contains(&(1.0, 2.0)));
+    assert!(positions.contains(&(3.5, -4.0)));
 }

@@ -30,10 +30,9 @@
     zoomAt,
     type Viewport,
   } from "../lib/board";
-  import { fileName } from "../lib/media";
-  import { mediaUrl } from "../lib/mediaUrl";
+  import { mediaSrc } from "../lib/mediaUrl";
   import { navigate, replace } from "../lib/router";
-  import { notify, session, setCurrent } from "../lib/session.svelte";
+  import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
 
   interface Props {
     boardId: string;
@@ -47,7 +46,6 @@
   let error = $state("");
   let selectedId = $state<string | null>(null);
   let view = $state<Viewport>({ x: 0, y: 0, k: 1 });
-  let panelOpen = $state(true);
   let canvas = $state<ReturnType<typeof BoardCanvas> | null>(null);
   let renaming = $state(false);
   let creating = $state(false);
@@ -60,6 +58,10 @@
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
   /** The board the view was fitted for, once its first load landed. */
   let fitted: string | null = null;
+  /** Only the newest load may land. */
+  let request = 0;
+  /** False once the page is gone, so a late Undo does not touch the shell's state. */
+  let alive = true;
 
   const filters = $derived<BoardFilters | null>(board?.filters ?? null);
   const shownCards = $derived(filters ? cards.filter((c) => cardShown(c, filters)) : []);
@@ -69,6 +71,8 @@
   const onBoard = $derived(new Set(cards.map((c) => c.entry.id)));
   const hiddenCards = $derived(cards.length - shownCards.length);
   const zoomText = $derived(`${Math.round(view.k * 100)}%`);
+  /** The right panel's fold is the same remembered choice as on the entry page. */
+  const panelOpen = $derived(!session.prefs.panel_collapsed);
 
   $effect(() => {
     void boardId;
@@ -78,19 +82,34 @@
 
   // Leaving the page writes what is still waiting.
   $effect(() => () => {
+    alive = false;
     clearTimeout(flushTimer);
     void flushPositions();
   });
 
   async function load() {
-    // A different board: write the old one's positions first, start the selection afresh.
+    // A different board: write the old one's positions first.
     if (pendingBoard && pendingBoard !== boardId) await flushPositions();
+    const mine = ++request;
     try {
       const data = await api.boardView(boardId);
-      if (guide?.id !== data.board.guide_id) guide = await api.getGuide(data.board.guide_id);
+      if (!alive || mine !== request || data.board.id !== boardId) return;
+      if (guide?.id !== data.board.guide_id) {
+        const found = await api.getGuide(data.board.guide_id);
+        if (!alive || mine !== request) return;
+        guide = found;
+      }
       board = data.board;
       cards = data.cards;
       edges = data.edges;
+      // Nudges not yet written are newer than what the database holds.
+      for (const node of pending.values()) {
+        const card = cards.find((c) => c.entry.id === node.entry_id);
+        if (card) {
+          card.x = node.x;
+          card.y = node.y;
+        }
+      }
       setCurrent(guide, null, board);
       error = "";
       if (fitted !== boardId) {
@@ -105,7 +124,7 @@
   }
 
   function imageUrl(card: BoardCard): string | null {
-    return card.image ? mediaUrl(session.startup?.media_dir ?? null, fileName(card.image)) : null;
+    return card.image ? mediaSrc(card.image) : null;
   }
 
   function fit() {
@@ -161,17 +180,23 @@
     const target = board.id;
     const { x, y } = card;
     const title = card.entry.title;
+    // A nudge still waiting for this card must not be written after the removal and put it back.
+    pending.delete(id);
+    await flushPositions();
     try {
       await api.removeBoardNode(target, id);
       if (selectedId === id) selectedId = null;
       await load();
       version += 1;
+      // The focused card is gone; the canvas takes focus so the keyboard user keeps their place.
+      canvas?.focus();
       notify(`Removed "${title}" from the board.`, {
         action: {
           label: "Undo",
           run: async () => {
             await api.addBoardNodes(target, [{ entry_id: id, x, y }]);
-            if (board?.id === target) {
+            // The notice may outlive this page; only a live page showing this board reloads.
+            if (alive && board?.id === target) {
               await load();
               version += 1;
             }
@@ -241,6 +266,10 @@
   function openEntry(id: string) {
     navigate({ view: "entry", entryId: id });
   }
+
+  function togglePanel() {
+    void savePrefs({ panel_collapsed: !session.prefs.panel_collapsed });
+  }
 </script>
 
 <div class="board-page">
@@ -276,7 +305,7 @@
         <button class="zoom" title="Zoom to 100%" aria-label="Zoom {zoomText}, reset to 100%" onclick={actualSize}>
           {zoomText}
         </button>
-        <button class="primary add" aria-pressed={panelOpen} onclick={() => (panelOpen = !panelOpen)}>
+        <button class="primary add" aria-pressed={panelOpen} onclick={togglePanel}>
           <Plus size={16} /> Add entries
         </button>
         <Menu>
@@ -338,7 +367,7 @@
   {#if board && guide && filters}
     <BoardPanel
       open={panelOpen}
-      ontoggle={() => (panelOpen = !panelOpen)}
+      ontoggle={togglePanel}
       guideId={guide.id}
       boardId={board.id}
       {filters}

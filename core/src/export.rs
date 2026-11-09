@@ -362,7 +362,16 @@ impl Vault {
                 let mut boards = self.list_boards(&guide.id)?;
                 boards.sort_by(|a, b| a.id.cmp(&b.id));
                 for board in boards {
-                    let nodes = self.board_layout(&board.id)?;
+                    // Members in the trash are left out, as trashed entries are (design section 7).
+                    let nodes = self
+                        .board_layout(&board.id)?
+                        .into_iter()
+                        .filter(|n| {
+                            self.get_entry(&n.entry_id)
+                                .map(|e| e.deleted_at.is_none())
+                                .unwrap_or(false)
+                        })
+                        .collect::<Vec<_>>();
                     let file = BoardFile {
                         id: board.id.0.clone(),
                         name: board.name.clone(),

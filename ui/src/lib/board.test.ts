@@ -75,6 +75,12 @@ describe("edges", () => {
     expect(edgeSegment(left, below)).toEqual({ a: { x: 90, y: 56 }, b: { x: 90, y: 300 } });
   });
 
+  it("keeps a wide fan on the cards' borders", () => {
+    const far = edgeSegment(left, right, 40);
+    expect(far?.a.x).toBe(180);
+    expect(far?.a.y).toBe(28 + 22);
+  });
+
   it("draws nothing between overlapping cards", () => {
     expect(edgeSegment(left, { ...left, x: 10 })).toBeNull();
     expect(edgeSegment(left, left)).toBeNull();

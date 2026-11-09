@@ -12,8 +12,7 @@
   import { routeHash } from "../lib/router";
   import { savePrefs, session, setCurrent } from "../lib/session.svelte";
   import { when } from "../lib/format";
-  import { fileName } from "../lib/media";
-  import { mediaUrl } from "../lib/mediaUrl";
+  import { mediaSrc } from "../lib/mediaUrl";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
 
   let guides = $state<Guide[]>([]);
@@ -72,7 +71,7 @@
 
   function coverUrl(guide: Guide): string | null {
     const cover = covers[guide.id];
-    return cover ? mediaUrl(session.startup?.media_dir ?? null, fileName(cover)) : null;
+    return cover ? mediaSrc(cover) : null;
   }
 
   function tagPaths(guide: Guide): TagOption[] {

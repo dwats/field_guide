@@ -88,7 +88,8 @@ export interface Segment {
 
 /**
  * The drawn part of an edge: border to border, shifted sideways by `offset` so edges between the
- * same two cards fan out. Null when the cards overlap, so there is nothing to draw between them.
+ * same two cards fan out, within what the smaller card's border can hold. Null when the cards
+ * overlap, so there is nothing to draw between them.
  */
 export function edgeSegment(from: Rect, to: Rect, offset = 0): Segment | null {
   const c1 = center(from);
@@ -97,6 +98,9 @@ export function edgeSegment(from: Rect, to: Rect, offset = 0): Segment | null {
   const dy = c2.y - c1.y;
   const length = Math.hypot(dx, dy);
   if (length === 0) return null;
+  // A fan wider than the smaller card would leave its border; the outer edges bunch instead.
+  const limit = Math.max(0, Math.min(from.w, from.h, to.w, to.h) / 2 - 6);
+  offset = clamp(offset, -limit, limit);
   const nx = (-dy / length) * offset;
   const ny = (dx / length) * offset;
   const shiftedFrom = { ...from, x: from.x + nx, y: from.y + ny };

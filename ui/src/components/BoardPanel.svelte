@@ -72,7 +72,10 @@
   $effect(() => {
     const id = guideId;
     void session.revision;
-    untrack(() => void loadTags(id));
+    untrack(() => {
+      tagsLoaded = false;
+      void loadTags(id);
+    });
   });
 
   // The fields start from the board's saved filters, once the tags are here to name the chips.

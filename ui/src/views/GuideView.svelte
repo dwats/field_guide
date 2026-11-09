@@ -21,7 +21,7 @@
   import { when } from "../lib/format";
   import { ingestFile, ingestPath } from "../lib/ingest";
   import { fileName, isImagePath } from "../lib/media";
-  import { mediaUrl } from "../lib/mediaUrl";
+  import { mediaSrc } from "../lib/mediaUrl";
   import { navigate, routeHash } from "../lib/router";
   import { freshSidebar, notify, session, setCurrent } from "../lib/session.svelte";
   import { scopeLabel, summaryLine } from "../lib/sidebar";
@@ -63,7 +63,7 @@
       ? summaryLine(scopeLabel(sidebar.scope, tags), shownParsed, sidebar.stubsOnly, sidebar.entries.length)
       : "",
   );
-  const coverUrl = $derived(cover ? mediaUrl(session.startup?.media_dir ?? null, fileName(cover)) : null);
+  const coverUrl = $derived(cover ? mediaSrc(cover) : null);
 
   $effect(() => {
     void guideId;
