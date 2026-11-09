@@ -83,6 +83,8 @@ export const session = $state({
   sidebar: freshSidebar(null),
   /** The guides list's filter, set from its sidebar. */
   guidesFilter: { name: "", tagIds: [] as string[] },
+  /** A file is being dragged over the window; pages that take drops show it. */
+  dropActive: false,
 });
 
 let nextNoticeId = 1;

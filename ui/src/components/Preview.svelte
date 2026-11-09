@@ -1,8 +1,9 @@
 <script lang="ts">
   // Shows HTML from core's renderer. Media paths (`media/<sha>.<ext>`) are rewritten to the asset
   // protocol here, at render time only; the stored body never changes. Wikilink clicks are
-  // reported to the parent, which decides where to go; links to an anchor in the body scroll to
-  // it; a spoiler reveals on click or Enter. Other links stay inert in this phase.
+  // reported to the parent, which decides where to go; a click on an image reports its index so
+  // the parent can open the viewer; links to an anchor in the body scroll to it; a spoiler reveals
+  // on click or Enter. Other links stay inert in this phase.
   import { convertFileSrc } from "@tauri-apps/api/core";
 
   interface Props {
@@ -10,8 +11,10 @@
     mediaDir: string | null;
     onnavigate: (entryId: string) => void;
     oncreate: (title: string) => void;
+    /** The index of the clicked image among the body's images. */
+    onimage?: (index: number) => void;
   }
-  let { html, mediaDir, onnavigate, oncreate }: Props = $props();
+  let { html, mediaDir, onnavigate, oncreate, onimage }: Props = $props();
 
   let container: HTMLDivElement;
 
@@ -36,6 +39,7 @@
       'img[src^="media/"], video[src^="media/"]',
     )) {
       const name = el.getAttribute("src")!.slice("media/".length);
+      el.dataset.media = name;
       el.src = convertFileSrc(`${mediaDir}${separator}${name}`);
     }
   });
@@ -50,6 +54,11 @@
     const spoiler = target.closest(".spoiler");
     if (spoiler) {
       toggleSpoiler(spoiler);
+      return;
+    }
+    const image = target.closest("img");
+    if (image && onimage) {
+      onimage(Array.from(container.querySelectorAll("img")).indexOf(image));
       return;
     }
     const anchor = target.closest("a");

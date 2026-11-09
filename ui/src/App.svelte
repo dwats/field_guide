@@ -1,8 +1,10 @@
 <script lang="ts">
-  // The shell (design section 5): one top bar with history buttons, breadcrumbs, and Settings;
-  // the notice slot; then the columns. The sidebar column exists on every view inside a guide
-  // and on no other, so a view always has the same layout. Each column scrolls on its own.
+  // The shell (design section 5): one top bar with history buttons, breadcrumbs, Search, and
+  // Settings; the notice slot; then the columns. The sidebar column exists on every view, with
+  // contents for the level; each column scrolls on its own. Native file drops and image pastes
+  // are caught here once and handed to the page.
   import { onMount } from "svelte";
+  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
   import GuidesSidebar from "./components/GuidesSidebar.svelte";
   import NewEntryDialog from "./components/NewEntryDialog.svelte";
@@ -12,6 +14,7 @@
   import Sidebar from "./components/Sidebar.svelte";
   import { perform, register } from "./lib/actions";
   import { api, errorMessage } from "./lib/api";
+  import { dispatchDrop, dispatchPaste, imageFiles } from "./lib/drop";
   import { fatalText } from "./lib/fatal";
   import { actionFor, isEditable, keysFor, type Action } from "./lib/keys";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
@@ -83,12 +86,41 @@
     };
     window.addEventListener("hashchange", onHash);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("paste", onPasteEvent);
+    let unlistenDrop: (() => void) | undefined;
+    void getCurrentWebviewWindow()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          session.dropActive = true;
+        } else if (payload.type === "leave") {
+          session.dropActive = false;
+        } else if (payload.type === "drop") {
+          session.dropActive = false;
+          // Positions arrive in physical pixels; the page works in CSS pixels.
+          const scale = window.devicePixelRatio || 1;
+          const at = { x: payload.position.x / scale, y: payload.position.y / scale };
+          if (!dispatchDrop(payload.paths, at)) {
+            notify("Drop an image onto an entry page or a guide page.");
+          }
+        }
+      })
+      .then((unlisten) => (unlistenDrop = unlisten));
     void boot();
     return () => {
       window.removeEventListener("hashchange", onHash);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("paste", onPasteEvent);
+      unlistenDrop?.();
     };
   });
+
+  /** An image on the clipboard goes to the page; text pastes keep their default. */
+  function onPasteEvent(event: ClipboardEvent) {
+    const files = imageFiles(event.clipboardData);
+    if (files.length === 0) return;
+    if (dispatchPaste(files)) event.preventDefault();
+  }
 
   /** The keyboard map (lib/keys.ts). Plain keys such as F2 stay in fields where typing happens. */
   function onKey(event: KeyboardEvent) {

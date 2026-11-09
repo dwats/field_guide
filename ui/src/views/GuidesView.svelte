@@ -4,16 +4,20 @@
   // guide dialog is the shell's, reached through the "new-guide" action.
   import { untrack } from "svelte";
 
-  import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
+  import { api, errorMessage, type Guide, type GuideView, type Media } from "../lib/api";
   import { perform } from "../lib/actions";
   import { keysFor } from "../lib/keys";
   import { routeHash } from "../lib/router";
   import { savePrefs, session, setCurrent } from "../lib/session.svelte";
   import { when } from "../lib/format";
+  import { fileName } from "../lib/media";
+  import { mediaUrl } from "../lib/mediaUrl";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
 
   let guides = $state<Guide[]>([]);
   let tags = $state<TagOption[]>([]);
+  /** Cover files by guide id, for the cards. */
+  let covers = $state<Record<string, Media>>({});
   let error = $state("");
 
   const filtering = $derived(
@@ -37,6 +41,11 @@
   async function load(name: string, tagIds: string[]) {
     try {
       guides = await api.listGuides({ name_contains: name || null, tag_ids: tagIds });
+      const found: Record<string, Media> = {};
+      for (const guide of guides) {
+        if (guide.cover_media_id) found[guide.id] = await api.getMedia(guide.cover_media_id);
+      }
+      covers = found;
       error = "";
     } catch (e) {
       error = errorMessage(e);
@@ -57,6 +66,11 @@
 
   function clearFilter() {
     session.guidesFilter = { name: "", tagIds: [] };
+  }
+
+  function coverUrl(guide: Guide): string | null {
+    const cover = covers[guide.id];
+    return cover ? mediaUrl(session.startup?.media_dir ?? null, fileName(cover)) : null;
   }
 
   function tagPaths(guide: Guide): TagOption[] {
@@ -108,6 +122,7 @@
     <div class="cards">
       {#each guides as guide (guide.id)}
         <a class="card" href={routeHash({ view: "guide", guideId: guide.id })}>
+          {#if coverUrl(guide)}<img class="cover" src={coverUrl(guide)} alt="" />{/if}
           <h2>{guide.name}</h2>
           {#if guide.description}<p>{guide.description}</p>{/if}
           <div class="row">{@render tagChips(guide)}</div>
@@ -161,5 +176,13 @@
   }
   .card h2 {
     font-size: 1.05rem;
+  }
+  .card .cover {
+    display: block;
+    width: 100%;
+    height: 110px;
+    margin-bottom: var(--space-2);
+    object-fit: cover;
+    border-radius: 4px;
   }
 </style>

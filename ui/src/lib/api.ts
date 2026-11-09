@@ -179,6 +179,21 @@ export interface Rendered {
   headings: Heading[];
 }
 
+// ---- media ----
+
+export interface Media {
+  id: Id;
+  /** Lowercase hex; the file is `media/<sha256>.<ext>`. */
+  sha256: string;
+  ext: string;
+  mime: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
 // ---- relations and vocabulary (used from phase 5 on) ----
 
 export interface Verb {
@@ -368,6 +383,22 @@ export const api = {
   listTrash: (guide_id: Id) => invoke<EntrySummary[]>("list_trash", { guide_id }),
   entryCounts: (guide_id: Id) => invoke<EntryCounts>("entry_counts", { guide_id }),
   emptyTrash: (guide_id: Id) => invoke<number>("empty_trash", { guide_id }),
+
+  getMedia: (id: Id) => invoke<Media>("get_media", { id }),
+  mediaByHash: (sha256: string) => invoke<Media | null>("media_by_hash", { sha256 }),
+  entryGallery: (entry_id: Id) => invoke<Media[]>("entry_gallery", { entry_id }),
+  attachMedia: (entry_id: Id, media_id: Id, sort: number | null = null) =>
+    invoke<void>("attach_media", { entry_id, media_id, sort }),
+  detachMedia: (entry_id: Id, media_id: Id) =>
+    invoke<void>("detach_media", { entry_id, media_id }),
+  setPrimaryMedia: (entry_id: Id, media_id: Id) =>
+    invoke<void>("set_primary_media", { entry_id, media_id }),
+  /** The bytes go as the raw request body; `ext` is a hint for formats without magic bytes. */
+  ingestMedia: (bytes: Uint8Array, ext: string) =>
+    invoke<Media>("ingest_media", bytes, { headers: { "x-ext": ext } }),
+  ingestMediaPath: (path: string) => invoke<Media>("ingest_media_path", { path }),
+  setGuideCover: (id: Id, media_id: Id | null) =>
+    invoke<Guide>("set_guide_cover", { id, media_id }),
 
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>

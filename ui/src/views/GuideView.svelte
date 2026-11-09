@@ -1,18 +1,23 @@
 <script lang="ts">
-  // One guide: the title row with New entry and More, the fixed filter summary line, and the
-  // entry table. The list is the sidebar's (`session.sidebar`), so both show the same entries.
-  // The New entry dialog is the shell's, reached through the "new" action.
+  // One guide: the title row with the cover, New entry, and More, the fixed filter summary line,
+  // and the entry table. The list is the sidebar's (`session.sidebar`), so both show the same
+  // entries. The New entry dialog is the shell's, reached through the "new" action. An image
+  // dropped or pasted on this page becomes the cover.
   import { untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import Lightbox from "../components/Lightbox.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
   import TagPicker from "../components/TagPicker.svelte";
-  import { api, errorMessage, type Guide } from "../lib/api";
+  import { api, errorMessage, type Guide, type Media } from "../lib/api";
   import { perform } from "../lib/actions";
+  import { onDrop, onPaste } from "../lib/drop";
   import { keysFor } from "../lib/keys";
   import { parseFilter } from "../lib/filter";
   import { when } from "../lib/format";
+  import { extensionOf, fileName, isImagePath } from "../lib/media";
+  import { mediaUrl } from "../lib/mediaUrl";
   import { navigate, routeHash } from "../lib/router";
   import { freshSidebar, notify, session, setCurrent } from "../lib/session.svelte";
   import { scopeLabel, summaryLine } from "../lib/sidebar";
@@ -24,8 +29,10 @@
   let { guideId }: Props = $props();
 
   let guide = $state<Guide | null>(null);
+  let cover = $state<Media | null>(null);
   let tags = $state<TagOption[]>([]);
   let error = $state("");
+  let viewing = $state(false);
 
   let editing = $state(false);
   let nameDraft = $state("");
@@ -51,6 +58,7 @@
       ? summaryLine(scopeLabel(sidebar.scope, tags), shownParsed, sidebar.stubsOnly, sidebar.entries.length)
       : "",
   );
+  const coverUrl = $derived(cover ? mediaUrl(session.startup?.media_dir ?? null, fileName(cover)) : null);
 
   $effect(() => {
     void guideId;
@@ -58,12 +66,81 @@
     untrack(() => void load());
   });
 
+  // An image dropped or pasted anywhere on this page becomes the cover.
+  $effect(() =>
+    onDrop((paths) => {
+      const image = paths.find(isImagePath);
+      if (!image) {
+        notify("Drop an image to set the cover.");
+        return;
+      }
+      return setCover(() => api.ingestMediaPath(image));
+    }),
+  );
+  $effect(() =>
+    onPaste((files) =>
+      setCover(async () =>
+        api.ingestMedia(
+          new Uint8Array(await files[0].arrayBuffer()),
+          extensionOf(files[0].name) || files[0].type.split("/")[1] || "png",
+        ),
+      ),
+    ),
+  );
+
   async function load() {
     try {
       guide = await api.getGuide(guideId);
       setCurrent(guide, null);
+      cover = guide.cover_media_id ? await api.getMedia(guide.cover_media_id) : null;
       tags = flattenTags(await api.tagTree(guideId));
       error = "";
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  /** Stores the image and makes it the cover; Undo puts the previous cover back. */
+  async function setCover(ingest: () => Promise<Media>) {
+    if (!guide) return;
+    const previous = guide.cover_media_id;
+    try {
+      const media = await ingest();
+      guide = await api.setGuideCover(guide.id, media.id);
+      cover = media;
+      setCurrent(guide, null);
+      error = "";
+      notify("Set the guide's cover.", {
+        action: {
+          label: "Undo",
+          run: async () => {
+            if (!guide) return;
+            guide = await api.setGuideCover(guide.id, previous);
+            cover = previous ? await api.getMedia(previous) : null;
+          },
+        },
+      });
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  async function removeCover() {
+    if (!guide || !guide.cover_media_id) return;
+    const previous = guide.cover_media_id;
+    try {
+      guide = await api.setGuideCover(guide.id, null);
+      cover = null;
+      notify("Removed the cover.", {
+        action: {
+          label: "Undo",
+          run: async () => {
+            if (!guide) return;
+            guide = await api.setGuideCover(guide.id, previous);
+            cover = await api.getMedia(previous);
+          },
+        },
+      });
     } catch (e) {
       error = errorMessage(e);
     }
@@ -125,9 +202,14 @@
   }
 </script>
 
-<div class="page">
+<div class="page" class:drop-target={session.dropActive}>
   {#if guide}
     <div class="row header">
+      {#if coverUrl}
+        <button class="cover" onclick={() => (viewing = true)} aria-label="Open the cover image">
+          <img src={coverUrl} alt="" />
+        </button>
+      {/if}
       <h1>{guide.name}</h1>
       <span class="spacer"></span>
       <button class="primary" title={keysFor("new") ?? undefined} onclick={() => perform("new")}>
@@ -144,6 +226,17 @@
           >
             Edit guide...
           </button>
+          {#if cover}
+            <button
+              role="menuitem"
+              onclick={() => {
+                close();
+                void removeCover();
+              }}
+            >
+              Remove cover
+            </button>
+          {/if}
           <div class="separator"></div>
           <button
             role="menuitem"
@@ -210,6 +303,7 @@
           <span class="muted">Guide tags</span>
           <TagPicker scope={null} selected={guide.tag_ids} onchange={setGuideTags} />
         </div>
+        <p class="muted">The cover is set by dropping or pasting an image onto the guide page.</p>
       </form>
       {#snippet actions()}
         <button onclick={() => (editing = false)}>Cancel</button>
@@ -227,6 +321,15 @@
       onconfirm={deleteGuide}
       oncancel={() => (confirmingDelete = false)}
     />
+
+    {#if viewing && cover && coverUrl}
+      <Lightbox
+        images={[{ src: coverUrl, alt: `Cover of ${guide.name}`, name: fileName(cover) }]}
+        index={0}
+        onclose={() => (viewing = false)}
+        onindex={() => {}}
+      />
+    {/if}
   {:else if error}
     <p class="error">{error}</p>
   {/if}
@@ -235,6 +338,22 @@
 <style>
   .header {
     margin-bottom: 4px;
+  }
+  .cover {
+    flex: none;
+    width: 72px;
+    height: 72px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
   /* Fixed height: the line is present whether or not a filter is in effect. */
   .summary {

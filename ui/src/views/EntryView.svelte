@@ -2,11 +2,14 @@
   // An entry: the content column (title row with the mode toggle, the autosave slot and a More
   // menu; tags; aliases; the rendered body or the editor with a live preview) and the right
   // panel with the Contents and Relations tabs. Edits save on a short delay and when the page is
-  // left. Moving to Trash does not confirm; it offers Undo in a notice instead.
+  // left. Moving to Trash does not confirm; it offers Undo in a notice instead. Images dropped or
+  // pasted onto the editor go in where they land; elsewhere on the page they join the end of the
+  // body. A click on an image opens the viewer over the page.
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
   import EntryPanel from "../components/EntryPanel.svelte";
+  import Lightbox, { type LightboxImage } from "../components/Lightbox.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
   import Preview from "../components/Preview.svelte";
@@ -18,11 +21,14 @@
     type Guide,
     type Entry,
     type EntrySummary,
+    type Media,
     type RenameRecord,
     type Rendered,
   } from "../lib/api";
   import { register } from "../lib/actions";
+  import { onDrop, onPaste, pointIn, type DropPoint } from "../lib/drop";
   import { keysFor } from "../lib/keys";
+  import { altFromName, extensionOf, fileName, imageReference, isImagePath } from "../lib/media";
   import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
 
@@ -35,6 +41,7 @@
   let guide = $state<Guide | null>(null);
   let rendered = $state<Rendered | null>(null);
   let mentionedBy = $state<EntrySummary[]>([]);
+  let gallery = $state<Media[]>([]);
   let mode = $state<"read" | "edit">("read");
   let draft = $state("");
   /** "dirty" also covers a write in flight: the label never flickers through a third state. */
@@ -42,11 +49,14 @@
   let error = $state("");
   let missing = $state(false);
   let relationsVersion = $state(0);
-  /** The scrolling content column, for Contents jumps. */
+  /** The scrolling content column, for Contents jumps and the viewer's image list. */
   let content = $state<HTMLElement | null>(null);
-
+  let editorPane = $state<HTMLElement | null>(null);
+  let editor = $state<ReturnType<typeof Editor> | null>(null);
   let panel = $state<ReturnType<typeof EntryPanel> | null>(null);
   let tagPicker = $state<ReturnType<typeof TagPicker> | null>(null);
+  let viewer = $state<{ images: LightboxImage[]; index: number } | null>(null);
+
   let renaming = $state(false);
   let titleDraft = $state("");
   let editingAliases = $state(false);
@@ -58,6 +68,7 @@
   let saving: Promise<void> | null = null;
 
   const undoable = $derived(entry ? session.renames[entry.id] : undefined);
+  const primaryName = $derived(gallery[0] ? fileName(gallery[0]) : null);
 
   $effect(() => {
     const id = entryId;
@@ -71,12 +82,25 @@
   $effect(() => register("add-tag", () => tagPicker?.startAdding()));
   $effect(() => register("toggle-panel", () => panel?.toggle()));
 
+  // Dropped files and pasted images.
+  $effect(() =>
+    onDrop((paths, at) => {
+      const images = paths.filter(isImagePath);
+      if (images.length < paths.length) {
+        notify(`Skipped ${paths.length - images.length} dropped ${paths.length - images.length === 1 ? "file that is not an image" : "files that are not images"}.`);
+      }
+      return addImages(images.map((path) => ({ path })), at);
+    }),
+  );
+  $effect(() => onPaste((files) => addImages(files, null)));
+
   async function load(id: string) {
     await leave();
     mode = "read";
     renaming = false;
     editingAliases = false;
     missing = false;
+    viewer = null;
     try {
       entry = await api.getEntry(id);
       guide = await api.getGuide(entry.guide_id);
@@ -100,6 +124,7 @@
     if (!entry) return;
     rendered = await api.renderEntry(entry.id);
     mentionedBy = await api.mentionedBy(entry.id);
+    gallery = await api.entryGallery(entry.id);
   }
 
   function onEditorChange(value: string) {
@@ -334,6 +359,62 @@
       ?.scrollIntoView({ block: "start" });
   }
 
+  /**
+   * Stores images and places their references: on the editor at the drop point (or the caret for
+   * a paste while the editor has focus); anywhere else on the page, at the end of the body.
+   */
+  async function addImages(sources: Array<{ path: string } | File>, at: DropPoint | null) {
+    if (!entry || sources.length === 0) return;
+    const intoEditor =
+      mode === "edit" && (at ? pointIn(editorPane, at) : (editor?.hasFocus() ?? false));
+    const references: string[] = [];
+    try {
+      for (const source of sources) {
+        const media =
+          "path" in source
+            ? await api.ingestMediaPath(source.path)
+            : await api.ingestMedia(
+                new Uint8Array(await source.arrayBuffer()),
+                extensionOf(source.name) || source.type.split("/")[1] || "png",
+              );
+        references.push(imageReference(media, altFromName("path" in source ? source.path : source.name)));
+      }
+    } catch (e) {
+      error = errorMessage(e);
+      return;
+    }
+    error = "";
+    const block = references.join("\n");
+    if (intoEditor) {
+      editor?.insertText(`${block}\n`, at ?? undefined);
+    } else {
+      draft = draft.trim() === "" ? `${block}\n` : `${draft.trimEnd()}\n\n${block}\n`;
+      saveState = "dirty";
+      await save();
+      await refresh();
+    }
+  }
+
+  /** Opens the viewer on the clicked image, over every image the body shows. */
+  function openImage(index: number) {
+    const images: LightboxImage[] = Array.from(
+      content?.querySelectorAll<HTMLImageElement>(".preview img") ?? [],
+    ).map((img) => ({ src: img.currentSrc || img.src, alt: img.alt, name: img.dataset.media ?? null }));
+    if (images.length === 0) return;
+    viewer = { images, index: Math.min(Math.max(index, 0), images.length - 1) };
+  }
+
+  async function makePrimary(media: Media) {
+    if (!entry) return;
+    try {
+      await api.setPrimaryMedia(entry.id, media.id);
+      gallery = await api.entryGallery(entry.id);
+      notify("Set as the primary image.");
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
   onDestroy(() => {
     clearTimeout(previewTimer);
     clearTimeout(saveTimer);
@@ -342,7 +423,7 @@
 </script>
 
 <div class="entry">
-  <div class="content" bind:this={content}>
+  <div class="content" class:drop-target={session.dropActive && entry !== null} bind:this={content}>
     <div class="page">
       {#if entry && guide}
         <div class="row header">
@@ -422,8 +503,8 @@
 
         {#if mode === "edit"}
           <div class="split">
-            <div class="pane">
-              <Editor value={draft} onchange={onEditorChange} onsave={() => void save()} />
+            <div class="pane" bind:this={editorPane}>
+              <Editor bind:this={editor} value={draft} onchange={onEditorChange} onsave={() => void save()} />
             </div>
             <div class="pane">
               {#if rendered}
@@ -432,19 +513,21 @@
                   mediaDir={session.startup?.media_dir ?? null}
                   onnavigate={(id) => navigate({ view: "entry", entryId: id })}
                   oncreate={createFromLink}
+                  onimage={openImage}
                 />
               {/if}
             </div>
           </div>
         {:else if rendered}
           {#if entry.body_md.trim() === ""}
-            <p class="muted">No body yet. Press {keysFor("toggle-mode")} or choose Edit.</p>
+            <p class="muted">No body yet. Press {keysFor("toggle-mode")} or choose Edit. Drop or paste an image to add one.</p>
           {:else}
             <Preview
               html={rendered.html}
               mediaDir={session.startup?.media_dir ?? null}
               onnavigate={(id) => navigate({ view: "entry", entryId: id })}
               oncreate={createFromLink}
+              onimage={openImage}
             />
           {/if}
         {/if}
@@ -528,6 +611,17 @@
     />
   {/if}
 </div>
+
+{#if viewer}
+  <Lightbox
+    images={viewer.images}
+    index={viewer.index}
+    onclose={() => (viewer = null)}
+    onindex={(i) => viewer && (viewer.index = i)}
+    onprimary={makePrimary}
+    {primaryName}
+  />
+{/if}
 
 <style>
   /* The content column and the panel scroll on their own; the panel sizes its own column. */

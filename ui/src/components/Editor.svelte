@@ -67,6 +67,26 @@
     }
   });
 
+  /**
+   * Inserts text at the caret, or at a window point when one is given (a drop), on its own line
+   * when the position is not at a line start, and keeps the editor focused.
+   */
+  export function insertText(text: string, at?: { x: number; y: number }) {
+    if (!view) return;
+    const pos = (at ? view.posAtCoords(at) : null) ?? view.state.selection.main.head;
+    const line = view.state.doc.lineAt(pos);
+    const insert = pos > line.from ? `\n${text}` : text;
+    view.dispatch({
+      changes: { from: pos, insert },
+      selection: { anchor: pos + insert.length },
+    });
+    view.focus();
+  }
+
+  export function hasFocus(): boolean {
+    return view?.hasFocus ?? false;
+  }
+
   onDestroy(() => view?.destroy());
 </script>
 

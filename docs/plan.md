@@ -88,7 +88,9 @@ Done when: the `Stone Block DROPS Cobblestone Block +mined with Pickaxe` example
 
 The shell from `docs/design.md` section 5, "Interface principles": top bar with breadcrumbs, the collapsible left sidebar in two regions (search and the tag tree above, the selected tag's entries below, both filtered live), the content column, and the right panel with the Contents and Relations tabs, collapsed in Edit unless a setting keeps it open. Stubs-only toggle. Trash view with restore, purge, and empty. The density setting and the command palette for search, jump, and new entry.
 
-Done when: typing in the sidebar search updates the tree and the list on each keystroke with no visible lag at a few thousand entries; any entry under the selected tag opens from the sidebar without leaving the page; the content column keeps its width when the mode, the view, or a panel's state changes; a deleted entry can be restored from Trash with its relations intact.
+Done when: typing in the sidebar search updates the tree and the list on each keystroke with no visible lag at a few thousand entries; any entry under the selected tag opens from the sidebar without leaving the page; the content column keeps its width when the mode or the view changes, and changes only when a column is folded or resized (a folded panel gives its room to the content, as the Settings copy says); a deleted entry can be restored from Trash with its relations intact.
+
+Order change (decided 2026-11-08): Phase 8, Media, is built before Phase 7, Board, because board cards show an entry's primary image.
 
 ## Phase 7: Board
 
@@ -98,7 +100,7 @@ Done when: a board with a few hundred cards stays responsive while dragging; reo
 
 ## Phase 8: Media
 
-Drag-and-drop and clipboard paste of images into the editor and gallery. Dropped files arrive through the window's native drag-drop events as paths and core reads them from disk, so nothing large passes through the webview. The tag editor's drag moves to pointer events first, since Tauri's native drop and HTML drag and drop cannot coexist on Windows. Content-addressed storage with atomic writes; images converted to lossless WebP. Guide cover art. "Clean up unused media" in Settings with the file list and total; the unreferenced-size and low-disk notices.
+Drag-and-drop and clipboard paste of images into the editor and the body. Dropped files arrive through the window's native drag-drop events as paths and core reads them from disk, so nothing large passes through the webview; pasted bytes travel as a raw request body. The tag editor's drag moves to pointer events first, since Tauri's native drop and HTML drag and drop cannot coexist on Windows. Content-addressed storage with atomic writes; images converted to lossless WebP. An image viewer over the page after Wikipedia's, with "Make primary image". Guide cover art. "Clean up unused media" in Settings with the file list and total; the unreferenced-size and low-disk notices. Sidebar tree keyboard navigation.
 
 Done when: a pasted screenshot appears inline, in the gallery, and in the export archive exactly once; cleanup lists and removes an orphaned file and nothing else.
 

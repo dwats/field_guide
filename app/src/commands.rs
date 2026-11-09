@@ -16,7 +16,7 @@ use fieldguide_core::import::{
     self, ArchiveSummary, GuideChoice, ImportOptions, ImportPlan, ImportReport,
 };
 use fieldguide_core::markdown::Rendered;
-use fieldguide_core::media::{Media, MediaDimensions};
+use fieldguide_core::media::{self, Media, MediaDimensions};
 use fieldguide_core::relation::{
     CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, RelationView,
 };
@@ -552,6 +552,57 @@ pub async fn store_media(
     dimensions: MediaDimensions,
 ) -> CmdResult<Media> {
     state.with_vault(|v| v.store_media(&bytes, &ext, &mime, dimensions))
+}
+
+/// Stores an image from the clipboard or a file picker. The bytes travel as the raw request
+/// body, not JSON; the `x-ext` header carries the file extension as a hint (SVG has no magic
+/// bytes). Conversion runs on a worker thread, off the vault lock.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn ingest_media(state: S<'_>, request: tauri::ipc::Request<'_>) -> CmdResult<Media> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(AppError::new(
+            "invalid",
+            "expected the image bytes as the request body",
+        ));
+    };
+    let bytes = bytes.clone();
+    let hint = request
+        .headers()
+        .get("x-ext")
+        .and_then(|value| value.to_str().ok())
+        .map(|ext| format!("file.{ext}"));
+    let prepared =
+        tauri::async_runtime::spawn_blocking(move || media::prepare_image(&bytes, hint.as_deref()))
+            .await
+            .map_err(|e| AppError::new("internal", e.to_string()))??;
+    state.with_vault(|v| v.store_prepared(&prepared))
+}
+
+/// Stores an image from a path dropped on the window.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn ingest_media_path(state: S<'_>, path: String) -> CmdResult<Media> {
+    let prepared = tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(path);
+        let bytes = std::fs::read(&path).map_err(|source| fieldguide_core::Error::Io {
+            context: "reading",
+            path: path.clone(),
+            source,
+        })?;
+        media::prepare_image(&bytes, path.file_name().and_then(|n| n.to_str()))
+    })
+    .await
+    .map_err(|e| AppError::new("internal", e.to_string()))??;
+    state.with_vault(|v| v.store_prepared(&prepared))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn media_by_hash(state: S<'_>, sha256: String) -> CmdResult<Option<Media>> {
+    state.with_vault(|v| v.find_media_by_hash(&sha256))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn set_primary_media(state: S<'_>, entry_id: EntryId, media_id: MediaId) -> CmdResult<()> {
+    state.with_vault(|v| v.set_primary_media(&entry_id, &media_id))
 }
 
 // ---- backups ----

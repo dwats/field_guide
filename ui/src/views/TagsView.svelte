@@ -1,7 +1,8 @@
 <script lang="ts">
   // The tag editor (review 3.5): the tree on the left, a detail pane for the selected tag on the
   // right. Selecting a row fills the pane: name, parent, colour, counts, and the actions. Drag a
-  // tag onto another to nest it, or onto the bar under the tree to make it top-level.
+  // tag onto another to nest it, or onto the bar under the tree to make it top-level. The drag is
+  // pointer events, not HTML drag and drop, which the window's native file drop would swallow.
   import { tick, untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
@@ -38,7 +39,9 @@
   let mergeText = $state("");
   let mergeHighlight = $state(0);
   let pendingDelete = $state<TagNode | null>(null);
-  let dragId = $state<string | null>(null);
+  /** A press on a row; it becomes a drag after a few pixels of movement. */
+  let drag = $state<{ id: string; active: boolean; x: number; y: number } | null>(null);
+  /** The row (or "root" for the top-level bar) under the pointer during a drag. */
   let overId = $state<string | null>(null);
 
   const uid = $props.id();
@@ -214,30 +217,35 @@
     if (selectedId === node.tag.id) selectedId = null;
   }
 
-  function dragStart(event: DragEvent, id: string) {
-    dragId = id;
-    event.dataTransfer?.setData("text/plain", id);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  // Drag to nest, on pointer events. A press starts it; movement past a few pixels makes it a
+  // drag; the row under the pointer is the target; release drops. Pointer capture keeps the
+  // events coming while the pointer is over other rows.
+  function pressRow(event: PointerEvent, id: string) {
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
+    drag = { id, active: false, x: event.clientX, y: event.clientY };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   }
 
-  function dragOver(event: DragEvent, id: string | null) {
-    if (!dragId || dragId === id) return;
-    event.preventDefault();
-    overId = id ?? "root";
+  function moveRow(event: PointerEvent) {
+    if (!drag) return;
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
+      drag.active = true;
+    }
+    const under = document.elementFromPoint(event.clientX, event.clientY);
+    const row = under?.closest<HTMLElement>("[data-tag-id]");
+    const target = row ? (row.dataset.tagId ?? null) : under?.closest(".root-drop") ? "root" : null;
+    overId = target === drag.id ? null : target;
   }
 
-  function drop(event: DragEvent, parent: string | null) {
-    event.preventDefault();
-    const moving = dragId;
-    dragId = null;
+  function releaseRow() {
+    if (!drag) return;
+    const { id, active } = drag;
+    const target = overId;
+    drag = null;
     overId = null;
-    if (!moving || moving === parent) return;
-    void run(() => api.moveTag(moving, parent));
-  }
-
-  function dragEnd() {
-    dragId = null;
-    overId = null;
+    if (!active || !target || target === id) return;
+    void run(() => api.moveTag(id, target === "root" ? null : target));
   }
 
   async function select(id: string) {
@@ -272,6 +280,7 @@
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <ul
             class="tree"
+            class:dragging={drag?.active}
             role="tree"
             tabindex="0"
             aria-label="Tags"
@@ -289,18 +298,18 @@
                 class="tree-line"
                 class:selected={id === selectedId}
                 class:over={overId === id}
-                class:dragging={dragId === id}
+                class:lifted={drag?.active && drag.id === id}
                 role="treeitem"
                 aria-selected={id === selectedId}
                 aria-expanded={row.node.children.length > 0 ? open : undefined}
                 aria-level={row.depth + 1}
-                draggable="true"
+                data-tag-id={id}
                 style:padding-left="{row.depth * 16}px"
                 onclick={() => void select(id)}
-                ondragstart={(e) => dragStart(e, id)}
-                ondragover={(e) => dragOver(e, id)}
-                ondrop={(e) => drop(e, id)}
-                ondragend={dragEnd}
+                onpointerdown={(e) => pressRow(e, id)}
+                onpointermove={moveRow}
+                onpointerup={releaseRow}
+                onpointercancel={releaseRow}
               >
                 {#if row.node.children.length > 0}
                   <button
@@ -323,14 +332,7 @@
               </li>
             {/each}
           </ul>
-          <div
-            class="root-drop"
-            class:over={overId === "root"}
-            role="region"
-            aria-label="Top level"
-            ondragover={(e) => dragOver(e, null)}
-            ondrop={(e) => drop(e, null)}
-          >
+          <div class="root-drop" class:over={overId === "root"} role="region" aria-label="Top level">
             Top level: drop a tag here
           </div>
         </div>
@@ -489,11 +491,16 @@
   .tree .tree-line {
     cursor: grab;
     border-radius: var(--radius);
+    touch-action: none;
+    user-select: none;
+  }
+  .tree.dragging .tree-line {
+    cursor: grabbing;
   }
   .tree .tree-line.over {
     outline: 2px solid var(--accent);
   }
-  .tree .tree-line.dragging {
+  .tree .tree-line.lifted {
     opacity: 0.5;
   }
   .root-drop {

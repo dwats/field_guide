@@ -1,9 +1,14 @@
 //! Media: content-addressed files referenced by entries, stored as `media/<sha256>.<ext>` beside
-//! `vault.db`, plus the catalogue rows and gallery membership. Cleanup of unreferenced files and
-//! reading image dimensions arrive in a later phase.
+//! `vault.db`, plus the catalogue rows and gallery membership. Images are prepared before they
+//! are stored (`docs/design.md` section 3): PNG, JPEG, BMP, TIFF, and still GIFs become lossless
+//! WebP, so the hash covers the stored bytes and the same pixels from two formats deduplicate;
+//! animated GIFs, SVG, and WebP are kept as they are. Cleanup of unreferenced files is separate.
 
 use std::fs;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
+
+use image::{AnimationDecoder, GenericImageView, ImageFormat};
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -31,6 +36,119 @@ pub struct Media {
     pub height: Option<i64>,
     pub duration_ms: Option<i64>,
     pub created_at: String,
+}
+
+/// An image ready to store: the bytes as they will sit on disk, with their extension, MIME type,
+/// and pixel size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedMedia {
+    pub bytes: Vec<u8>,
+    pub ext: String,
+    pub mime: String,
+    pub dimensions: MediaDimensions,
+}
+
+/// Prepares image bytes from the clipboard or a file. The name is only a hint, for SVG, which
+/// has no magic bytes. Pure, so it can run outside the vault lock.
+pub fn prepare_image(bytes: &[u8], name_hint: Option<&str>) -> Result<PreparedMedia> {
+    let hint = name_hint
+        .and_then(|name| Path::new(name).extension())
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+    if hint.as_deref() == Some("svg") || looks_like_svg(bytes) {
+        return Ok(kept(
+            bytes,
+            "svg",
+            "image/svg+xml",
+            MediaDimensions::default(),
+        ));
+    }
+    let format = image::guess_format(bytes).map_err(|_| unsupported())?;
+    match format {
+        ImageFormat::WebP => {
+            let (w, h) = image::load_from_memory_with_format(bytes, format)
+                .map_err(unreadable)?
+                .dimensions();
+            Ok(kept(bytes, "webp", "image/webp", size(w, h)))
+        }
+        ImageFormat::Gif if is_animated_gif(bytes)? => {
+            let (w, h) = image::load_from_memory_with_format(bytes, format)
+                .map_err(unreadable)?
+                .dimensions();
+            Ok(kept(bytes, "gif", "image/gif", size(w, h)))
+        }
+        ImageFormat::Png
+        | ImageFormat::Jpeg
+        | ImageFormat::Gif
+        | ImageFormat::Bmp
+        | ImageFormat::Tiff => {
+            let img = image::load_from_memory_with_format(bytes, format).map_err(unreadable)?;
+            let (w, h) = img.dimensions();
+            Ok(PreparedMedia {
+                bytes: lossless_webp(&img)?,
+                ext: "webp".to_owned(),
+                mime: "image/webp".to_owned(),
+                dimensions: size(w, h),
+            })
+        }
+        _ => Err(unsupported()),
+    }
+}
+
+fn kept(bytes: &[u8], ext: &str, mime: &str, dimensions: MediaDimensions) -> PreparedMedia {
+    PreparedMedia {
+        bytes: bytes.to_vec(),
+        ext: ext.to_owned(),
+        mime: mime.to_owned(),
+        dimensions,
+    }
+}
+
+fn size(width: u32, height: u32) -> MediaDimensions {
+    MediaDimensions {
+        width: Some(i64::from(width)),
+        height: Some(i64::from(height)),
+        duration_ms: None,
+    }
+}
+
+fn unsupported() -> Error {
+    Error::Invalid(
+        "not an image Field Guide can store: PNG, JPEG, GIF, BMP, TIFF, WebP, or SVG".to_owned(),
+    )
+}
+
+fn unreadable(e: image::ImageError) -> Error {
+    Error::Invalid(format!("the image could not be read: {e}"))
+}
+
+/// An SVG document starts with an `<svg` tag, possibly after an XML prolog or a comment.
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]).to_ascii_lowercase();
+    head.contains("<svg")
+}
+
+/// A GIF with a second frame animates; converting it to a still would lose the motion.
+fn is_animated_gif(bytes: &[u8]) -> Result<bool> {
+    let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(unreadable)?;
+    let mut frames = decoder.into_frames();
+    frames.next();
+    Ok(frames.next().is_some())
+}
+
+/// Lossless WebP keeps every pixel; RGB or RGBA depending on whether the source has alpha.
+fn lossless_webp(img: &image::DynamicImage) -> Result<Vec<u8>> {
+    use image::ExtendedColorType;
+    let (w, h) = img.dimensions();
+    let mut out = Vec::new();
+    let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut out);
+    let result = if img.color().has_alpha() {
+        encoder.encode(img.to_rgba8().as_raw(), w, h, ExtendedColorType::Rgba8)
+    } else {
+        encoder.encode(img.to_rgb8().as_raw(), w, h, ExtendedColorType::Rgb8)
+    };
+    result.map_err(|e| Error::Invalid(format!("the image could not be converted: {e}")))?;
+    Ok(out)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +243,43 @@ impl Vault {
             height: dimensions.height,
             duration_ms: dimensions.duration_ms,
         })
+    }
+
+    /// Stores a prepared image; the same pixels stored twice yield the existing row.
+    pub fn store_prepared(&mut self, prepared: &PreparedMedia) -> Result<Media> {
+        self.store_media(
+            &prepared.bytes,
+            &prepared.ext,
+            &prepared.mime,
+            prepared.dimensions,
+        )
+    }
+
+    /// Prepares and stores image bytes from the clipboard or a file.
+    pub fn ingest_image(&mut self, bytes: &[u8], name_hint: Option<&str>) -> Result<Media> {
+        let prepared = prepare_image(bytes, name_hint)?;
+        self.store_prepared(&prepared)
+    }
+
+    /// Prepares and stores an image file, such as one dropped on the window.
+    pub fn ingest_image_file(&mut self, path: &Path) -> Result<Media> {
+        let bytes = fs::read(path).map_err(|source| Error::Io {
+            context: "reading",
+            path: path.to_path_buf(),
+            source,
+        })?;
+        self.ingest_image(&bytes, path.file_name().and_then(|n| n.to_str()))
+    }
+
+    /// Makes a file the entry's primary image: first in its gallery, added if it was not there.
+    /// Boards show the primary image on an entry's card.
+    pub fn set_primary_media(&mut self, entry_id: &EntryId, media_id: &MediaId) -> Result<()> {
+        let first: Option<i64> = self.conn().query_row(
+            "SELECT min(sort) FROM entry_media WHERE entry_id = ?1",
+            params![entry_id],
+            |row| row.get(0),
+        )?;
+        self.attach_media(entry_id, media_id, Some(first.map_or(0, |sort| sort - 1)))
     }
 
     /// Where a media row's file lives.
