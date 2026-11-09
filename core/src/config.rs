@@ -52,6 +52,9 @@ pub struct UiPrefs {
     /// Share of the sidebar's height given to the tag tree, in percent; `None` is half.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_split: Option<u8>,
+    /// Unused media above this many megabytes raises a notice at start; `None` is 250.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unreferenced_warning_mb: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

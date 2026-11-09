@@ -19,6 +19,7 @@ use crate::archive::{
     QualifierLabelFile, QualifierLine, RelationLine, ScopeRecord, TagTree, VerbFile, VerbRef,
 };
 use crate::frontmatter::{self, FrontMatter};
+use crate::media::inline_media_hashes;
 use crate::relation::{self, QualifierValueView, Relation};
 use crate::slug::SlugSet;
 use crate::tag::{self, TagNode};
@@ -585,24 +586,6 @@ fn relation_line(
             })
             .collect(),
     }
-}
-
-/// `media/<64 hex>.<ext>` references in a body, by hash.
-fn inline_media_hashes(body: &str) -> Vec<String> {
-    let mut hashes = Vec::new();
-    let mut rest = body;
-    while let Some(pos) = rest.find("media/") {
-        let after = &rest[pos + "media/".len()..];
-        let hash: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_hexdigit())
-            .collect();
-        if hash.len() == 64 && after[hash.len()..].starts_with('.') {
-            hashes.push(hash.to_ascii_lowercase());
-        }
-        rest = after;
-    }
-    hashes
 }
 
 fn short(id: &str) -> &str {

@@ -61,6 +61,8 @@ export interface UiPrefs {
   panel_width: number | null;
   /** Share of the sidebar's height given to the tag tree, in percent; null is half. */
   sidebar_split: number | null;
+  /** Unused media above this many megabytes raises a notice at start; null is 250. */
+  unreferenced_warning_mb: number | null;
 }
 
 // ---- guides ----
@@ -189,6 +191,20 @@ export interface Rendered {
 }
 
 // ---- media ----
+
+export interface MediaSummary {
+  files: number;
+  bytes: number;
+  unreferenced_files: number;
+  unreferenced_bytes: number;
+  /** Free space on the vault's drive, or null when unknown. */
+  free_space: number | null;
+}
+
+export interface CleanupReport {
+  removed: number;
+  bytes: number;
+}
 
 export interface Media {
   id: Id;
@@ -406,6 +422,9 @@ export const api = {
   ingestMedia: (bytes: Uint8Array, ext: string) =>
     invoke<Media>("ingest_media", bytes, { headers: { "x-ext": ext } }),
   ingestMediaPath: (path: string) => invoke<Media>("ingest_media_path", { path }),
+  mediaSummary: () => invoke<MediaSummary>("media_summary"),
+  unreferencedMedia: () => invoke<Media[]>("unreferenced_media"),
+  purgeMedia: (ids: Id[]) => invoke<CleanupReport>("purge_media", { ids }),
   setGuideCover: (id: Id, media_id: Id | null, crop: CoverCrop | null = null) =>
     invoke<Guide>("set_guide_cover", { id, media_id, crop }),
 

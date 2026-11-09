@@ -20,6 +20,9 @@
     /** Title of a marker dot after the name, such as "The open entry has this tag". */
     marker?: string | null;
     stub?: boolean;
+    /** The row's id, exposed as `data-row-id` so a keyboard handler can tell rows apart. */
+    id?: string;
+    onkeydown?: (event: KeyboardEvent) => void;
   }
   let {
     name,
@@ -33,10 +36,12 @@
     dot = null,
     marker = null,
     stub = false,
+    id,
+    onkeydown,
   }: Props = $props();
 </script>
 
-<div class="tree-line" class:selected style:padding-left="{depth * 14}px">
+<div class="tree-line" class:selected data-row-id={id} style:padding-left="{depth * 14}px">
   {#if open !== undefined && ontoggle}
     <button
       class="tree-chev"
@@ -51,9 +56,11 @@
   {/if}
   {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
   {#if href}
-    <a class="tree-name" {href} aria-current={selected ? "page" : undefined} onclick={onpick}>{name}</a>
+    <a class="tree-name" {href} aria-current={selected ? "page" : undefined} onclick={onpick} {onkeydown}>
+      {name}
+    </a>
   {:else}
-    <button class="tree-name" aria-pressed={selected} onclick={onpick}>{name}</button>
+    <button class="tree-name" aria-pressed={selected} onclick={onpick} {onkeydown}>{name}</button>
   {/if}
   {#if stub}<span class="chip">stub</span>{/if}
   {#if marker}<span class="marker" title={marker}></span>{/if}

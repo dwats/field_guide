@@ -16,7 +16,7 @@ use fieldguide_core::import::{
     self, ArchiveSummary, GuideChoice, ImportOptions, ImportPlan, ImportReport,
 };
 use fieldguide_core::markdown::Rendered;
-use fieldguide_core::media::{self, Media, MediaDimensions};
+use fieldguide_core::media::{self, CleanupReport, Media, MediaDimensions, MediaSummary};
 use fieldguide_core::relation::{
     CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, RelationView,
 };
@@ -598,6 +598,21 @@ pub async fn ingest_media_path(state: S<'_>, path: String) -> CmdResult<Media> {
     .await
     .map_err(|e| AppError::new("internal", e.to_string()))??;
     state.with_vault(|v| v.store_prepared(&prepared))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn media_summary(state: S<'_>) -> CmdResult<MediaSummary> {
+    state.with_vault(|v| v.media_summary())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn unreferenced_media(state: S<'_>) -> CmdResult<Vec<Media>> {
+    state.with_vault(|v| v.unreferenced_media())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn purge_media(state: S<'_>, ids: Vec<MediaId>) -> CmdResult<CleanupReport> {
+    state.with_vault(|v| v.purge_media(&ids))
 }
 
 #[tauri::command(rename_all = "snake_case")]

@@ -55,6 +55,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   sidebar_width: null,
   panel_width: null,
   sidebar_split: null,
+  unreferenced_warning_mb: null,
 };
 
 export function freshSidebar(guideId: string | null): SidebarState {

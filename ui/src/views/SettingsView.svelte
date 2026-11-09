@@ -5,7 +5,8 @@
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import PrefCard from "../components/PrefCard.svelte";
-  import { api, errorMessage, type BackupInfo, type Density } from "../lib/api";
+  import { api, errorMessage, type BackupInfo, type Density, type Media, type MediaSummary } from "../lib/api";
+  import { formatBytes } from "../lib/media";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
   import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
@@ -15,6 +16,12 @@
   let busy = $state(false);
   let pendingRestore = $state<BackupInfo | null>(null);
   let error = $state("");
+  let summary = $state<MediaSummary | null>(null);
+  /** The unused files, once asked for; null until then. */
+  let unused = $state<Media[] | null>(null);
+  let confirmingCleanup = $state(false);
+  let mediaError = $state("");
+  const warningMb = $derived(session.prefs.unreferenced_warning_mb ?? 250);
 
   const startup = $derived(session.startup);
 
@@ -31,6 +38,42 @@
     } catch (e) {
       error = errorMessage(e);
     }
+    try {
+      summary = await api.mediaSummary();
+    } catch (e) {
+      mediaError = errorMessage(e);
+    }
+  }
+
+  async function findUnused() {
+    try {
+      unused = await api.unreferencedMedia();
+      mediaError = "";
+    } catch (e) {
+      mediaError = errorMessage(e);
+    }
+  }
+
+  async function cleanUp() {
+    confirmingCleanup = false;
+    if (!unused || unused.length === 0) return;
+    try {
+      const report = await api.purgeMedia(unused.map((m) => m.id));
+      notify(`Removed ${report.removed} ${report.removed === 1 ? "file" : "files"} (${formatBytes(report.bytes)}).`);
+      unused = null;
+      summary = await api.mediaSummary();
+    } catch (e) {
+      mediaError = errorMessage(e);
+    }
+  }
+
+  function setWarningMb(value: string) {
+    const mb = Math.max(1, Math.round(Number(value) || 250));
+    void savePrefs({ unreferenced_warning_mb: mb });
+  }
+
+  function shortName(media: Media): string {
+    return `${media.sha256.slice(0, 12)}….${media.ext}`;
   }
 
   async function backupNow() {
@@ -240,6 +283,71 @@
     oncancel={() => (pendingRestore = null)}
   />
 
+  <section id={sectionElementId("media")}>
+    <div class="row">
+      <h2>Media</h2>
+      <span class="spacer"></span>
+      <button onclick={findUnused}>Find unused media</button>
+    </div>
+    <p class="muted">
+      Images are stored once by content in the vault's media folder. Nothing is removed on its own.
+      {#if summary}
+        {summary.files} {summary.files === 1 ? "file" : "files"}, {formatBytes(summary.bytes)};
+        {summary.unreferenced_files} unused, {formatBytes(summary.unreferenced_bytes)}.
+        {#if summary.free_space !== null}Free space on the drive: {formatBytes(summary.free_space)}.{/if}
+      {/if}
+    </p>
+    <label class="row threshold">
+      <span>Warn at start when unused media exceeds</span>
+      <input
+        type="number"
+        min="1"
+        step="50"
+        value={warningMb}
+        onchange={(e) => setWarningMb(e.currentTarget.value)}
+        aria-label="Unused media warning threshold in megabytes"
+      />
+      <span class="muted">MB</span>
+    </label>
+    {#if mediaError}<p class="error">{mediaError}</p>{/if}
+    {#if unused}
+      {#if unused.length === 0}
+        <p class="muted">Every stored file is referenced by an entry, a gallery, or a cover.</p>
+      {:else}
+        <p class="muted">
+          No entry body, gallery, or cover refers to these files. Removing them cannot be undone.
+        </p>
+        <table>
+          <thead><tr><th>File</th><th>Size</th><th>Dimensions</th><th>Added</th></tr></thead>
+          <tbody>
+            {#each unused as media (media.id)}
+              <tr>
+                <td><code>{shortName(media)}</code></td>
+                <td>{formatBytes(media.bytes)}</td>
+                <td class="muted">{media.width && media.height ? `${media.width} × ${media.height}` : ""}</td>
+                <td class="muted">{when(media.created_at)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <div class="row actions">
+          <button class="danger" onclick={() => (confirmingCleanup = true)}>
+            Remove {unused.length} {unused.length === 1 ? "file" : "files"} ({formatBytes(unused.reduce((n, m) => n + m.bytes, 0))})
+          </button>
+        </div>
+      {/if}
+    {/if}
+  </section>
+
+  <ConfirmDialog
+    open={confirmingCleanup}
+    title={unused ? `Remove ${unused.length} unused ${unused.length === 1 ? "file" : "files"}?` : ""}
+    body={["They are not referenced by any entry, gallery, or cover. This cannot be undone."]}
+    confirmLabel="Remove"
+    onconfirm={cleanUp}
+    oncancel={() => (confirmingCleanup = false)}
+  />
+
   <section id={sectionElementId("updates")}>
     <h2>Updates</h2>
     <p class="muted">
@@ -264,6 +372,12 @@
   .cards {
     display: grid;
     gap: var(--space-3);
+  }
+  .threshold input {
+    width: 6em;
+  }
+  .actions {
+    margin-top: var(--space-3);
   }
   .facts th {
     width: 10em;

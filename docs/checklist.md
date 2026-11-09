@@ -66,6 +66,9 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] The guides list shows 2:3 posters in rows that fill the window from the left, titles below; a guide without a cover shows a placeholder poster.
 - [ ] A dropped file that is not an image is skipped with a notice; a drop on the guides list or Settings shows where drops go.
 - [ ] Tag editor: drag a tag onto another with the mouse to nest it, and onto the Top level bar to move it up; a click without movement only selects.
+- [ ] Settings, Media: the totals line counts files and unused bytes; Find unused media lists only files no body, gallery, or cover refers to; Remove asks first and removes exactly those; the threshold field changes when the start-up notice appears.
+- [ ] At start, a notice appears when unused media exceeds the threshold, and another when the drive has under 1 GB free; each opens Settings.
+- [ ] Sidebar: with a tag row focused, Up and Down move between rows, Right opens a tag or enters its children, Left closes it or goes to its parent, Home and End jump; the entry list takes Up and Down too.
 
 ## Guides
 

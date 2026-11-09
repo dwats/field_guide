@@ -102,7 +102,7 @@ Done when: a board with a few hundred cards stays responsive while dragging; reo
 
 Drag-and-drop and clipboard paste of images into the editor and the body. Dropped files arrive through the window's native drag-drop events as paths and core reads them from disk, so nothing large passes through the webview; pasted bytes travel as a raw request body. The tag editor's drag moves to pointer events first, since Tauri's native drop and HTML drag and drop cannot coexist on Windows. Content-addressed storage with atomic writes; images converted to lossless WebP. An image viewer over the page after Wikipedia's, with "Make primary image". Guide cover art. "Clean up unused media" in Settings with the file list and total; the unreferenced-size and low-disk notices. Sidebar tree keyboard navigation.
 
-Done when: a pasted screenshot appears inline, in the gallery, and in the export archive exactly once; cleanup lists and removes an orphaned file and nothing else.
+Done when: a pasted screenshot appears inline, in the viewer, and in the export archive exactly once; cleanup lists and removes an orphaned file and nothing else.
 
 Images are converted to lossless WebP on ingest (`docs/design.md` section 3); a lossy option is a later setting (section 11). Video is not part of this phase (see Later).
 

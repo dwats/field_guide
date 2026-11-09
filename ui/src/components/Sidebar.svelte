@@ -7,6 +7,7 @@
 
   import { api, errorMessage, type Entry, type EntryCounts, type TagNode } from "../lib/api";
   import { register } from "../lib/actions";
+  import { stepIndex } from "../lib/combobox";
   import { startDrag } from "../lib/drag";
   import { formatFilter, parseFilter, type ParsedFilter } from "../lib/filter";
   import { routeHash, type Route } from "../lib/router";
@@ -24,6 +25,7 @@
     type Scope,
   } from "../lib/sidebar";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
+  import { findNode } from "../lib/tree";
   import SidebarFrame from "./SidebarFrame.svelte";
   import TreeRow from "./TreeRow.svelte";
 
@@ -38,6 +40,8 @@
   let unknownTags = $state<string[]>([]);
   let error = $state("");
   let regions = $state<HTMLElement | null>(null);
+  let treeEl = $state<HTMLElement | null>(null);
+  let listEl = $state<HTMLElement | null>(null);
   let searchInput = $state<HTMLInputElement | null>(null);
   /** Only the newest list request may land. */
   let listRequest = 0;
@@ -160,6 +164,45 @@
     return forcedOpen.has(id) || session.sidebar.expanded.includes(id);
   }
 
+  /** Up and Down move between rows; in the tree, Right opens or enters, Left closes or goes up. */
+  function rowKeys(container: HTMLElement | null, withTree: boolean) {
+    return (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const names = Array.from(container?.querySelectorAll<HTMLElement>(".tree-name") ?? []);
+      const index = names.indexOf(target);
+      if (index < 0) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        names[stepIndex(index, event.key === "ArrowDown" ? 1 : -1, names.length)]?.focus();
+        return;
+      }
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        names[event.key === "Home" ? 0 : names.length - 1]?.focus();
+        return;
+      }
+      if (!withTree) return;
+      const rowId = target.closest<HTMLElement>("[data-row-id]")?.dataset.rowId;
+      const node = rowId ? findNode(tree, rowId) : null;
+      if (!node) return;
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        if (node.children.length === 0) return;
+        if (!isOpen(node.tag.id)) toggle(node.tag.id);
+        else names[index + 1]?.focus();
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        if (node.children.length > 0 && isOpen(node.tag.id) && !forcedOpen.has(node.tag.id)) {
+          toggle(node.tag.id);
+        } else if (node.tag.parent_id) {
+          container
+            ?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(node.tag.parent_id)}"] .tree-name`)
+            ?.focus();
+        }
+      }
+    };
+  }
+
   /** Escape clears the text, then the chips, then leaves the field (review 4.1.1). */
   function onSearchKey(event: KeyboardEvent) {
     if (event.key !== "Escape") return;
@@ -190,9 +233,11 @@
     {@const open = isOpen(id)}
     <li>
       <TreeRow
+        {id}
         name={node.tag.name}
         count={subtreeCount(counts, id)}
         {depth}
+        onkeydown={rowKeys(treeEl, true)}
         selected={sameScope(session.sidebar.scope, tagScope(id))}
         open={node.children.length > 0 ? open : undefined}
         ontoggle={() => toggle(id)}
@@ -231,7 +276,7 @@
     {#if error}<p class="side-hint error">{error}</p>{/if}
 
     <div class="regions" bind:this={regions}>
-      <section class="region tree" style:flex-basis="{split}%" aria-label="Tags">
+      <section class="region tree" style:flex-basis="{split}%" aria-label="Tags" bind:this={treeEl}>
         <h2 class="region-head">Tags</h2>
         <ul class="side-list">
           <li>
@@ -240,6 +285,7 @@
               count={counts?.total ?? 0}
               selected={sameScope(session.sidebar.scope, { kind: "all" })}
               onpick={() => select({ kind: "all" })}
+              onkeydown={rowKeys(treeEl, true)}
             />
           </li>
           {@render branch(shownTree, 0)}
@@ -254,6 +300,7 @@
               count={counts?.untagged ?? 0}
               selected={sameScope(session.sidebar.scope, { kind: "untagged" })}
               onpick={() => select({ kind: "untagged" })}
+              onkeydown={rowKeys(treeEl, true)}
             />
           </li>
           <li>
@@ -262,6 +309,7 @@
               count={counts?.trashed ?? 0}
               selected={route.view === "trash"}
               href={routeHash({ view: "trash", guideId })}
+              onkeydown={rowKeys(treeEl, true)}
             />
           </li>
         </ul>
@@ -274,7 +322,7 @@
         aria-label="Resize the regions"
         onpointerdown={resizeSplit}
       ></div>
-      <section class="region entries" aria-label="Entries">
+      <section class="region entries" aria-label="Entries" bind:this={listEl}>
         <h2 class="region-head">
           <span class="label">{scopeLabel(session.sidebar.scope, tags)}</span>
           <span class="tree-count muted">{session.sidebar.entries.length}</span>
@@ -291,6 +339,7 @@
                   selected={session.current.entry?.id === e.id}
                   href={routeHash({ view: "entry", entryId: e.id })}
                   onpick={() => (session.sidebar.pickedId = e.id)}
+                  onkeydown={rowKeys(listEl, false)}
                 />
               </li>
             {/each}

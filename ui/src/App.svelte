@@ -18,6 +18,7 @@
   import { dispatchDrop, dispatchPaste, imageFiles } from "./lib/drop";
   import { fatalText } from "./lib/fatal";
   import { actionFor, isEditable, keysFor, type Action } from "./lib/keys";
+  import { formatBytes } from "./lib/media";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
   import { DEFAULT_PREFS, dismiss, notify, savePrefs, session } from "./lib/session.svelte";
   import EntryView from "./views/EntryView.svelte";
@@ -195,6 +196,7 @@
             },
           );
         }
+        await warnAboutMedia();
       }
     } catch (e) {
       session.startup = {
@@ -211,6 +213,29 @@
       };
     } finally {
       loading = false;
+    }
+  }
+
+  /** Unused media over the threshold, or little room left on the vault's drive (design section 3). */
+  async function warnAboutMedia() {
+    try {
+      const summary = await api.mediaSummary();
+      const limit = (session.prefs.unreferenced_warning_mb ?? 250) * 1024 * 1024;
+      const openSettings = { label: "Open Settings", run: () => navigate({ view: "settings" }) };
+      if (summary.unreferenced_bytes > limit) {
+        notify(
+          `Unused media takes ${formatBytes(summary.unreferenced_bytes)}. Clean it up in Settings.`,
+          { kind: "warning", action: openSettings },
+        );
+      }
+      if (summary.free_space !== null && summary.free_space < 1024 * 1024 * 1024) {
+        notify(
+          `The drive holding your data has ${formatBytes(summary.free_space)} free.`,
+          { kind: "warning", action: openSettings },
+        );
+      }
+    } catch {
+      // A failed check is not worth a notice of its own.
     }
   }
 

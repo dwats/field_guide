@@ -13,6 +13,7 @@ mod guides;
 mod lock;
 mod markdown;
 mod media;
+mod media_cleanup;
 mod media_files;
 mod media_ingest;
 mod relations;

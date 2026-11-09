@@ -2,10 +2,13 @@
 //! `vault.db`, plus the catalogue rows and gallery membership. Images are prepared before they
 //! are stored (`docs/design.md` section 3): PNG, JPEG, BMP, TIFF, and still GIFs become lossless
 //! WebP, so the hash covers the stored bytes and the same pixels from two formats deduplicate;
-//! animated GIFs, SVG, and WebP are kept as they are. Cleanup of unreferenced files is separate.
+//! animated GIFs, SVG, and WebP are kept as they are. Nothing is deleted on its own: "Clean up
+//! unused media" lists the files no entry body, gallery, or guide cover references and removes
+//! the ones the user confirms.
 
+use std::collections::HashSet;
 use std::fs;
-use std::io::Cursor;
+use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
 
 use image::{AnimationDecoder, GenericImageView, ImageFormat};
@@ -149,6 +152,42 @@ fn lossless_webp(img: &image::DynamicImage) -> Result<Vec<u8>> {
     };
     result.map_err(|e| Error::Invalid(format!("the image could not be converted: {e}")))?;
     Ok(out)
+}
+
+/// Totals for the Settings page and the notices (design section 3): every stored file, the ones
+/// nothing references, and the free space on the vault's drive (`None` for an in-memory vault).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaSummary {
+    pub files: usize,
+    pub bytes: u64,
+    pub unreferenced_files: usize,
+    pub unreferenced_bytes: u64,
+    pub free_space: Option<u64>,
+}
+
+/// What a cleanup removed.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanupReport {
+    pub removed: usize,
+    pub bytes: u64,
+}
+
+/// `media/<64 hex>.<ext>` references in a body, by hash.
+pub(crate) fn inline_media_hashes(body: &str) -> Vec<String> {
+    let mut hashes = Vec::new();
+    let mut rest = body;
+    while let Some(pos) = rest.find("media/") {
+        let after = &rest[pos + "media/".len()..];
+        let hash: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_hexdigit())
+            .collect();
+        if hash.len() == 64 && after[hash.len()..].starts_with('.') {
+            hashes.push(hash.to_ascii_lowercase());
+        }
+        rest = after;
+    }
+    hashes
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -348,6 +387,99 @@ impl Vault {
         entry::touch(&tx, entry_id)?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Files nothing references: no gallery row of any entry, trashed ones included, no
+    /// `media/<sha>` in any body, and no guide cover. Largest first, so the list leads with what
+    /// a cleanup gains most from.
+    pub fn unreferenced_media(&self) -> Result<Vec<Media>> {
+        let conn = self.conn();
+        let mut referenced: HashSet<MediaId> = HashSet::new();
+        let mut stmt = conn.prepare("SELECT DISTINCT media_id FROM entry_media")?;
+        for row in stmt.query_map([], |row| row.get::<_, MediaId>(0))? {
+            referenced.insert(row?);
+        }
+        let mut stmt =
+            conn.prepare("SELECT cover_media_id FROM guide WHERE cover_media_id IS NOT NULL")?;
+        for row in stmt.query_map([], |row| row.get::<_, MediaId>(0))? {
+            referenced.insert(row?);
+        }
+        let mut hashes: HashSet<String> = HashSet::new();
+        let mut stmt = conn.prepare("SELECT body_md FROM entry")?;
+        for row in stmt.query_map([], |row| row.get::<_, String>(0))? {
+            hashes.extend(inline_media_hashes(&row?));
+        }
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {COLUMNS} FROM media m ORDER BY m.bytes DESC, m.created_at, m.id"
+        ))?;
+        let all = stmt
+            .query_map([], media_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(all
+            .into_iter()
+            .filter(|m| !referenced.contains(&m.id) && !hashes.contains(&m.sha256))
+            .collect())
+    }
+
+    /// Counts and sizes for Settings and the notices.
+    pub fn media_summary(&self) -> Result<MediaSummary> {
+        let (files, bytes): (i64, Option<i64>) =
+            self.conn()
+                .query_row("SELECT COUNT(*), SUM(bytes) FROM media", [], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })?;
+        let unreferenced = self.unreferenced_media()?;
+        let free_space = self
+            .media_dir()
+            .and_then(|dir| dir.parent().map(Path::to_path_buf))
+            .and_then(|vault_dir| fs4::available_space(&vault_dir).ok());
+        Ok(MediaSummary {
+            files: usize::try_from(files).unwrap_or(0),
+            bytes: u64::try_from(bytes.unwrap_or(0)).unwrap_or(0),
+            unreferenced_files: unreferenced.len(),
+            unreferenced_bytes: unreferenced
+                .iter()
+                .map(|m| u64::try_from(m.bytes).unwrap_or(0))
+                .sum(),
+            free_space,
+        })
+    }
+
+    /// Deletes the given files and their rows, but only those nothing references at this moment:
+    /// a file that gained a reference since the list was shown stays. A file already missing from
+    /// disk is no obstacle to removing its row.
+    pub fn purge_media(&mut self, ids: &[MediaId]) -> Result<CleanupReport> {
+        let unreferenced: HashSet<MediaId> = self
+            .unreferenced_media()?
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        let mut report = CleanupReport::default();
+        for id in ids {
+            if !unreferenced.contains(id) {
+                continue;
+            }
+            let media = load_media(self.conn(), id)?;
+            if let Some(dir) = self.media_dir() {
+                let path = dir.join(format!("{}.{}", media.sha256, media.ext));
+                match fs::remove_file(&path) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(source) => {
+                        return Err(Error::Io {
+                            context: "deleting",
+                            path,
+                            source,
+                        });
+                    }
+                }
+            }
+            self.conn()
+                .execute("DELETE FROM media WHERE id = ?1", params![id])?;
+            report.removed += 1;
+            report.bytes += u64::try_from(media.bytes).unwrap_or(0);
+        }
+        Ok(report)
     }
 
     /// An entry's gallery in display order.
