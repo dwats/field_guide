@@ -10,7 +10,7 @@
   import { buildGroups, flatten, type Command, type Row } from "../lib/palette";
   import { navigate, type Route } from "../lib/router";
   import { session, touch } from "../lib/session.svelte";
-  import { flattenTags, type TagOption } from "../lib/tags";
+  import { flattenTags, pathsOf, type TagOption } from "../lib/tags";
 
   interface Props {
     open: boolean;
@@ -27,21 +27,22 @@
   let highlight = $state(0);
   let error = $state("");
   let input = $state<HTMLInputElement | null>(null);
+  /** Where focus was when the palette opened; restored on close unless a command took it. */
   let opener: HTMLElement | null = null;
   let request = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   const uid = $props.id();
 
-  const guide = $derived(session.current.guide);
   const inGuide = $derived(
-    guide !== null &&
+    session.current.guide !== null &&
       (route.view === "guide" || route.view === "entry" || route.view === "tags" || route.view === "trash"),
   );
+  /** The id, not the object, so a reload of the same guide changes nothing here. */
+  const guideId = $derived(inGuide ? (session.current.guide?.id ?? null) : null);
   const commands = $derived(commandsFor(route, inGuide, session.notices.length > 0));
   const groups = $derived(
     buildGroups(text, {
       entries,
-      tagPathOf: (ids) => ids.map((id) => tags.find((t) => t.id === id)?.path ?? "").filter(Boolean).join(", "),
+      tagPathOf: (ids) => pathsOf(tags, ids),
       commands,
       guides,
       inGuide,
@@ -50,12 +51,14 @@
   );
   const rows = $derived(flatten(groups));
 
-  // Opening resets the text and loads what the lists need; focus goes to the input and back.
+  // Opening resets the text and the lists and loads what they need; focus goes to the input and
+  // back to where it was on close.
   $effect(() => {
     if (open) {
       opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       text = "";
       highlight = 0;
+      entries = [];
       untrack(() => void loadStatic());
       setTimeout(() => input?.focus(), 0);
     } else {
@@ -68,9 +71,9 @@
   $effect(() => {
     if (!open) return;
     const query = text;
-    const g = inGuide ? guide?.id : undefined;
-    clearTimeout(timer);
-    timer = setTimeout(() => void loadEntries(g, query), 60);
+    const id = guideId;
+    const timer = setTimeout(() => void loadEntries(id, query), 60);
+    return () => clearTimeout(timer);
   });
 
   $effect(() => {
@@ -81,7 +84,7 @@
   function commandsFor(r: Route, guideLevel: boolean, hasNotice: boolean): Command[] {
     const list: Command[] = [];
     if (guideLevel) list.push({ action: "new", label: "New entry" });
-    if (r.view === "guides") list.push({ action: "new-guide", label: "New guide" });
+    list.push({ action: "new-guide", label: "New guide" });
     if (r.view === "entry") {
       list.push(
         { action: "toggle-mode", label: "Toggle Read and Edit" },
@@ -115,21 +118,21 @@
   async function loadStatic() {
     try {
       guides = await api.listGuides();
-      tags = inGuide && guide ? flattenTags(await api.tagTree(guide.id)) : [];
+      tags = guideId ? flattenTags(await api.tagTree(guideId)) : [];
       error = "";
     } catch (e) {
       error = errorMessage(e);
     }
   }
 
-  async function loadEntries(guideId: string | undefined, query: string) {
+  async function loadEntries(id: string | null, query: string) {
     const current = ++request;
-    if (!guideId || query.trim().startsWith(">")) {
+    if (!id || query.trim().startsWith(">")) {
       entries = [];
       return;
     }
     try {
-      const result = await api.listEntries(guideId, { text: query.trim() || null });
+      const result = await api.listEntries(id, { text: query.trim() || null });
       if (current !== request) return;
       entries = result;
     } catch (e) {
@@ -138,13 +141,15 @@
   }
 
   async function run(row: Row) {
+    // A command places focus itself (a field, a dialog), so the palette must not take it back.
+    if (row.kind === "command") opener = null;
     onclose();
     if (row.kind === "entry") navigate({ view: "entry", entryId: row.entry.id });
     else if (row.kind === "guide") navigate({ view: "guide", guideId: row.guide.id });
     else if (row.kind === "command") onaction(row.command.action);
-    else if (row.kind === "create" && guide) {
+    else if (row.kind === "create" && guideId) {
       try {
-        const entry = await api.createEntry(guide.id, row.title);
+        const entry = await api.createEntry(guideId, row.title);
         touch();
         navigate({ view: "entry", entryId: entry.id });
       } catch (e) {
@@ -198,10 +203,10 @@
       autocomplete="off"
       {onkeydown}
     />
-    {#if error}<p class="error note">{error}</p>{/if}
+    {#if error}<p class="error hint">{error}</p>{/if}
     <ul id={`${uid}-rows`} role="listbox" aria-label="Results">
       {#if rows.length === 0}
-        <li class="note muted" role="presentation">No entries or commands match.</li>
+        <li class="hint muted" role="presentation">No entries or commands match.</li>
       {/if}
       {#each groups as group (group.heading)}
         <li class="heading muted" role="presentation">{group.heading}</li>
@@ -275,7 +280,7 @@
     font-variant-caps: all-small-caps;
     letter-spacing: 0.04em;
   }
-  .note {
+  .hint {
     padding: 8px 10px;
   }
   li[role="option"] button {

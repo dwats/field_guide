@@ -101,7 +101,11 @@ fn ui_prefs_and_the_sync_warning_round_trip() {
     config.ui.guide_view = GuideView::Table;
     config.ui.density = Density::Compact;
     config.ui.sidebar_collapsed = true;
+    config.ui.panel_collapsed = true;
+    config.ui.panel_open_in_edit = true;
+    config.ui.hide_contents = true;
     config.ui.sidebar_width = Some(240);
+    config.ui.panel_width = Some(300);
     config.ui.sidebar_split = Some(35);
     config.sync_warning_shown_for = Some("D:/stick".to_owned());
     config.save(&data).unwrap();

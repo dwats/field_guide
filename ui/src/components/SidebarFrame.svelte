@@ -15,10 +15,12 @@
   }
   let { label, children, head }: Props = $props();
 
+  let aside = $state<HTMLElement | null>(null);
   const collapsed = $derived(session.prefs.sidebar_collapsed);
 
   function resizeWidth(event: PointerEvent) {
-    const start = session.prefs.sidebar_width ?? 260;
+    // The rendered width is the start, whichever preset or saved width produced it.
+    const start = aside?.offsetWidth ?? 260;
     let next = start;
     startDrag(
       event,
@@ -31,7 +33,7 @@
   }
 </script>
 
-<aside class="sidebar" class:collapsed aria-label={label}>
+<aside class="sidebar" class:collapsed aria-label={label} bind:this={aside}>
   {#if collapsed}
     <button
       class="link rail-button"

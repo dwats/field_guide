@@ -8,8 +8,9 @@
   import Modal from "../components/Modal.svelte";
   import Suggestions from "../components/Suggestions.svelte";
   import { api, errorMessage, type EntryCounts, type Guide, type TagNode } from "../lib/api";
-  import { moveHighlight, pickIndex } from "../lib/combobox";
+  import { moveHighlight, pickIndex, stepIndex } from "../lib/combobox";
   import { notify, setCurrent, touch } from "../lib/session.svelte";
+  import { subtreeCount } from "../lib/sidebar";
   import { TAG_COLORS, colorVar, flattenTags, type TagOption } from "../lib/tags";
   import { findNode, subtreeIds, visibleRows } from "../lib/tree";
 
@@ -108,12 +109,9 @@
   function onTreeKey(event: KeyboardEvent) {
     if (event.target !== event.currentTarget || rows.length === 0) return;
     const index = rows.findIndex((r) => r.node.tag.id === selectedId);
-    if (event.key === "ArrowDown") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      selectedId = rows[Math.min(index + 1, rows.length - 1)].node.tag.id;
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      selectedId = rows[Math.max(index - 1, 0)].node.tag.id;
+      selectedId = rows[stepIndex(index, event.key === "ArrowDown" ? 1 : -1, rows.length)].node.tag.id;
     } else if (event.key === "ArrowRight" && selected) {
       event.preventDefault();
       if (selected.children.length > 0 && !expandedSet.has(selected.tag.id)) toggle(selected.tag.id);
@@ -321,7 +319,7 @@
                 {/if}
                 {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
                 <span class="tree-name">{row.node.tag.name}</span>
-                <span class="tree-count muted">{counts?.by_tag.find((c) => c.tag_id === id)?.subtree ?? 0}</span>
+                <span class="tree-count muted">{subtreeCount(counts, id)}</span>
               </li>
             {/each}
           </ul>
@@ -467,9 +465,6 @@
 <style>
   .header {
     margin-bottom: var(--space-3);
-  }
-  .spacer {
-    flex: 1;
   }
   .editor {
     display: grid;

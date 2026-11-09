@@ -8,7 +8,7 @@
   import Suggestions from "./Suggestions.svelte";
   import { api, errorMessage, type Id } from "../lib/api";
   import { focusTracker, moveHighlight, pickIndex } from "../lib/combobox";
-  import { colorVar, flattenTags, type TagOption } from "../lib/tags";
+  import { colorVar, flattenTags, pathsOf, type TagOption } from "../lib/tags";
 
   interface Props {
     /** Guide id for that guide's tags; null for the global tags applied to guides. */
@@ -71,6 +71,7 @@
     untrack(() => void load());
   });
 
+  // The input is in the DOM only while adding; focus it once it is.
   $effect(() => {
     if (adding) input?.focus();
   });
@@ -109,18 +110,14 @@
     if (row) void addPath(row.path);
   }
 
-  /** Opens the input in compact form; Mod+T and the palette use it. */
+  /** Opens the input in compact form; Mod+T and the palette use it. The effect above focuses it. */
   export function startAdding() {
-    adding = true;
-    input?.focus();
+    if (adding) input?.focus();
+    else adding = true;
   }
 
   function remove(id: Id) {
     void onchange(selected.filter((s) => s !== id));
-  }
-
-  function pathOf(id: Id): string {
-    return entries.find((e) => e.id === id)?.path ?? "…";
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -150,12 +147,12 @@
       {@const dot = colorVar(entries.find((e) => e.id === id)?.color)}
       <span class="chip">
         {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
-        {pathOf(id)}
-        <button onclick={() => remove(id)} aria-label="Remove tag {pathOf(id)}">&times;</button>
+        {pathsOf(entries, [id])}
+        <button onclick={() => remove(id)} aria-label="Remove tag {pathsOf(entries, [id])}">&times;</button>
       </span>
     {/each}
     {#if compact && !adding}
-      <button class="ghost" onclick={() => (adding = true)}>+ Add tag</button>
+      <button class="ghost" onclick={startAdding}>+ Add tag</button>
     {:else}
       <input
         type="text"

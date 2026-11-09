@@ -8,6 +8,8 @@ import {
   pruneTree,
   queryFor,
   sameScope,
+  scopeLabel,
+  subtreeCount,
   summaryLine,
 } from "./sidebar";
 
@@ -73,6 +75,25 @@ describe("queryFor", () => {
       stubs_only: false,
       untagged: true,
     });
+  });
+
+  it("ignores chips in the untagged scope", () => {
+    const { query } = queryFor({ kind: "untagged" }, { text: "", tags: ["Blocks/Ore"] }, false, tags);
+    expect(query.tag_ids).toEqual([]);
+    expect(query.untagged).toBe(true);
+  });
+});
+
+describe("scopeLabel and subtreeCount", () => {
+  it("names scopes and reads subtree counts with zero for unknown tags", () => {
+    expect(scopeLabel({ kind: "all" }, tags)).toBe("All entries");
+    expect(scopeLabel({ kind: "untagged" }, tags)).toBe("Untagged");
+    expect(scopeLabel({ kind: "tag", id: "ore" }, tags)).toBe("Blocks/Ore");
+    expect(scopeLabel({ kind: "tag", id: "gone" }, tags)).toBe("Tag");
+    const counts = { total: 3, untagged: 1, trashed: 0, by_tag: [{ tag_id: "ore", direct: 1, subtree: 2 }] };
+    expect(subtreeCount(counts, "ore")).toBe(2);
+    expect(subtreeCount(counts, "blocks")).toBe(0);
+    expect(subtreeCount(null, "ore")).toBe(0);
   });
 });
 

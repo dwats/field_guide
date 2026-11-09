@@ -9,7 +9,6 @@
   import EntryPanel from "../components/EntryPanel.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
-  import NewEntryDialog from "../components/NewEntryDialog.svelte";
   import Preview from "../components/Preview.svelte";
   import TagPicker from "../components/TagPicker.svelte";
   import {
@@ -23,7 +22,7 @@
     type Rendered,
   } from "../lib/api";
   import { register } from "../lib/actions";
-  import { displayKeys } from "../lib/keys";
+  import { keysFor } from "../lib/keys";
   import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
 
@@ -46,7 +45,6 @@
   /** The scrolling content column, for Contents jumps. */
   let content = $state<HTMLElement | null>(null);
 
-  let creatingEntry = $state(false);
   let panel = $state<ReturnType<typeof EntryPanel> | null>(null);
   let tagPicker = $state<ReturnType<typeof TagPicker> | null>(null);
   let renaming = $state(false);
@@ -69,7 +67,6 @@
   // The keyboard map and the palette reach this page through these.
   $effect(() => register("toggle-mode", () => void setMode(mode === "read" ? "edit" : "read")));
   $effect(() => register("rename", openRename));
-  $effect(() => register("new", () => (creatingEntry = true)));
   $effect(() => register("focus-relation", () => void panel?.focusRelation()));
   $effect(() => register("add-tag", () => tagPicker?.startAdding()));
   $effect(() => register("toggle-panel", () => panel?.toggle()));
@@ -441,7 +438,7 @@
           </div>
         {:else if rendered}
           {#if entry.body_md.trim() === ""}
-            <p class="muted">No body yet. Press {displayKeys("Mod+E")} or choose Edit.</p>
+            <p class="muted">No body yet. Press {keysFor("toggle-mode")} or choose Edit.</p>
           {:else}
             <Preview
               html={rendered.html}
@@ -451,8 +448,6 @@
             />
           {/if}
         {/if}
-
-        <NewEntryDialog guideId={guide.id} open={creatingEntry} onclose={() => (creatingEntry = false)} />
 
         <Modal open={renaming} title="Rename entry" onclose={() => (renaming = false)}>
           <form
@@ -558,29 +553,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .spacer {
-    flex: 1;
-  }
   .meta {
     margin-bottom: 6px;
   }
   .aliases {
     margin: 0 0 6px;
     font-size: 0.95em;
-  }
-  .segmented button {
-    border-radius: 0;
-  }
-  .segmented button:first-child {
-    border-radius: 4px 0 0 4px;
-  }
-  .segmented button:last-child {
-    border-radius: 0 4px 4px 0;
-    margin-left: -1px;
-  }
-  .segmented button.on {
-    background: var(--chip-bg);
-    font-weight: 600;
   }
   /* The slot exists in both modes so the More button never moves. */
   .save-slot {

@@ -3,7 +3,16 @@
 // undoable ... for the rest of the session"), what the current view shows, and the sidebar's
 // scope and list, which the guide page shares.
 
-import { api, type Entry, type EntrySummary, type Guide, type RenameRecord, type Startup, type UiPrefs } from "./api";
+import {
+  api,
+  errorMessage,
+  type Entry,
+  type EntrySummary,
+  type Guide,
+  type RenameRecord,
+  type Startup,
+  type UiPrefs,
+} from "./api";
 import type { Scope } from "./sidebar";
 
 export type NoticeKind = "info" | "warning" | "error";
@@ -109,7 +118,26 @@ export function touch(): void {
   session.revision += 1;
 }
 
-/** Saves preferences through the shell and keeps the session copy in step. */
-export async function savePrefs(update: Partial<UiPrefs>): Promise<void> {
-  session.prefs = { ...DEFAULT_PREFS, ...(await api.setPrefs({ ...session.prefs, ...update })) };
+let saving: Promise<void> = Promise.resolve();
+let pendingSaves = 0;
+
+/**
+ * Applies a preference at once and saves it through the shell. Saves go out one after another
+ * with the latest preferences, so two quick changes cannot undo each other; the shell's answer
+ * replaces the session copy only once nothing newer is on its way.
+ */
+export function savePrefs(update: Partial<UiPrefs>): Promise<void> {
+  session.prefs = { ...session.prefs, ...update };
+  pendingSaves += 1;
+  saving = saving
+    .then(async () => {
+      const saved = await api.setPrefs({ ...session.prefs });
+      pendingSaves -= 1;
+      if (pendingSaves === 0) session.prefs = { ...DEFAULT_PREFS, ...saved };
+    })
+    .catch((e) => {
+      pendingSaves = Math.max(0, pendingSaves - 1);
+      notify(`Settings could not be saved: ${errorMessage(e)}`, { kind: "error" });
+    });
+  return saving;
 }

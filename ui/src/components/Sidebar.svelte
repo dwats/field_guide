@@ -25,6 +25,7 @@
   } from "../lib/sidebar";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
   import SidebarFrame from "./SidebarFrame.svelte";
+  import TreeRow from "./TreeRow.svelte";
 
   interface Props {
     route: Route;
@@ -40,11 +41,11 @@
   let searchInput = $state<HTMLInputElement | null>(null);
   /** Only the newest list request may land. */
   let listRequest = 0;
-  let listTimer: ReturnType<typeof setTimeout> | undefined;
   /** The entry the scope was last moved for, so a reload does not move it again. */
   let revealedId: string | null = null;
 
-  const guide = $derived(session.current.guide);
+  /** The id, not the object: a reload of the same guide must not refetch the sidebar. */
+  const guideId = $derived(session.current.guide?.id ?? null);
   const parsed = $derived(parseFilter(session.sidebar.search));
   const shownTree = $derived(pruneTree(tree, parsed.text));
   /** While searching, every path to a match is open regardless of the remembered state. */
@@ -53,10 +54,11 @@
   const filtering = $derived(
     parsed.text !== "" || parsed.tags.length > 0 || session.sidebar.stubsOnly,
   );
+  const chipsIgnored = $derived(session.sidebar.scope.kind === "untagged" && parsed.tags.length > 0);
 
   // A different guide gets fresh state.
   $effect(() => {
-    const id = guide?.id ?? null;
+    const id = guideId;
     if (session.sidebar.guideId !== id) {
       session.sidebar = freshSidebar(id);
       revealedId = null;
@@ -65,7 +67,7 @@
 
   // The tree and the counts: on guide change and after any data change.
   $effect(() => {
-    const id = guide?.id;
+    const id = guideId;
     void session.revision;
     if (!id) return;
     untrack(() => void loadTree(id));
@@ -73,22 +75,22 @@
 
   // The list: on scope, search, stubs, guide, and data change, lightly debounced for typing.
   $effect(() => {
-    const id = guide?.id;
+    const id = guideId;
     const scope = session.sidebar.scope;
     const p = parsed;
     const stubs = session.sidebar.stubsOnly;
     const options = tags;
     void session.revision;
     if (!id || session.sidebar.guideId !== id) return;
-    clearTimeout(listTimer);
-    listTimer = setTimeout(() => void loadEntries(id, scope, p, stubs, options), 60);
+    const timer = setTimeout(() => void loadEntries(id, scope, p, stubs, options), 60);
+    return () => clearTimeout(timer);
   });
 
   // An entry opened from anywhere but the list moves the scope to where the entry sits.
   $effect(() => {
     const entry = session.current.entry;
     const nodes = tree;
-    if (!entry || entry.guide_id !== guide?.id) return;
+    if (!entry || entry.guide_id !== guideId) return;
     untrack(() => reveal(entry, nodes));
   });
 
@@ -132,13 +134,16 @@
     if (nodes.length === 0 && entry.tag_ids.length > 0) return;
     revealedId = entry.id;
     const s = session.sidebar;
-    if (s.pickedId === entry.id) return;
+    // Opened from the list: the scope stays. The mark is spent either way.
+    const picked = s.pickedId === entry.id;
+    s.pickedId = null;
+    if (picked) return;
     if (!inScope(s.scope, entry.tag_ids, nodes)) {
       s.scope = entry.tag_ids.length > 0 ? tagScope(entry.tag_ids[0]) : { kind: "all" };
     }
-    const open = new Set(s.expanded);
-    for (const t of entry.tag_ids) for (const a of ancestorsOf(nodes, t)) open.add(a);
-    s.expanded = [...open];
+    if (entry.tag_ids.length > 0) {
+      s.expanded = [...new Set([...s.expanded, ...ancestorsOf(nodes, entry.tag_ids[0])])];
+    }
   }
 
   function select(scope: Scope) {
@@ -179,55 +184,30 @@
   }
 </script>
 
-{#snippet fixedRow(scope: Scope, name: string, count: number)}
-  <li>
-    <div class="tree-line" class:selected={sameScope(session.sidebar.scope, scope)}>
-      <span class="tree-chev"></span>
-      <button class="tree-name" aria-pressed={sameScope(session.sidebar.scope, scope)} onclick={() => select(scope)}>
-        {name}
-      </button>
-      <span class="tree-count muted">{count}</span>
-    </div>
-  </li>
-{/snippet}
-
 {#snippet branch(nodes: TagNode[], depth: number)}
   {#each nodes as node (node.tag.id)}
     {@const id = node.tag.id}
     {@const open = isOpen(id)}
-    {@const selected = sameScope(session.sidebar.scope, tagScope(id))}
-    {@const dot = colorVar(node.tag.color)}
     <li>
-      <div class="tree-line" class:selected style:padding-left="{depth * 14}px">
-        {#if node.children.length > 0}
-          <button
-            class="tree-chev"
-            aria-label={open ? `Collapse ${node.tag.name}` : `Expand ${node.tag.name}`}
-            aria-expanded={open}
-            onclick={() => toggle(id)}
-          >
-            {open ? "▾" : "▸"}
-          </button>
-        {:else}
-          <span class="tree-chev"></span>
-        {/if}
-        {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
-        <button class="tree-name" aria-pressed={selected} onclick={() => select(tagScope(id))}>
-          {node.tag.name}
-        </button>
-        {#if session.current.entry?.tag_ids.includes(id)}
-          <span class="marker" title="The open entry has this tag"></span>
-        {/if}
-        <span class="tree-count muted">{subtreeCount(counts, id)}</span>
-      </div>
+      <TreeRow
+        name={node.tag.name}
+        count={subtreeCount(counts, id)}
+        {depth}
+        selected={sameScope(session.sidebar.scope, tagScope(id))}
+        open={node.children.length > 0 ? open : undefined}
+        ontoggle={() => toggle(id)}
+        onpick={() => select(tagScope(id))}
+        dot={colorVar(node.tag.color)}
+        marker={session.current.entry?.tag_ids.includes(id) ? "The open entry has this tag" : null}
+      />
       {#if open && node.children.length > 0}
-        <ul>{@render branch(node.children, depth + 1)}</ul>
+        <ul class="side-list">{@render branch(node.children, depth + 1)}</ul>
       {/if}
     </li>
   {/each}
 {/snippet}
 
-{#if guide}
+{#if guideId}
   <SidebarFrame label="Guide navigation">
     {#snippet head()}
       <input
@@ -243,32 +223,46 @@
       <input type="checkbox" bind:checked={session.sidebar.stubsOnly} /> Stubs only
     </label>
     {#if unknownTags.length > 0}
-      <p class="side-note muted">No tag named {unknownTags.map((t) => `"${t}"`).join(", ")}.</p>
+      <p class="side-hint muted">No tag named {unknownTags.map((t) => `"${t}"`).join(", ")}.</p>
     {/if}
-    {#if error}<p class="side-note error">{error}</p>{/if}
+    {#if chipsIgnored}
+      <p class="side-hint muted">Tag chips do not apply to Untagged.</p>
+    {/if}
+    {#if error}<p class="side-hint error">{error}</p>{/if}
 
     <div class="regions" bind:this={regions}>
       <section class="region tree" style:flex-basis="{split}%" aria-label="Tags">
         <h2 class="region-head">Tags</h2>
-        <ul>
-          {@render fixedRow({ kind: "all" }, "All entries", counts?.total ?? 0)}
+        <ul class="side-list">
+          <li>
+            <TreeRow
+              name="All entries"
+              count={counts?.total ?? 0}
+              selected={sameScope(session.sidebar.scope, { kind: "all" })}
+              onpick={() => select({ kind: "all" })}
+            />
+          </li>
           {@render branch(shownTree, 0)}
           {#if tree.length === 0}
-            <li><p class="side-note muted">No tags yet.</p></li>
+            <li><p class="side-hint muted">No tags yet.</p></li>
           {:else if parsed.text && shownTree.length === 0}
-            <li><p class="side-note muted">No tags match.</p></li>
+            <li><p class="side-hint muted">No tags match.</p></li>
           {/if}
-          {@render fixedRow({ kind: "untagged" }, "Untagged", counts?.untagged ?? 0)}
           <li>
-            <a
-              class="tree-line"
-              href={routeHash({ view: "trash", guideId: guide.id })}
-              aria-current={route.view === "trash" ? "page" : undefined}
-            >
-              <span class="tree-chev"></span>
-              <span class="tree-name">Trash</span>
-              <span class="tree-count muted">{counts?.trashed ?? 0}</span>
-            </a>
+            <TreeRow
+              name="Untagged"
+              count={counts?.untagged ?? 0}
+              selected={sameScope(session.sidebar.scope, { kind: "untagged" })}
+              onpick={() => select({ kind: "untagged" })}
+            />
+          </li>
+          <li>
+            <TreeRow
+              name="Trash"
+              count={counts?.trashed ?? 0}
+              selected={route.view === "trash"}
+              href={routeHash({ view: "trash", guideId })}
+            />
           </li>
         </ul>
       </section>
@@ -286,20 +280,18 @@
           <span class="tree-count muted">{session.sidebar.entries.length}</span>
         </h2>
         {#if session.sidebar.entries.length === 0}
-          <p class="side-note muted">{filtering ? "No entries match." : "No entries here yet."}</p>
+          <p class="side-hint muted">{filtering ? "No entries match." : "No entries here yet."}</p>
         {:else}
-          <ul>
+          <ul class="side-list">
             {#each session.sidebar.entries as e (e.id)}
               <li>
-                <a
-                  class="tree-line"
+                <TreeRow
+                  name={e.title}
+                  stub={e.is_stub}
+                  selected={session.current.entry?.id === e.id}
                   href={routeHash({ view: "entry", entryId: e.id })}
-                  aria-current={session.current.entry?.id === e.id ? "page" : undefined}
-                  onclick={() => (session.sidebar.pickedId = e.id)}
-                >
-                  <span class="tree-name">{e.title}</span>
-                  {#if e.is_stub}<span class="chip">stub</span>{/if}
-                </a>
+                  onpick={() => (session.sidebar.pickedId = e.id)}
+                />
               </li>
             {/each}
           </ul>
@@ -307,7 +299,7 @@
       </section>
     </div>
     <nav class="foot" aria-label="Guide tools">
-      <a href={routeHash({ view: "tags", guideId: guide.id })} aria-current={route.view === "tags" ? "page" : undefined}>
+      <a href={routeHash({ view: "tags", guideId })} aria-current={route.view === "tags" ? "page" : undefined}>
         Tag editor
       </a>
     </nav>
@@ -325,12 +317,6 @@
     display: flex;
     flex-direction: column;
   }
-  .region {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: auto;
-  }
   .region.tree {
     flex: 0 0 auto;
     max-height: 80%;
@@ -344,18 +330,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .marker {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
   }
   .splitter {
     flex: none;

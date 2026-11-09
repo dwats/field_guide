@@ -73,6 +73,12 @@ export function shortcutFor(action: Action): string | null {
   return SHORTCUTS.find((s) => s.action === action)?.keys ?? null;
 }
 
+/** The action's chord as shown to the user, or null when it has none. */
+export function keysFor(action: Action, mac = IS_MAC): string | null {
+  const keys = shortcutFor(action);
+  return keys ? displayKeys(keys, mac) : null;
+}
+
 /** `Mod+K` shown as `Ctrl+K`, or `⌘K` on a Mac. */
 export function displayKeys(keys: string, mac = IS_MAC): string {
   const names: Record<string, string> = { ArrowLeft: "←", ArrowRight: "→" };

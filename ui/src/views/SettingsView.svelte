@@ -9,6 +9,7 @@
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
   import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
+  import { sectionElementId } from "../lib/settingsSections";
 
   let backups = $state<BackupInfo[]>([]);
   let busy = $state(false);
@@ -120,7 +121,7 @@
 <div class="page">
   <h1>Settings</h1>
 
-  <section id="settings-appearance">
+  <section id={sectionElementId("appearance")}>
     <h2>Appearance</h2>
     <p class="muted">Each choice shows what it changes. Nothing here touches your data.</p>
     <div class="group" role="radiogroup" aria-label="Density">
@@ -170,7 +171,7 @@
   </section>
 
   {#if startup}
-    <section id="settings-data">
+    <section id={sectionElementId("data")}>
       <h2>Data</h2>
       <table class="facts">
         <tbody>
@@ -198,7 +199,7 @@
     </section>
   {/if}
 
-  <section id="settings-backups">
+  <section id={sectionElementId("backups")}>
     <div class="row">
       <h2>Backups</h2>
       <span class="spacer"></span>
@@ -239,7 +240,7 @@
     oncancel={() => (pendingRestore = null)}
   />
 
-  <section id="settings-updates">
+  <section id={sectionElementId("updates")}>
     <h2>Updates</h2>
     <p class="muted">
       Field Guide never checks for updates on its own. The button below arrives with the release
@@ -252,9 +253,6 @@
 <style>
   section {
     margin-bottom: 28px;
-  }
-  .spacer {
-    flex: 1;
   }
   .group {
     margin-top: var(--space-4);

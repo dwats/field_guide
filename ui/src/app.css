@@ -260,10 +260,48 @@ textarea {
   background: var(--surface);
 }
 
-.side-note {
+.side-hint {
   margin: 0;
   padding: 4px var(--space-3);
   font-size: var(--small);
+}
+
+.side-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A sidebar region: scrolls on its own under a sticky heading. */
+.region {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* A pair of buttons that act as one control, such as Read and Edit. */
+.segmented button {
+  border-radius: 0;
+}
+
+.segmented button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.segmented button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-left: -1px;
+}
+
+.segmented button.on {
+  background: var(--chip-bg);
+  font-weight: 600;
 }
 
 .tree-line {

@@ -15,6 +15,7 @@
   } from "../lib/api";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Modal from "./Modal.svelte";
+  import { stepIndex } from "../lib/combobox";
   import { verbSlot } from "../lib/format";
   import { bodySegments, otherEnd } from "../lib/relationLines";
   import { navigate, routeHash } from "../lib/router";
@@ -89,12 +90,9 @@
     // Keys on a link inside a line are the link's own; the list reacts only to its own focus.
     if (event.target !== event.currentTarget || ordered.length === 0) return;
     const index = ordered.findIndex((v) => keyOf(v) === selected);
-    if (event.key === "ArrowDown") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      selected = keyOf(ordered[Math.min(index + 1, ordered.length - 1)]);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      selected = keyOf(ordered[Math.max(index - 1, 0)]);
+      selected = keyOf(ordered[stepIndex(index, event.key === "ArrowDown" ? 1 : -1, ordered.length)]);
     } else if (event.key === "Enter" && selectedView) {
       const target = otherEnd(selectedView, entryId);
       if (target) navigate({ view: "entry", entryId: target });

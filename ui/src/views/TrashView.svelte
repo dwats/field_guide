@@ -5,9 +5,10 @@
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import { api, errorMessage, type EntrySummary, type Guide } from "../lib/api";
+  import { stepIndex } from "../lib/combobox";
   import { when } from "../lib/format";
   import { notify, setCurrent, touch } from "../lib/session.svelte";
-  import { flattenTags, type TagOption } from "../lib/tags";
+  import { flattenTags, pathsOf, type TagOption } from "../lib/tags";
 
   interface Props {
     guideId: string;
@@ -40,10 +41,6 @@
     } catch (e) {
       error = errorMessage(e);
     }
-  }
-
-  function pathsOf(entry: EntrySummary): string {
-    return entry.tag_ids.map((id) => tags.find((t) => t.id === id)?.path ?? "…").join(", ");
   }
 
   async function restore() {
@@ -97,12 +94,9 @@
   function onListKey(event: KeyboardEvent) {
     if (event.target !== event.currentTarget || entries.length === 0) return;
     const index = entries.findIndex((e) => e.id === selected);
-    if (event.key === "ArrowDown") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      selected = entries[Math.min(index + 1, entries.length - 1)].id;
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      selected = entries[Math.max(index - 1, 0)].id;
+      selected = entries[stepIndex(index, event.key === "ArrowDown" ? 1 : -1, entries.length)].id;
     } else if (event.key === "Escape" && selected) {
       event.preventDefault();
       selected = null;
@@ -149,7 +143,7 @@
             >
               <td>{entry.title} {#if entry.is_stub}<span class="chip">stub</span>{/if}</td>
               <td class="muted">{entry.deleted_at ? when(entry.deleted_at) : ""}</td>
-              <td class="muted">{pathsOf(entry)}</td>
+              <td class="muted">{pathsOf(tags, entry.tag_ids)}</td>
             </tr>
           {/each}
         </tbody>
@@ -190,9 +184,6 @@
 <style>
   .header {
     margin-bottom: 4px;
-  }
-  .spacer {
-    flex: 1;
   }
   .select-list {
     border-radius: 4px;

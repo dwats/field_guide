@@ -5,13 +5,15 @@
   import { onMount } from "svelte";
 
   import GuidesSidebar from "./components/GuidesSidebar.svelte";
+  import NewEntryDialog from "./components/NewEntryDialog.svelte";
+  import NewGuideDialog from "./components/NewGuideDialog.svelte";
   import Palette from "./components/Palette.svelte";
   import SettingsSidebar from "./components/SettingsSidebar.svelte";
   import Sidebar from "./components/Sidebar.svelte";
-  import { perform } from "./lib/actions";
+  import { perform, register } from "./lib/actions";
   import { api, errorMessage } from "./lib/api";
   import { fatalText } from "./lib/fatal";
-  import { actionFor, displayKeys, isEditable, type Action } from "./lib/keys";
+  import { actionFor, isEditable, keysFor, type Action } from "./lib/keys";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
   import { DEFAULT_PREFS, dismiss, notify, savePrefs, session } from "./lib/session.svelte";
   import EntryView from "./views/EntryView.svelte";
@@ -24,6 +26,8 @@
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
   let paletteOpen = $state(false);
+  let newEntryOpen = $state(false);
+  let newGuideOpen = $state(false);
 
   /** The notice slot shows one notice at a time; the rest wait behind it. */
   const current = $derived(session.notices[0]);
@@ -43,6 +47,15 @@
   $effect(() => {
     document.documentElement.dataset.density = session.prefs.density;
   });
+
+  // The New dialogs live here, so Mod+N and Mod+Shift+N work on every page.
+  $effect(() =>
+    register("new", () => {
+      if (inGuide && session.current.guide) newEntryOpen = true;
+      else newGuideOpen = true;
+    }),
+  );
+  $effect(() => register("new-guide", () => (newGuideOpen = true)));
 
   interface Crumb {
     text: string;
@@ -82,8 +95,9 @@
     if (session.startup?.fatal) return;
     const action = actionFor(event);
     if (!action) return;
-    const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
-    if (plain && isEditable(event.target)) return;
+    // Inside a field, plain keys (F2) and Alt+arrows (the editor's word motions) are the field's.
+    const editorsOwn = (!event.ctrlKey && !event.metaKey) || action === "back" || action === "forward";
+    if (editorsOwn && isEditable(event.target)) return;
     event.preventDefault();
     act(action);
   }
@@ -219,7 +233,7 @@
     </nav>
     <nav class="tools" aria-label="Tools">
       <button class="link search" onclick={() => (paletteOpen = true)}>
-        Search <kbd>{displayKeys("Mod+K")}</kbd>
+        Search <kbd>{keysFor("palette")}</kbd>
       </button>
       <a href={routeHash({ view: "settings" })} class:active={route.view === "settings"}>Settings</a>
     </nav>
@@ -263,6 +277,10 @@
     </main>
   </div>
   <Palette open={paletteOpen} {route} onclose={() => (paletteOpen = false)} onaction={act} />
+  {#if session.current.guide}
+    <NewEntryDialog guideId={session.current.guide.id} open={newEntryOpen} onclose={() => (newEntryOpen = false)} />
+  {/if}
+  <NewGuideDialog open={newGuideOpen} onclose={() => (newGuideOpen = false)} />
 {/if}
 
 <style>

@@ -1,26 +1,20 @@
 <script lang="ts">
   // Top-level browse: every guide in the vault as cards or a table. The filters live in the
-  // sidebar (`session.guidesFilter`); the toolbar holds New guide and the view toggle.
+  // sidebar (`session.guidesFilter`); the toolbar holds New guide and the view toggle. The New
+  // guide dialog is the shell's, reached through the "new-guide" action.
   import { untrack } from "svelte";
 
-  import Modal from "../components/Modal.svelte";
   import { api, errorMessage, type Guide, type GuideView } from "../lib/api";
-  import { register } from "../lib/actions";
-  import { displayKeys } from "../lib/keys";
-  import { navigate, routeHash } from "../lib/router";
-  import { savePrefs, session, setCurrent, touch } from "../lib/session.svelte";
+  import { perform } from "../lib/actions";
+  import { keysFor } from "../lib/keys";
+  import { routeHash } from "../lib/router";
+  import { savePrefs, session, setCurrent } from "../lib/session.svelte";
   import { when } from "../lib/format";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
 
   let guides = $state<Guide[]>([]);
-  let allGuides = $state<Guide[]>([]);
   let tags = $state<TagOption[]>([]);
   let error = $state("");
-
-  let creating = $state(false);
-  let newName = $state("");
-  let newDescription = $state("");
-  let copyFrom = $state("");
 
   const filtering = $derived(
     session.guidesFilter.name.trim() !== "" || session.guidesFilter.tagIds.length > 0,
@@ -40,14 +34,9 @@
     });
   });
 
-  $effect(() => register("new", openNew));
-  $effect(() => register("new-guide", openNew));
-
   async function load(name: string, tagIds: string[]) {
     try {
       guides = await api.listGuides({ name_contains: name || null, tag_ids: tagIds });
-      if (!name && tagIds.length === 0) allGuides = guides;
-      else allGuides = await api.listGuides();
       error = "";
     } catch (e) {
       error = errorMessage(e);
@@ -62,32 +51,12 @@
     }
   }
 
-  function openNew() {
-    newName = "";
-    newDescription = "";
-    copyFrom = "";
-    creating = true;
-  }
-
   async function setView(view: GuideView) {
     await savePrefs({ guide_view: view });
   }
 
   function clearFilter() {
     session.guidesFilter = { name: "", tagIds: [] };
-  }
-
-  async function create() {
-    const name = newName.trim();
-    if (!name) return;
-    try {
-      const guide = await api.createGuide(name, newDescription.trim(), copyFrom || null);
-      creating = false;
-      touch();
-      navigate({ view: "guide", guideId: guide.id });
-    } catch (e) {
-      error = errorMessage(e);
-    }
   }
 
   function tagPaths(guide: Guide): TagOption[] {
@@ -118,44 +87,12 @@
         Table
       </button>
     </div>
-    <button class="primary" onclick={openNew} title={displayKeys("Mod+N")}>New guide</button>
+    <button class="primary" onclick={() => perform("new-guide")} title={keysFor("new-guide") ?? undefined}>
+      New guide
+    </button>
   </div>
 
-  <Modal open={creating} title="New guide" onclose={() => (creating = false)}>
-    <form
-      class="new-guide"
-      onsubmit={(e) => {
-        e.preventDefault();
-        void create();
-      }}
-    >
-      <label>
-        Name
-        <!-- svelte-ignore a11y_autofocus -->
-        <input type="text" bind:value={newName} required autofocus />
-      </label>
-      <label>
-        Description
-        <input type="text" bind:value={newDescription} />
-      </label>
-      <label>
-        Copy verbs and qualifiers from
-        <select bind:value={copyFrom}>
-          <option value="">None</option>
-          {#each allGuides as g (g.id)}
-            <option value={g.id}>{g.name}</option>
-          {/each}
-        </select>
-      </label>
-      {#if error}<p class="error">{error}</p>{/if}
-    </form>
-    {#snippet actions()}
-      <button onclick={() => (creating = false)}>Cancel</button>
-      <button class="primary" onclick={create} disabled={!newName.trim()}>Create</button>
-    {/snippet}
-  </Modal>
-
-  {#if error && !creating}<p class="error">{error}</p>{/if}
+  {#if error}<p class="error">{error}</p>{/if}
 
   {#if guides.length === 0}
     <div class="empty">
@@ -164,7 +101,7 @@
         <button onclick={clearFilter}>Clear filter</button>
       {:else}
         <p class="muted">No guides yet.</p>
-        <button class="primary" onclick={openNew}>New guide</button>
+        <button class="primary" onclick={() => perform("new-guide")}>New guide</button>
       {/if}
     </div>
   {:else if session.prefs.guide_view === "cards"}
@@ -199,31 +136,6 @@
 <style>
   .header {
     margin-bottom: var(--space-4);
-  }
-  .spacer {
-    flex: 1;
-  }
-  .new-guide {
-    display: grid;
-    gap: 8px;
-  }
-  .new-guide label {
-    display: grid;
-    gap: 2px;
-  }
-  .segmented button {
-    border-radius: 0;
-  }
-  .segmented button:first-child {
-    border-radius: 4px 0 0 4px;
-  }
-  .segmented button:last-child {
-    border-radius: 0 4px 4px 0;
-    margin-left: -1px;
-  }
-  .segmented button.on {
-    background: var(--chip-bg);
-    font-weight: 600;
   }
   .empty {
     display: grid;

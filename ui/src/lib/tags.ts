@@ -39,6 +39,11 @@ export function colorVar(color: string | null | undefined): string | null {
   return color && (TAG_COLORS as readonly string[]).includes(color) ? `var(--tag-${color})` : null;
 }
 
+/** Display paths for a list of tag ids, comma-separated; an unknown id shows as an ellipsis. */
+export function pathsOf(tags: TagOption[], ids: Id[]): string {
+  return ids.map((id) => tags.find((t) => t.id === id)?.path ?? "…").join(", ");
+}
+
 /** Finds a tag by path, case-insensitively, the way `core` matches names. */
 export function findByPath(entries: TagOption[], path: string): TagOption | undefined {
   const wanted = path.trim().toLowerCase();

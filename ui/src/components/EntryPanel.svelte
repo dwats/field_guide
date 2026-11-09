@@ -37,8 +37,11 @@
   /** Opened by hand during an edit; cleared when the edit ends. */
   let editOverride = $state(false);
   let builder = $state<ReturnType<typeof RelationBuilder> | null>(null);
+  let panelEl = $state<HTMLElement | null>(null);
   const uid = $props.id();
 
+  /** The id, not the object: a save replaces `entry` without changing which entry is shown. */
+  const entryId = $derived(entry.id);
   const headings = $derived(outline(rendered?.headings ?? []));
   const contentsAvailable = $derived(!session.prefs.hide_contents && headings.length > 0);
   const tab = $derived<Tab>(
@@ -58,13 +61,14 @@
 
   // A new entry starts from the arrival rule with its folds closed.
   $effect(() => {
-    void entry.id;
+    void entryId;
     chosen = null;
     showMentions = false;
     showUnresolved = false;
   });
 
   function expand() {
+    // savePrefs applies the change at once; the round trip follows.
     if (session.prefs.panel_collapsed) void savePrefs({ panel_collapsed: false });
     else editOverride = true;
   }
@@ -100,7 +104,8 @@
   }
 
   function resizeWidth(event: PointerEvent) {
-    const start = session.prefs.panel_width ?? 320;
+    // The rendered width is the start, whichever preset or saved width produced it.
+    const start = panelEl?.offsetWidth ?? 320;
     let next = start;
     startDrag(
       event,
@@ -113,7 +118,7 @@
   }
 </script>
 
-<aside class="panel" class:open style:--panel-col={width} aria-label="Entry panel">
+<aside class="panel" class:open style:--panel-col={width} aria-label="Entry panel" bind:this={panelEl}>
   {#if !open}
     <button class="link rail-button" aria-label="Show panel" title="Show panel" onclick={expand}>
       &lsaquo;

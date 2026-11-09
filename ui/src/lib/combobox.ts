@@ -31,3 +31,13 @@ export function focusTracker(set: (focused: boolean) => void, delayMs = 150) {
     },
   };
 }
+
+/**
+ * The index after an arrow key in a list that stops at both ends. From no selection (-1), Down
+ * takes the first row and Up the last.
+ */
+export function stepIndex(current: number, delta: number, length: number): number {
+  if (length === 0) return -1;
+  if (current < 0) return delta > 0 ? 0 : length - 1;
+  return Math.min(length - 1, Math.max(0, current + delta));
+}

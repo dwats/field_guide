@@ -1,22 +1,22 @@
 <script lang="ts">
   // One guide: the title row with New entry and More, the fixed filter summary line, and the
   // entry table. The list is the sidebar's (`session.sidebar`), so both show the same entries.
+  // The New entry dialog is the shell's, reached through the "new" action.
   import { untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
-  import NewEntryDialog from "../components/NewEntryDialog.svelte";
   import TagPicker from "../components/TagPicker.svelte";
   import { api, errorMessage, type Guide } from "../lib/api";
-  import { register } from "../lib/actions";
-  import { displayKeys } from "../lib/keys";
+  import { perform } from "../lib/actions";
+  import { keysFor } from "../lib/keys";
   import { parseFilter } from "../lib/filter";
   import { when } from "../lib/format";
   import { navigate, routeHash } from "../lib/router";
   import { freshSidebar, notify, session, setCurrent } from "../lib/session.svelte";
   import { scopeLabel, summaryLine } from "../lib/sidebar";
-  import { flattenTags, type TagOption } from "../lib/tags";
+  import { flattenTags, pathsOf, type TagOption } from "../lib/tags";
 
   interface Props {
     guideId: string;
@@ -30,19 +30,25 @@
   let editing = $state(false);
   let nameDraft = $state("");
   let descriptionDraft = $state("");
-  let creatingEntry = $state(false);
   let confirmingDelete = $state(false);
 
   /** The sidebar's state once it belongs to this guide. */
   const sidebar = $derived(session.sidebar.guideId === guideId ? session.sidebar : null);
   const parsed = $derived(parseFilter(sidebar?.search ?? ""));
+  /** Chips do not apply to the Untagged scope, so the summary leaves them out there. */
+  const shownParsed = $derived(
+    sidebar?.scope.kind === "untagged" ? { ...parsed, tags: [] } : parsed,
+  );
   const filtering = $derived(
     sidebar !== null &&
-      (parsed.text !== "" || parsed.tags.length > 0 || sidebar.stubsOnly || sidebar.scope.kind !== "all"),
+      (shownParsed.text !== "" ||
+        shownParsed.tags.length > 0 ||
+        sidebar.stubsOnly ||
+        sidebar.scope.kind !== "all"),
   );
   const summary = $derived(
     sidebar
-      ? summaryLine(scopeLabel(sidebar.scope, tags), parsed, sidebar.stubsOnly, sidebar.entries.length)
+      ? summaryLine(scopeLabel(sidebar.scope, tags), shownParsed, sidebar.stubsOnly, sidebar.entries.length)
       : "",
   );
 
@@ -51,8 +57,6 @@
     void session.revision;
     untrack(() => void load());
   });
-
-  $effect(() => register("new", () => (creatingEntry = true)));
 
   async function load() {
     try {
@@ -63,10 +67,6 @@
     } catch (e) {
       error = errorMessage(e);
     }
-  }
-
-  function pathsOf(ids: string[]): string {
-    return ids.map((id) => tags.find((t) => t.id === id)?.path ?? "…").join(", ");
   }
 
   /** Back to every entry: scope, text, chips, and the stubs toggle. The list stays until it reloads. */
@@ -130,7 +130,7 @@
     <div class="row header">
       <h1>{guide.name}</h1>
       <span class="spacer"></span>
-      <button class="primary" title={displayKeys("Mod+N")} onclick={() => (creatingEntry = true)}>
+      <button class="primary" title={keysFor("new") ?? undefined} onclick={() => perform("new")}>
         New entry
       </button>
       <Menu>
@@ -169,7 +169,7 @@
 
     {#if !sidebar || sidebar.entries.length === 0}
       <p class="muted">
-        {#if filtering}No entries match this filter.{:else}No entries yet. Press {displayKeys("Mod+N")} or choose New entry.{/if}
+        {#if filtering}No entries match this filter.{:else}No entries yet. Press {keysFor("new")} or choose New entry.{/if}
       </p>
     {:else}
       <table>
@@ -181,15 +181,13 @@
                 <a href={routeHash({ view: "entry", entryId: entry.id })}>{entry.title}</a>
                 {#if entry.is_stub}<span class="chip">stub</span>{/if}
               </td>
-              <td class="muted">{pathsOf(entry.tag_ids)}</td>
+              <td class="muted">{pathsOf(tags, entry.tag_ids)}</td>
               <td class="muted">{when(entry.updated_at)}</td>
             </tr>
           {/each}
         </tbody>
       </table>
     {/if}
-
-    <NewEntryDialog {guideId} open={creatingEntry} onclose={() => (creatingEntry = false)} />
 
     <Modal open={editing} title="Edit guide" onclose={() => (editing = false)}>
       <form
@@ -237,9 +235,6 @@
 <style>
   .header {
     margin-bottom: 4px;
-  }
-  .spacer {
-    flex: 1;
   }
   /* Fixed height: the line is present whether or not a filter is in effect. */
   .summary {

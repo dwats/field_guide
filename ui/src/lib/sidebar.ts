@@ -85,7 +85,9 @@ export function queryFor(
   tags: TagOption[],
 ): { query: EntryQuery; unknownTags: string[] } {
   const resolved = parsed.tags.map((path) => ({ path, option: findByPath(tags, path) }));
-  const tag_ids = resolved.flatMap((r) => (r.option ? [r.option.id] : []));
+  // An untagged entry carries no tag, so chips cannot narrow that scope; they are ignored there.
+  const tag_ids =
+    scope.kind === "untagged" ? [] : resolved.flatMap((r) => (r.option ? [r.option.id] : []));
   if (scope.kind === "tag") tag_ids.unshift(scope.id);
   return {
     query: {

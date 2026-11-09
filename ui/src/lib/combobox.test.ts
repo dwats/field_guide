@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { moveHighlight, pickIndex } from "./combobox";
+import { moveHighlight, pickIndex, stepIndex } from "./combobox";
 
 describe("moveHighlight", () => {
   it("wraps at both ends and tolerates an empty list", () => {
@@ -18,5 +18,16 @@ describe("pickIndex", () => {
     expect(pickIndex(-1, 9, 4)).toBe(3);
     expect(pickIndex(-1, -2, 4)).toBe(0);
     expect(pickIndex(0, 0, 0)).toBeNull();
+  });
+});
+
+describe("stepIndex", () => {
+  it("stops at both ends and enters from either side", () => {
+    expect(stepIndex(0, -1, 3)).toBe(0);
+    expect(stepIndex(2, 1, 3)).toBe(2);
+    expect(stepIndex(1, 1, 3)).toBe(2);
+    expect(stepIndex(-1, 1, 3)).toBe(0);
+    expect(stepIndex(-1, -1, 3)).toBe(2);
+    expect(stepIndex(0, 1, 0)).toBe(-1);
   });
 });

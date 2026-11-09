@@ -448,8 +448,8 @@ impl Vault {
 /// Every query that selects these aliases the entry table as `n`. The last column is the
 /// entry's tag ids in name order, joined with commas, from a correlated subquery.
 const SUMMARY_COLUMNS: &str = "n.id, n.guide_id, n.title, n.is_stub, n.deleted_at, n.created_at, n.updated_at, \
-     (SELECT group_concat(tag_id) FROM (SELECT nt.tag_id FROM entry_tag nt JOIN tag t ON t.id = nt.tag_id \
-       WHERE nt.entry_id = n.id ORDER BY t.name_norm, t.id))";
+     (SELECT group_concat(nt.tag_id ORDER BY t.name_norm, t.id) FROM entry_tag nt JOIN tag t ON t.id = nt.tag_id \
+       WHERE nt.entry_id = n.id)";
 
 fn summary_from_row(row: &Row<'_>) -> rusqlite::Result<EntrySummary> {
     let tags: Option<String> = row.get(7)?;

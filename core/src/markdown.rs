@@ -2,8 +2,9 @@
 //! wikilink and media resolution is tested once (`docs/design.md` section 1).
 //!
 //! Supported: CommonMark, GFM tables, strikethrough, task lists, `[[wikilinks]]`, and media
-//! references of the form `media/<sha256>.<ext>`. A single newline inside a paragraph or a quote
-//! is a line break, as in Obsidian and GitHub comments, not CommonMark's space. Raw HTML in a
+//! references of the form `media/<sha256>.<ext>`. A single newline is a line break wherever
+//! CommonMark would soften it to a space (paragraphs, quotes, list items), as in Obsidian and
+//! GitHub comments. Raw HTML in a
 //! body is shown as text, never passed through, so a body from someone else's archive cannot
 //! inject markup.
 //!
@@ -394,6 +395,20 @@ mod tests {
             r.html,
             "<p>one<br />\ntwo</p>\n<blockquote>\n<p>first<br />\nsecond</p>\n</blockquote>\n"
         );
+    }
+
+    #[test]
+    fn a_newline_inside_a_list_item_is_a_line_break_and_a_hard_break_stays_one() {
+        let r = render_with("- one\n  two\n\nthree  \nfour\n", &[]);
+        assert!(r.html.contains("one<br />\ntwo"), "{}", r.html);
+        assert!(r.html.contains("three<br />\nfour"), "{}", r.html);
+    }
+
+    #[test]
+    fn heading_text_from_a_link_has_its_escaping_undone() {
+        let r = render_with("## [[A & B|see \"A\"]]\n", &[("A & B", "n1")]);
+        assert_eq!(r.headings[0].text, "see \"A\"");
+        assert_eq!(r.headings[0].id, "see-a");
     }
 
     #[test]

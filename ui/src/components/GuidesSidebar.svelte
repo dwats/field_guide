@@ -9,6 +9,7 @@
   import { session } from "../lib/session.svelte";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
   import SidebarFrame from "./SidebarFrame.svelte";
+  import TreeRow from "./TreeRow.svelte";
 
   let tags = $state<TagOption[]>([]);
   let guides = $state<Guide[]>([]);
@@ -54,37 +55,23 @@
   {/snippet}
   <section class="region" aria-label="Guide tags">
     <h2 class="region-head">Tags</h2>
-    {#if error}<p class="side-note error">{error}</p>{/if}
+    {#if error}<p class="side-hint error">{error}</p>{/if}
     {#if tags.length === 0}
-      <p class="side-note muted">No tags on guides yet. Add one from Edit guide.</p>
+      <p class="side-hint muted">No tags on guides yet. Add one from Edit guide.</p>
     {:else}
-      <ul>
+      <ul class="side-list">
         {#each tags as tag (tag.id)}
-          {@const on = session.guidesFilter.tagIds.includes(tag.id)}
-          {@const dot = colorVar(tag.color)}
           <li>
-            <div class="tree-line" class:selected={on}>
-              <span class="tree-chev"></span>
-              {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
-              <button class="tree-name" aria-pressed={on} onclick={() => toggle(tag.id)}>{tag.path}</button>
-              <span class="tree-count muted">{count(tag.id)}</span>
-            </div>
+            <TreeRow
+              name={tag.path}
+              count={count(tag.id)}
+              selected={session.guidesFilter.tagIds.includes(tag.id)}
+              onpick={() => toggle(tag.id)}
+              dot={colorVar(tag.color)}
+            />
           </li>
         {/each}
       </ul>
     {/if}
   </section>
 </SidebarFrame>
-
-<style>
-  .region {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-  }
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-</style>

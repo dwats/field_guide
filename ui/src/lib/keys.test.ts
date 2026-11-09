@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionFor, chord, displayKeys, shortcutFor } from "./keys";
+import { actionFor, chord, displayKeys, keysFor, shortcutFor } from "./keys";
 
 function key(partial: Partial<Parameters<typeof chord>[0]> & { key: string }) {
   return { ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...partial };
@@ -27,5 +27,7 @@ describe("displayKeys", () => {
     expect(displayKeys("Mod+Shift+N", true)).toBe("⌘⇧N");
     expect(displayKeys("Alt+ArrowLeft", false)).toBe("Alt+←");
     expect(displayKeys(shortcutFor("settings")!, false)).toBe("Ctrl+,");
+    expect(keysFor("palette", false)).toBe("Ctrl+K");
+    expect(keysFor("toggle-sidebar", false)).toBeNull();
   });
 });
