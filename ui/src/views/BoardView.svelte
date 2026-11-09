@@ -305,8 +305,14 @@
         <button class="zoom" title="Zoom to 100%" aria-label="Zoom {zoomText}, reset to 100%" onclick={actualSize}>
           {zoomText}
         </button>
-        <button class="primary add" aria-pressed={panelOpen} onclick={togglePanel}>
-          <Plus size={16} /> Add entries
+        <button
+          class="primary icon-button"
+          aria-pressed={panelOpen}
+          aria-label="Add entries"
+          title={panelOpen ? "Add entries (hides the panel)" : "Add entries"}
+          onclick={togglePanel}
+        >
+          <Plus size={18} />
         </button>
         <Menu>
           {#snippet items(close)}
@@ -425,10 +431,16 @@
     border-bottom: 1px solid var(--border);
   }
   .header h1 {
+    flex: 0 1 auto;
     margin: 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The controls keep their one line; only the name gives way. */
+  .header button {
+    flex: none;
     white-space: nowrap;
   }
   .count {
@@ -447,11 +459,6 @@
   .zoom {
     min-width: 4.5em;
     font-variant-numeric: tabular-nums;
-  }
-  .add {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
   }
   .stage {
     position: relative;

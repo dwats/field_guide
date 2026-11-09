@@ -17,11 +17,14 @@
 
   let name = $state("");
   let error = $state("");
+  let input = $state<HTMLInputElement | null>(null);
 
+  // The old name is selected, so typing replaces it; the dialog focuses the field first.
   $effect(() => {
     if (!open) return;
     name = initial;
     error = "";
+    if (initial) setTimeout(() => input?.select(), 0);
   });
 
   async function submit() {
@@ -46,7 +49,7 @@
     <label>
       Name
       <!-- svelte-ignore a11y_autofocus -->
-      <input type="text" bind:value={name} required autofocus />
+      <input type="text" bind:this={input} bind:value={name} required autofocus />
     </label>
     {#if error}<p class="error">{error}</p>{/if}
   </form>
