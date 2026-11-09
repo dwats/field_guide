@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+
   // One row in a sidebar list or tree: an optional chevron, a colour dot, the name, an optional
   // marker, and a count. The name is a link when `href` is given, else a button. Every sidebar
   // and the Settings section list draw their rows with this, so they look and behave the same.
@@ -42,7 +44,7 @@
       aria-expanded={open}
       onclick={ontoggle}
     >
-      {open ? "▾" : "▸"}
+      {#if open}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
     </button>
   {:else}
     <span class="tree-chev"></span>

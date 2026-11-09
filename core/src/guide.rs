@@ -7,12 +7,35 @@ use crate::error::not_found;
 use crate::names::{self, normalize};
 use crate::{Error, GuideId, MediaId, Result, TagId, Vault, clock, tag};
 
+/// The part of the cover that cards show, in thousandths of the picture's width and height, so
+/// the same crop fits a frame of any size. Chosen in the crop box; `None` shows the centre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoverCrop {
+    pub x: u16,
+    pub y: u16,
+    pub w: u16,
+    pub h: u16,
+}
+
+impl CoverCrop {
+    fn validate(self) -> Result<()> {
+        if self.w == 0 || self.h == 0 || self.x + self.w > 1000 || self.y + self.h > 1000 {
+            return Err(Error::Invalid(
+                "the cover crop must lie inside the picture".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Guide {
     pub id: GuideId,
     pub name: String,
     pub description: String,
     pub cover_media_id: Option<MediaId>,
+    /// Set only with a cover; cleared with it.
+    pub cover_crop: Option<CoverCrop>,
     /// Global tags applied to this guide.
     pub tag_ids: Vec<TagId>,
     pub created_at: String,
@@ -125,10 +148,31 @@ impl Vault {
         load_guide(self.conn(), id)
     }
 
-    pub fn set_guide_cover(&mut self, id: &GuideId, media_id: Option<&MediaId>) -> Result<Guide> {
+    /// Sets or clears the cover and what cards show of it. The crop goes with the cover: without
+    /// a cover it is dropped, and a crop outside the picture is refused.
+    pub fn set_guide_cover(
+        &mut self,
+        id: &GuideId,
+        media_id: Option<&MediaId>,
+        crop: Option<CoverCrop>,
+    ) -> Result<Guide> {
+        let crop = media_id.and(crop);
+        if let Some(crop) = crop {
+            crop.validate()?;
+        }
+        let part = |pick: fn(&CoverCrop) -> u16| crop.map(|c| i64::from(pick(&c)));
         let changed = self.conn().execute(
-            "UPDATE guide SET cover_media_id = ?2, updated_at = ?3 WHERE id = ?1",
-            params![id, media_id, clock::now()],
+            "UPDATE guide SET cover_media_id = ?2, cover_x = ?3, cover_y = ?4, cover_w = ?5,
+             cover_h = ?6, updated_at = ?7 WHERE id = ?1",
+            params![
+                id,
+                media_id,
+                part(|c| c.x),
+                part(|c| c.y),
+                part(|c| c.w),
+                part(|c| c.h),
+                clock::now()
+            ],
         )?;
         if changed == 0 {
             return Err(not_found("guide", id));
@@ -175,17 +219,28 @@ impl Vault {
     }
 }
 
-const COLUMNS: &str = "id, name, description, cover_media_id, created_at, updated_at";
+const COLUMNS: &str = "id, name, description, cover_media_id, cover_x, cover_y, cover_w, cover_h, \
+     created_at, updated_at";
 
 fn guide_from_row(row: &Row<'_>) -> rusqlite::Result<Guide> {
+    let part = |i: usize| -> rusqlite::Result<Option<u16>> {
+        Ok(row
+            .get::<_, Option<i64>>(i)?
+            .map(|v| u16::try_from(v).unwrap_or(0)))
+    };
+    let cover_crop = match (part(4)?, part(5)?, part(6)?, part(7)?) {
+        (Some(x), Some(y), Some(w), Some(h)) => Some(CoverCrop { x, y, w, h }),
+        _ => None,
+    };
     Ok(Guide {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
         cover_media_id: row.get(3)?,
+        cover_crop,
         tag_ids: Vec::new(),
-        created_at: row.get(4)?,
-        updated_at: row.get(5)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 

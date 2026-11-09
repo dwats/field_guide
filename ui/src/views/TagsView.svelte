@@ -3,6 +3,7 @@
   // right. Selecting a row fills the pane: name, parent, colour, counts, and the actions. Drag a
   // tag onto another to nest it, or onto the bar under the tree to make it top-level. The drag is
   // pointer events, not HTML drag and drop, which the window's native file drop would swallow.
+  import { ChevronDown, ChevronRight, Plus } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
@@ -261,13 +262,15 @@
       <h1>Tag editor</h1>
       <span class="spacer"></span>
       <button
-        class="primary"
+        class="primary icon-button"
+        aria-label="New tag"
+        title="New tag"
         onclick={() => {
           newName = "";
           creating = { parent: null };
         }}
       >
-        New tag
+        <Plus size={18} />
       </button>
     </div>
     {#if error}<p class="error">{error}</p>{/if}
@@ -321,7 +324,7 @@
                       toggle(id);
                     }}
                   >
-                    {open ? "▾" : "▸"}
+                    {#if open}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
                   </button>
                 {:else}
                   <span class="tree-chev"></span>

@@ -3,6 +3,7 @@
   // Settings; the notice slot; then the columns. The sidebar column exists on every view, with
   // contents for the level; each column scrolls on its own. Native file drops and image pastes
   // are caught here once and handed to the page.
+  import { ArrowLeft, ArrowRight, Search, Settings } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
@@ -248,9 +249,11 @@
 {:else}
   <header class="topbar">
     <nav class="history" aria-label="History">
-      <button class="link" onclick={() => history.back()} aria-label="Back" title="Back">&larr;</button>
-      <button class="link" onclick={() => history.forward()} aria-label="Forward" title="Forward">
-        &rarr;
+      <button class="link icon-button" onclick={() => history.back()} aria-label="Back" title="Back (Alt+Left)">
+        <ArrowLeft size={18} />
+      </button>
+      <button class="link icon-button" onclick={() => history.forward()} aria-label="Forward" title="Forward (Alt+Right)">
+        <ArrowRight size={18} />
       </button>
     </nav>
     <nav class="crumbs" aria-label="Breadcrumbs">
@@ -265,9 +268,11 @@
     </nav>
     <nav class="tools" aria-label="Tools">
       <button class="link search" onclick={() => (paletteOpen = true)}>
-        Search <kbd>{keysFor("palette")}</kbd>
+        <Search size={16} /> Search <kbd>{keysFor("palette")}</kbd>
       </button>
-      <a href={routeHash({ view: "settings" })} class:active={route.view === "settings"}>Settings</a>
+      <a href={routeHash({ view: "settings" })} class="settings" class:active={route.view === "settings"}>
+        <Settings size={16} /> Settings
+      </a>
     </nav>
   </header>
   {#if current}
@@ -330,8 +335,11 @@
     gap: 8px;
     align-items: center;
   }
-  .history .link {
-    padding: 2px 6px;
+  .search,
+  .settings {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .crumbs {
     flex: 1;

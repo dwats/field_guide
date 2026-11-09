@@ -699,7 +699,7 @@ impl Vault {
             && let Some(sha256) = sha_from_entry(cover)
             && let Some(media) = self.find_media_by_hash(&sha256)?
         {
-            self.set_guide_cover(&guide_id, Some(&media.id))?;
+            self.set_guide_cover(&guide_id, Some(&media.id), ag.guide.cover_crop)?;
         }
 
         let mut context = GuideContext {

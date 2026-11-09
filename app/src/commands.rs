@@ -11,7 +11,7 @@ use fieldguide_core::board::{Board, BoardFilters, BoardNode};
 use fieldguide_core::config::UiPrefs;
 use fieldguide_core::entry::{Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord};
 use fieldguide_core::export::{ExportReport, ExportScope};
-use fieldguide_core::guide::{Guide, GuideFilter, GuideUpdate, NewGuide};
+use fieldguide_core::guide::{CoverCrop, Guide, GuideFilter, GuideUpdate, NewGuide};
 use fieldguide_core::import::{
     self, ArchiveSummary, GuideChoice, ImportOptions, ImportPlan, ImportReport,
 };
@@ -83,8 +83,13 @@ pub fn update_guide(state: S<'_>, id: GuideId, update: GuideUpdate) -> CmdResult
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn set_guide_cover(state: S<'_>, id: GuideId, media_id: Option<MediaId>) -> CmdResult<Guide> {
-    state.with_vault(|v| v.set_guide_cover(&id, media_id.as_ref()))
+pub fn set_guide_cover(
+    state: S<'_>,
+    id: GuideId,
+    media_id: Option<MediaId>,
+    crop: Option<CoverCrop>,
+) -> CmdResult<Guide> {
+    state.with_vault(|v| v.set_guide_cover(&id, media_id.as_ref(), crop))
 }
 
 #[tauri::command(rename_all = "snake_case")]

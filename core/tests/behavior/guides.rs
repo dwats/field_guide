@@ -1,7 +1,7 @@
 use std::slice::from_ref;
 
 use fieldguide_core::Error;
-use fieldguide_core::guide::{GuideFilter, GuideUpdate, NewGuide};
+use fieldguide_core::guide::{CoverCrop, GuideFilter, GuideUpdate, NewGuide};
 
 use crate::common::*;
 
@@ -149,4 +149,35 @@ fn deleting_a_guide_removes_its_entries_and_tags_and_nothing_else() {
     assert!(matches!(v.get_tag(&t.id), Err(Error::NotFound { .. })));
     assert_eq!(v.get_entry(&kept).unwrap().title, "Stone");
     assert!(matches!(v.delete_guide(&g), Err(Error::NotFound { .. })));
+}
+
+#[test]
+fn a_cover_keeps_its_crop_and_loses_it_with_the_cover() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let picture = media(&mut v, 0x11);
+    let crop = CoverCrop {
+        x: 100,
+        y: 50,
+        w: 600,
+        h: 900,
+    };
+    let saved = v.set_guide_cover(&g, Some(&picture), Some(crop)).unwrap();
+    assert_eq!(saved.cover_crop, Some(crop));
+    assert_eq!(v.get_guide(&g).unwrap().cover_crop, Some(crop));
+
+    let outside = CoverCrop {
+        x: 500,
+        y: 0,
+        w: 600,
+        h: 900,
+    };
+    let err = v
+        .set_guide_cover(&g, Some(&picture), Some(outside))
+        .unwrap_err();
+    assert!(matches!(err, Error::Invalid(_)), "{err:?}");
+    assert_eq!(v.get_guide(&g).unwrap().cover_crop, Some(crop));
+
+    let cleared = v.set_guide_cover(&g, None, Some(crop)).unwrap();
+    assert_eq!((cleared.cover_media_id, cleared.cover_crop), (None, None));
 }

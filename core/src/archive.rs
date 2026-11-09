@@ -16,6 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::guide::CoverCrop;
+
 /// Bumped when an older build could misread a newer archive. Import refuses anything newer.
 pub const FORMAT_VERSION: u32 = 1;
 
@@ -56,6 +58,9 @@ pub struct GuideFile {
     /// `media/<sha256>.<ext>` inside the archive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
+    /// What cards show of the cover, in thousandths of its width and height.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_crop: Option<CoverCrop>,
     /// Global tag paths applied to the guide.
     #[serde(default)]
     pub tags: Vec<String>,

@@ -1,16 +1,19 @@
 <script lang="ts">
-  // One guide: the title row with the cover, New entry, and More, the fixed filter summary line,
-  // and the entry table. The list is the sidebar's (`session.sidebar`), so both show the same
-  // entries. The New entry dialog is the shell's, reached through the "new" action. An image
-  // dropped or pasted on this page becomes the cover.
+  // One guide: the title row with the cover poster, New entry, and More, the fixed filter
+  // summary line, and the entry table. The list is the sidebar's (`session.sidebar`), so both
+  // show the same entries. The New entry dialog is the shell's, reached through the "new" action.
+  // An image dropped or pasted on this page becomes the cover and opens the crop box.
+  import { Plus } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import CoverCropDialog from "../components/CoverCropDialog.svelte";
+  import CoverImage from "../components/CoverImage.svelte";
   import Lightbox from "../components/Lightbox.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
   import TagPicker from "../components/TagPicker.svelte";
-  import { api, errorMessage, type Guide, type Media } from "../lib/api";
+  import { api, errorMessage, type CoverCrop, type Guide, type Media } from "../lib/api";
   import { perform } from "../lib/actions";
   import { onDrop, onPaste } from "../lib/drop";
   import { keysFor } from "../lib/keys";
@@ -33,6 +36,7 @@
   let tags = $state<TagOption[]>([]);
   let error = $state("");
   let viewing = $state(false);
+  let cropping = $state(false);
 
   let editing = $state(false);
   let nameDraft = $state("");
@@ -100,23 +104,25 @@
     }
   }
 
-  /** Stores the image and makes it the cover; Undo puts the previous cover back. */
+  /** Stores the image, makes it the cover, and opens the crop box; Undo puts the old cover back. */
   async function setCover(ingest: () => Promise<Media>) {
     if (!guide) return;
-    const previous = guide.cover_media_id;
+    const previous = { media: guide.cover_media_id, crop: guide.cover_crop };
     try {
       const media = await ingest();
-      guide = await api.setGuideCover(guide.id, media.id);
+      guide = await api.setGuideCover(guide.id, media.id, null);
       cover = media;
       setCurrent(guide, null);
       error = "";
+      cropping = true;
       notify("Set the guide's cover.", {
         action: {
           label: "Undo",
           run: async () => {
             if (!guide) return;
-            guide = await api.setGuideCover(guide.id, previous);
-            cover = previous ? await api.getMedia(previous) : null;
+            cropping = false;
+            guide = await api.setGuideCover(guide.id, previous.media, previous.crop);
+            cover = previous.media ? await api.getMedia(previous.media) : null;
           },
         },
       });
@@ -125,19 +131,30 @@
     }
   }
 
+  async function saveCrop(crop: CoverCrop | null) {
+    if (!guide || !cover) return;
+    try {
+      guide = await api.setGuideCover(guide.id, cover.id, crop);
+      cropping = false;
+      error = "";
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
   async function removeCover() {
     if (!guide || !guide.cover_media_id) return;
-    const previous = guide.cover_media_id;
+    const previous = { media: guide.cover_media_id, crop: guide.cover_crop };
     try {
-      guide = await api.setGuideCover(guide.id, null);
+      guide = await api.setGuideCover(guide.id, null, null);
       cover = null;
       notify("Removed the cover.", {
         action: {
           label: "Undo",
           run: async () => {
             if (!guide) return;
-            guide = await api.setGuideCover(guide.id, previous);
-            cover = await api.getMedia(previous);
+            guide = await api.setGuideCover(guide.id, previous.media, previous.crop);
+            cover = await api.getMedia(previous.media);
           },
         },
       });
@@ -207,13 +224,21 @@
     <div class="row header">
       {#if coverUrl}
         <button class="cover" onclick={() => (viewing = true)} aria-label="Open the cover image">
-          <img src={coverUrl} alt="" />
+          <CoverImage src={coverUrl} crop={guide.cover_crop} />
         </button>
       {/if}
-      <h1>{guide.name}</h1>
+      <div class="titles">
+        <h1>{guide.name}</h1>
+        {#if guide.description}<p class="muted">{guide.description}</p>{/if}
+      </div>
       <span class="spacer"></span>
-      <button class="primary" title={keysFor("new") ?? undefined} onclick={() => perform("new")}>
-        New entry
+      <button
+        class="primary icon-button"
+        aria-label="New entry"
+        title="New entry ({keysFor('new')})"
+        onclick={() => perform("new")}
+      >
+        <Plus size={18} />
       </button>
       <Menu>
         {#snippet items(close)}
@@ -227,6 +252,15 @@
             Edit guide...
           </button>
           {#if cover}
+            <button
+              role="menuitem"
+              onclick={() => {
+                close();
+                cropping = true;
+              }}
+            >
+              Adjust cover...
+            </button>
             <button
               role="menuitem"
               onclick={() => {
@@ -251,7 +285,6 @@
         {/snippet}
       </Menu>
     </div>
-    {#if guide.description}<p class="muted">{guide.description}</p>{/if}
 
     <div class="row summary">
       <span class="muted">{summary}</span>
@@ -322,6 +355,17 @@
       oncancel={() => (confirmingDelete = false)}
     />
 
+    {#if cover && coverUrl}
+      <CoverCropDialog
+        open={cropping}
+        src={coverUrl}
+        media={cover}
+        crop={guide.cover_crop}
+        onsave={saveCrop}
+        onclose={() => (cropping = false)}
+      />
+    {/if}
+
     {#if viewing && cover && coverUrl}
       <Lightbox
         images={[{ src: coverUrl, alt: `Cover of ${guide.name}`, name: fileName(cover) }]}
@@ -337,23 +381,24 @@
 
 <style>
   .header {
+    align-items: flex-start;
     margin-bottom: 4px;
   }
   .cover {
     flex: none;
-    width: 72px;
-    height: 72px;
+    width: 96px;
+    height: 144px;
     padding: 0;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
   }
-  .cover img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+  .titles {
+    min-width: 0;
+  }
+  .titles p {
+    margin: 2px 0 0;
   }
   /* Fixed height: the line is present whether or not a filter is in effect. */
   .summary {

@@ -2,6 +2,7 @@
   // A button that opens a menu of actions. Focus moves to the first item when it opens, arrows
   // walk the items, Escape or a click anywhere else closes it, and focus returns to the button.
   // Items receive `close`, so a dialog an item opens returns focus to the button when it is done.
+  import { Ellipsis } from "@lucide/svelte";
   import type { Snippet } from "svelte";
 
   import { moveHighlight } from "../lib/combobox";
@@ -55,6 +56,9 @@
 <div class="more">
   <button
     bind:this={button}
+    class="icon-button"
+    aria-label={label}
+    title={label}
     aria-haspopup="menu"
     aria-expanded={open}
     onclick={(e) => {
@@ -62,7 +66,7 @@
       open = !open;
     }}
   >
-    {label}
+    <Ellipsis size={18} />
   </button>
   {#if open}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

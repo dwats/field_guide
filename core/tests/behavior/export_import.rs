@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use fieldguide_core::board::{BoardFilters, BoardNode};
 use fieldguide_core::entry::NewEntry;
 use fieldguide_core::export::ExportScope;
+use fieldguide_core::guide::CoverCrop;
 use fieldguide_core::guide::GuideUpdate;
 use fieldguide_core::import::{
     self, GuideChoice, GuideTarget, ImportOptions, ImportReport, MappingChoice,
@@ -61,7 +62,17 @@ fn fixture() -> Fixture {
     let png = v
         .store_media(PNG, "png", "image/png", MediaDimensions::default())
         .unwrap();
-    v.set_guide_cover(&mc, Some(&png.id)).unwrap();
+    v.set_guide_cover(
+        &mc,
+        Some(&png.id),
+        Some(CoverCrop {
+            x: 100,
+            y: 0,
+            w: 600,
+            h: 900,
+        }),
+    )
+    .unwrap();
 
     let stone = v
         .create_entry(NewEntry {
@@ -198,6 +209,7 @@ struct GuideSnap {
     name: String,
     description: String,
     cover_sha: Option<String>,
+    cover_crop: Option<CoverCrop>,
     global_tags: Vec<String>,
     tags: Vec<(String, Option<String>)>,
     verbs: Vec<VerbSnap>,
@@ -334,6 +346,7 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
     GuideSnap {
         name: g.name,
         description: g.description,
+        cover_crop: g.cover_crop,
         cover_sha: g.cover_media_id.map(|m| v.get_media(&m).unwrap().sha256),
         global_tags,
         tags,

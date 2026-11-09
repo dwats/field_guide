@@ -3,6 +3,7 @@
   // Contents selected on arrival when the body has a heading. The relation line sits at the top
   // of the Relations tab; Mentioned by and Unresolved links fold under the list. The panel folds
   // to a rail by choice, remembered, and while editing in Split unless a setting keeps it open.
+  import { ChevronDown, ChevronRight, PanelRightClose, PanelRightOpen } from "@lucide/svelte";
   import { tick } from "svelte";
 
   import type { Entry, EntrySummary, Guide, Rendered } from "../lib/api";
@@ -120,8 +121,8 @@
 
 <aside class="panel" class:open style:--panel-col={width} aria-label="Entry panel" bind:this={panelEl}>
   {#if !open}
-    <button class="link rail-button" aria-label="Show panel" title="Show panel" onclick={expand}>
-      &lsaquo;
+    <button class="link icon-button rail-button" aria-label="Show panel" title="Show panel" onclick={expand}>
+      <PanelRightOpen size={18} />
     </button>
   {:else}
     <div class="head">
@@ -151,7 +152,9 @@
           Relations
         </button>
       </div>
-      <button class="link" aria-label="Hide panel" title="Hide panel" onclick={collapse}>&rsaquo;</button>
+      <button class="link icon-button" aria-label="Hide panel" title="Hide panel" onclick={collapse}>
+        <PanelRightClose size={18} />
+      </button>
     </div>
     {#if tab === "contents"}
       <div
@@ -181,7 +184,9 @@
           {#if mentionedBy.length > 0}
             <section class="fold">
               <button class="fold-head" aria-expanded={showMentions} onclick={() => (showMentions = !showMentions)}>
-                <span class="chev" aria-hidden="true">{showMentions ? "▾" : "▸"}</span>
+                <span class="chev" aria-hidden="true">
+                  {#if showMentions}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                </span>
                 Mentioned by ({mentionedBy.length})
               </button>
               {#if showMentions}
@@ -196,7 +201,9 @@
           {#if rendered && rendered.unresolved_links.length > 0}
             <section class="fold">
               <button class="fold-head" aria-expanded={showUnresolved} onclick={() => (showUnresolved = !showUnresolved)}>
-                <span class="chev" aria-hidden="true">{showUnresolved ? "▾" : "▸"}</span>
+                <span class="chev" aria-hidden="true">
+                  {#if showUnresolved}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                </span>
                 Unresolved links ({rendered.unresolved_links.length})
               </button>
               {#if showUnresolved}
@@ -241,8 +248,10 @@
   .rail-button {
     align-self: center;
     margin-top: 6px;
-    font-size: 1.2em;
-    line-height: 1;
+  }
+  .chev {
+    display: inline-flex;
+    color: var(--muted);
   }
   .head {
     display: flex;

@@ -3,7 +3,9 @@
 //!
 //! Supported: CommonMark, GFM tables, strikethrough, task lists, alerts (`> [!NOTE]`), footnotes,
 //! `[[wikilinks]]`, spoilers (`||hidden||`, revealed on click), and media references of the form
-//! `media/<sha256>.<ext>`. A single newline is a line break wherever
+//! `media/<sha256>.<ext>`. An image alone in its paragraph is a figure with the alt text as its
+//! caption, floated right unless its title says `left`, `center`, or `full` (design section 3).
+//! A single newline is a line break wherever
 //! CommonMark would soften it to a space (paragraphs, quotes, list items), as in Obsidian and
 //! GitHub comments. Raw HTML in a
 //! body is shown as text, never passed through, so a body from someone else's archive cannot
@@ -77,7 +79,9 @@ pub fn render(
     let mut out = Rendered::default();
     let mut events: Vec<Event<'_>> = Vec::new();
     let mut text_run = String::new();
-    let mut image: Option<(String, String)> = None; // (dest, alt so far)
+    let mut image: Option<(String, String, String)> = None; // (dest, alt so far, title)
+    // Where each image landed and what made it, so one alone in its paragraph becomes a figure.
+    let mut images: Vec<(usize, String, String, String)> = Vec::new();
     // A `||` opens a spoiler and the next one closes it; a block end closes one left open.
     let mut spoiler_open = false;
 
@@ -96,11 +100,12 @@ pub fn render(
     };
 
     for event in Parser::new_ext(body, options) {
-        if let Some((_, alt)) = image.as_mut() {
+        if let Some((_, alt, _)) = image.as_mut() {
             match event {
                 Event::End(TagEnd::Image) => {
-                    let (dest, alt) = image.take().expect("image in progress");
+                    let (dest, alt, title) = image.take().expect("image in progress");
                     events.push(Event::Html(CowStr::from(media_html(&dest, &alt))));
+                    images.push((events.len() - 1, dest, alt, title));
                 }
                 Event::Text(t) | Event::Code(t) => alt.push_str(&t),
                 Event::SoftBreak | Event::HardBreak => alt.push(' '),
@@ -111,7 +116,9 @@ pub fn render(
         match event {
             Event::Text(t) => text_run.push_str(&t),
             Event::Html(t) | Event::InlineHtml(t) => text_run.push_str(&t),
-            Event::Start(Tag::Image { dest_url, .. }) => {
+            Event::Start(Tag::Image {
+                dest_url, title, ..
+            }) => {
                 flush_text(
                     &mut text_run,
                     &mut events,
@@ -119,7 +126,7 @@ pub fn render(
                     &mut spoiler_open,
                     resolve,
                 )?;
-                image = Some((dest_url.into_string(), String::new()));
+                image = Some((dest_url.into_string(), String::new(), title.into_string()));
             }
             // A newline the author typed is a line break they meant.
             Event::SoftBreak => {
@@ -161,6 +168,7 @@ pub fn render(
     if spoiler_open {
         events.push(Event::Html(CowStr::from(SPOILER_CLOSE)));
     }
+    wrap_figures(&mut events, &images);
     assign_heading_ids(&mut events, &mut out.headings);
 
     pulldown_cmark::html::push_html(&mut out.html, events.into_iter());
@@ -344,6 +352,38 @@ fn push_text_with_wikilinks<'a>(
     Ok(())
 }
 
+/// An image alone in its paragraph becomes a figure: the alt text is its caption, and it floats
+/// right unless the image's title says `left`, `center`, or `full`. An image inside a sentence
+/// stays inline.
+fn wrap_figures(events: &mut [Event<'_>], images: &[(usize, String, String, String)]) {
+    for (index, dest, alt, title) in images {
+        let i = *index;
+        let alone = i >= 1
+            && matches!(events[i - 1], Event::Start(Tag::Paragraph))
+            && matches!(events.get(i + 1), Some(Event::End(TagEnd::Paragraph)));
+        if !alone {
+            continue;
+        }
+        let placement = match title.trim().to_ascii_lowercase().as_str() {
+            "left" => "left",
+            "center" | "centre" => "center",
+            "full" => "full",
+            _ => "right",
+        };
+        let mut html = format!(
+            "<figure class=\"figure figure-{placement}\">{}",
+            media_html(dest, alt)
+        );
+        if !alt.is_empty() {
+            write!(html, "<figcaption>{}</figcaption>", escape(alt)).expect("write to string");
+        }
+        html.push_str("</figure>");
+        events[i - 1] = Event::Html(CowStr::from(html));
+        events[i] = Event::Html(CowStr::from(""));
+        events[i + 1] = Event::Html(CowStr::from(""));
+    }
+}
+
 /// `<img>` for images, `<video controls>` for `.webm`. Any other destination is an ordinary image
 /// tag; the host decides whether it can serve it.
 fn media_html(dest: &str, alt: &str) -> String {
@@ -433,6 +473,33 @@ mod tests {
             "{}",
             r.html
         );
+    }
+
+    #[test]
+    fn an_image_alone_in_a_paragraph_is_a_figure_with_a_caption() {
+        let r = render_with(
+            "Intro.\n\n![A cave](media/abc.webp)\n\n![](media/def.webp \"left\")\n\nSee ![icon](media/i.webp) inline.\n",
+            &[],
+        );
+        assert!(
+            r.html.contains(
+                "<figure class=\"figure figure-right\"><img src=\"media/abc.webp\" alt=\"A cave\"><figcaption>A cave</figcaption></figure>"
+            ),
+            "{}",
+            r.html
+        );
+        assert!(
+            r.html.contains("<figure class=\"figure figure-left\"><img src=\"media/def.webp\" alt=\"\"></figure>"),
+            "{}",
+            r.html
+        );
+        assert!(
+            r.html
+                .contains("<p>See <img src=\"media/i.webp\" alt=\"icon\"> inline.</p>"),
+            "{}",
+            r.html
+        );
+        assert!(!r.html.contains("<p><figure"), "{}", r.html);
     }
 
     #[test]

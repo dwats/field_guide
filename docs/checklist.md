@@ -61,7 +61,9 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Drop the same picture twice, once as PNG and once as BMP: one file in the media folder.
 - [ ] An animated GIF stays a `.gif` and still animates; an SVG stays an `.svg`.
 - [ ] Click an image: the viewer opens over the page with the counter, caption, and file details; Left and Right move between the body's images; Escape closes; Make primary image puts it first in the gallery.
-- [ ] Drop or paste an image on a guide page: it becomes the cover, shown on the page and on the guide's card; Remove cover in More undoes it with Undo.
+- [ ] Drop or paste an image on a guide page: it becomes the cover and the crop box opens; drag and zoom, Save; the poster on the guide page and on the card shows that frame; Adjust cover... in More reopens the box; Remove cover undoes it with Undo.
+- [ ] An image alone on its line in a body renders as a bordered figure floated right with its alt text as caption and text wrapping beside it; `"left"` as the image title floats it left, `"center"` centres it, `"full"` spans the width; an image inside a sentence stays inline.
+- [ ] The guides list shows 2:3 posters in rows that fill the window from the left, titles below; a guide without a cover shows a placeholder poster.
 - [ ] A dropped file that is not an image is skipped with a notice; a drop on the guides list or Settings shows where drops go.
 - [ ] Tag editor: drag a tag onto another with the mouse to nest it, and onto the Top level bar to move it up; a click without movement only selects.
 

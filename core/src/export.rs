@@ -242,6 +242,7 @@ impl Vault {
                 name: guide.name.clone(),
                 description: guide.description.clone(),
                 cover,
+                cover_crop: guide.cover_crop,
                 tags: guide
                     .tag_ids
                     .iter()

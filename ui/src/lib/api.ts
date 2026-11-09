@@ -65,11 +65,20 @@ export interface UiPrefs {
 
 // ---- guides ----
 
+/** What cards show of a cover, in thousandths of the picture's width and height. */
+export interface CoverCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Guide {
   id: Id;
   name: string;
   description: string;
   cover_media_id: Id | null;
+  cover_crop: CoverCrop | null;
   tag_ids: Id[];
   created_at: string;
   updated_at: string;
@@ -397,8 +406,8 @@ export const api = {
   ingestMedia: (bytes: Uint8Array, ext: string) =>
     invoke<Media>("ingest_media", bytes, { headers: { "x-ext": ext } }),
   ingestMediaPath: (path: string) => invoke<Media>("ingest_media_path", { path }),
-  setGuideCover: (id: Id, media_id: Id | null) =>
-    invoke<Guide>("set_guide_cover", { id, media_id }),
+  setGuideCover: (id: Id, media_id: Id | null, crop: CoverCrop | null = null) =>
+    invoke<Guide>("set_guide_cover", { id, media_id, crop }),
 
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>

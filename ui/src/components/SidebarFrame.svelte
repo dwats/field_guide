@@ -2,6 +2,7 @@
   // The sidebar column's frame, shared by every level: a rail with a Show button when collapsed,
   // the content with a Hide button otherwise, and a drag handle on the right edge. The collapsed
   // state and the width are preferences.
+  import { PanelLeftClose, PanelLeftOpen } from "@lucide/svelte";
   import type { Snippet } from "svelte";
 
   import { startDrag } from "../lib/drag";
@@ -36,23 +37,23 @@
 <aside class="sidebar" class:collapsed aria-label={label} bind:this={aside}>
   {#if collapsed}
     <button
-      class="link rail-button"
+      class="link icon-button"
       aria-label="Show sidebar"
       title="Show sidebar"
       onclick={() => void savePrefs({ sidebar_collapsed: false })}
     >
-      &rsaquo;
+      <PanelLeftOpen size={18} />
     </button>
   {:else}
     <div class="head">
       <div class="head-content">{#if head}{@render head()}{/if}</div>
       <button
-        class="link"
+        class="link icon-button"
         aria-label="Hide sidebar"
         title="Hide sidebar"
         onclick={() => void savePrefs({ sidebar_collapsed: true })}
       >
-        &lsaquo;
+        <PanelLeftClose size={18} />
       </button>
     </div>
     {@render children()}
@@ -80,10 +81,6 @@
   .sidebar.collapsed {
     align-items: center;
     padding-top: 6px;
-  }
-  .rail-button {
-    font-size: 1.2em;
-    line-height: 1;
   }
   .head {
     display: flex;

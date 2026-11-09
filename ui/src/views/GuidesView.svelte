@@ -1,9 +1,11 @@
 <script lang="ts">
-  // Top-level browse: every guide in the vault as cards or a table. The filters live in the
-  // sidebar (`session.guidesFilter`); the toolbar holds New guide and the view toggle. The New
-  // guide dialog is the shell's, reached through the "new-guide" action.
+  // Top-level browse: every guide in the vault as 2:3 posters in rows that fill the width, or a
+  // table. The filters live in the sidebar (`session.guidesFilter`); the toolbar holds the view
+  // toggle and New guide as icons. The New guide dialog is the shell's.
+  import { Image as ImageIcon, LayoutGrid, List, Plus } from "@lucide/svelte";
   import { untrack } from "svelte";
 
+  import CoverImage from "../components/CoverImage.svelte";
   import { api, errorMessage, type Guide, type GuideView, type Media } from "../lib/api";
   import { perform } from "../lib/actions";
   import { keysFor } from "../lib/keys";
@@ -16,7 +18,7 @@
 
   let guides = $state<Guide[]>([]);
   let tags = $state<TagOption[]>([]);
-  /** Cover files by guide id, for the cards. */
+  /** Cover files by guide id, for the posters. */
   let covers = $state<Record<string, Media>>({});
   let error = $state("");
 
@@ -80,29 +82,39 @@
   }
 </script>
 
-{#snippet tagChips(guide: Guide)}
-  {#each tagPaths(guide) as tag (tag.id)}
-    <span class="chip">
-      {#if colorVar(tag.color)}<span class="tag-dot" style:--dot={colorVar(tag.color)}></span>{/if}
-      {tag.path}
-    </span>
-  {/each}
-{/snippet}
-
 <div class="page">
   <div class="row header">
     <h1>Guides</h1>
     <span class="spacer"></span>
     <div class="segmented" role="group" aria-label="View">
-      <button class:on={session.prefs.guide_view === "cards"} onclick={() => setView("cards")}>
-        Cards
+      <button
+        class="icon-button"
+        class:on={session.prefs.guide_view === "cards"}
+        aria-label="Posters"
+        aria-pressed={session.prefs.guide_view === "cards"}
+        title="Posters"
+        onclick={() => setView("cards")}
+      >
+        <LayoutGrid size={18} />
       </button>
-      <button class:on={session.prefs.guide_view === "table"} onclick={() => setView("table")}>
-        Table
+      <button
+        class="icon-button"
+        class:on={session.prefs.guide_view === "table"}
+        aria-label="Table"
+        aria-pressed={session.prefs.guide_view === "table"}
+        title="Table"
+        onclick={() => setView("table")}
+      >
+        <List size={18} />
       </button>
     </div>
-    <button class="primary" onclick={() => perform("new-guide")} title={keysFor("new-guide") ?? undefined}>
-      New guide
+    <button
+      class="primary icon-button"
+      aria-label="New guide"
+      title="New guide ({keysFor('new-guide')})"
+      onclick={() => perform("new-guide")}
+    >
+      <Plus size={18} />
     </button>
   </div>
 
@@ -119,13 +131,18 @@
       {/if}
     </div>
   {:else if session.prefs.guide_view === "cards"}
-    <div class="cards">
+    <div class="posters">
       {#each guides as guide (guide.id)}
-        <a class="card" href={routeHash({ view: "guide", guideId: guide.id })}>
-          {#if coverUrl(guide)}<img class="cover" src={coverUrl(guide)} alt="" />{/if}
-          <h2>{guide.name}</h2>
-          {#if guide.description}<p>{guide.description}</p>{/if}
-          <div class="row">{@render tagChips(guide)}</div>
+        {@const url = coverUrl(guide)}
+        <a class="poster-card" href={routeHash({ view: "guide", guideId: guide.id })} title={guide.description || guide.name}>
+          <div class="poster">
+            {#if url}
+              <CoverImage src={url} crop={guide.cover_crop} />
+            {:else}
+              <div class="poster-empty muted"><ImageIcon size={28} /></div>
+            {/if}
+          </div>
+          <span class="poster-title">{guide.name}</span>
         </a>
       {/each}
     </div>
@@ -139,7 +156,16 @@
           <tr>
             <td><a href={routeHash({ view: "guide", guideId: guide.id })}>{guide.name}</a></td>
             <td>{guide.description}</td>
-            <td><div class="row">{@render tagChips(guide)}</div></td>
+            <td>
+              <div class="row">
+                {#each tagPaths(guide) as tag (tag.id)}
+                  <span class="chip">
+                    {#if colorVar(tag.color)}<span class="tag-dot" style:--dot={colorVar(tag.color)}></span>{/if}
+                    {tag.path}
+                  </span>
+                {/each}
+              </div>
+            </td>
             <td class="muted">{when(guide.updated_at)}</td>
           </tr>
         {/each}
@@ -157,32 +183,39 @@
     gap: var(--space-2);
     justify-items: start;
   }
-  .cards {
+  /* Posters fill the row from the left, the way a game library does. */
+  .posters {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: var(--space-3);
+    grid-template-columns: repeat(auto-fill, 180px);
+    gap: var(--space-4);
+    justify-content: start;
   }
-  .card {
+  .poster-card {
     display: block;
-    padding: var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: 6px;
     color: inherit;
     text-decoration: none;
+  }
+  .poster {
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
     background: var(--surface);
   }
-  .card:hover {
+  .poster-card:hover .poster {
     border-color: var(--muted);
   }
-  .card h2 {
-    font-size: 1.05rem;
+  .poster-empty {
+    display: grid;
+    place-items: center;
+    height: 100%;
   }
-  .card .cover {
+  .poster-title {
     display: block;
-    width: 100%;
-    height: 110px;
-    margin-bottom: var(--space-2);
-    object-fit: cover;
-    border-radius: 4px;
+    margin-top: 6px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

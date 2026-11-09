@@ -2,6 +2,7 @@
   // The image viewer (decided 2026-11-08, after Wikipedia's): the page's images one at a time
   // over a dark surface, with previous and next, a counter, the caption from the alt text, and
   // the stored file's details. Left and Right move, Escape closes.
+  import { ChevronLeft, ChevronRight, X } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import { api, errorMessage, type Media } from "../lib/api";
@@ -95,16 +96,16 @@
   </div>
   <div class="top">
     <span class="counter">{index + 1} / {images.length}</span>
-    <button class="link close" bind:this={closeButton} aria-label="Close" title="Close (Escape)" onclick={onclose}>
-      &times;
+    <button class="link icon-button close" bind:this={closeButton} aria-label="Close" title="Close (Escape)" onclick={onclose}>
+      <X size={22} />
     </button>
   </div>
   {#if images.length > 1}
     <button class="nav prev" aria-label="Previous image" title="Previous (Left)" onclick={() => step(-1)}>
-      &lsaquo;
+      <ChevronLeft size={32} />
     </button>
     <button class="nav next" aria-label="Next image" title="Next (Right)" onclick={() => step(1)}>
-      &rsaquo;
+      <ChevronRight size={32} />
     </button>
   {/if}
   <div class="bar">
@@ -171,8 +172,6 @@
     color: #ccc;
   }
   .close {
-    font-size: 1.6em;
-    line-height: 1;
     color: #eee;
   }
   .nav {
@@ -185,8 +184,9 @@
     border-radius: var(--radius);
     background: rgb(255 255 255 / 0.12);
     color: #eee;
-    font-size: 2em;
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .nav:hover {
     background: rgb(255 255 255 / 0.22);
