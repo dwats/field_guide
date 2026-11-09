@@ -398,6 +398,55 @@ td {
   max-width: var(--measure);
 }
 
+/* Headings as an encyclopedia sets them: more space above than below, a rule under the two top
+   levels as part of the heading itself, none under the smaller ones. `flow-root` keeps the rule
+   out from under a floated figure, so it ends where the text does. */
+.preview h1,
+.preview h2,
+.preview h3,
+.preview h4,
+.preview h5,
+.preview h6 {
+  margin: 1.3em 0 0.45em;
+  line-height: 1.25;
+}
+
+.preview h1,
+.preview h2 {
+  display: flow-root;
+  padding-bottom: 0.15em;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview h1 {
+  font-size: 1.5rem;
+}
+
+.preview h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.preview h3 {
+  font-size: 1.1rem;
+}
+
+.preview h4,
+.preview h5,
+.preview h6 {
+  font-size: 1rem;
+}
+
+.preview > :first-child {
+  margin-top: 0;
+}
+
+.preview hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-4) 0;
+}
+
 .preview img,
 .preview video {
   max-width: 100%;
