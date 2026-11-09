@@ -411,20 +411,22 @@ td {
   line-height: 1.25;
 }
 
+/* The two top levels in a serif face at normal weight, as an encyclopedia's section titles. */
 .preview h1,
 .preview h2 {
   display: flow-root;
   padding-bottom: 0.15em;
   border-bottom: 1px solid var(--border);
+  font-family: Georgia, "Times New Roman", "Linux Libertine", serif;
+  font-weight: 400;
 }
 
 .preview h1 {
-  font-size: 1.5rem;
+  font-size: 1.7rem;
 }
 
 .preview h2 {
-  font-size: 1.3rem;
-  font-weight: 600;
+  font-size: 1.45rem;
 }
 
 .preview h3 {
