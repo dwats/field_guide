@@ -556,8 +556,6 @@ pub fn detach_media(state: S<'_>, entry_id: EntryId, media_id: MediaId) -> CmdRe
     state.with_vault(|v| v.detach_media(&entry_id, &media_id))
 }
 
-/// Stores bytes as a media file. Phase 8 decides how large files cross the IPC boundary; until
-/// then the bytes travel as a JSON array, which is fine for screenshots.
 /// Stores an image from the clipboard or a file picker. The bytes travel as the raw request
 /// body, not JSON; the `x-ext` header carries the file extension as a hint (SVG has no magic
 /// bytes). Conversion runs on a worker thread, off the vault lock.

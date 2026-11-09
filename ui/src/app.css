@@ -307,9 +307,16 @@ textarea {
   flex: 1;
 }
 
-/* A pair of buttons that act as one control, such as Read and Edit. */
+/* A pair of buttons that act as one control, such as Read and Edit. It keeps one line; a title
+   beside it truncates instead. */
+.segmented {
+  display: inline-flex;
+  flex: none;
+}
+
 .segmented button {
   border-radius: 0;
+  white-space: nowrap;
 }
 
 .segmented button:first-child {
