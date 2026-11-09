@@ -128,6 +128,8 @@ Done when:
 
 ## Later
 
+Markdown extensions, markdown syntax first (decided 2026-11-08; alerts, footnotes, spoilers, and anchors shipped with Phase 6): collapsible sections (proposed `:::details Title` to `:::`), highlight (proposed `==text==`), superscript (proposed `^text^`), subscript (syntax open; a single `~` is strikethrough), icons from a bundled set (proposed `:name:`), LaTeX (`$...$` and `$$...$$`, rendered offline by a bundled library, a size decision).
+
 Not scheduled. Candidates that need their own decision before they get a phase.
 
 - Video: drag-and-drop of `.webm` into entries, playback in the preview. The renderer already turns `media/*.webm` into a video element, so an archive that carries one plays. Without transcoding, which the binary cannot carry, every clip is stored as recorded, so this may not be worth its weight.

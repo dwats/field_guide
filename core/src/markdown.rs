@@ -1,8 +1,9 @@
 //! Entry bodies rendered to HTML. One renderer for the app preview and any exported HTML, so
 //! wikilink and media resolution is tested once (`docs/design.md` section 1).
 //!
-//! Supported: CommonMark, GFM tables, strikethrough, task lists, `[[wikilinks]]`, and media
-//! references of the form `media/<sha256>.<ext>`. A single newline is a line break wherever
+//! Supported: CommonMark, GFM tables, strikethrough, task lists, alerts (`> [!NOTE]`), footnotes,
+//! `[[wikilinks]]`, spoilers (`||hidden||`, revealed on click), and media references of the form
+//! `media/<sha256>.<ext>`. A single newline is a line break wherever
 //! CommonMark would soften it to a space (paragraphs, quotes, list items), as in Obsidian and
 //! GitHub comments. Raw HTML in a
 //! body is shown as text, never passed through, so a body from someone else's archive cannot
@@ -18,6 +19,10 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd};
+
+/// Opens a spoiler. The UI toggles `revealed` on click or Enter; the attributes make it a control.
+const SPOILER_OPEN: &str = "<span class=\"spoiler\" role=\"button\" tabindex=\"0\" aria-pressed=\"false\" title=\"Click to reveal\">";
+const SPOILER_CLOSE: &str = "</span>";
 use serde::{Deserialize, Serialize};
 
 use crate::{EntryId, GuideId, Result, Vault, wikilink};
@@ -64,23 +69,29 @@ pub fn render(
     body: &str,
     resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
 ) -> Result<Rendered> {
-    let options =
-        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_GFM;
     let mut out = Rendered::default();
     let mut events: Vec<Event<'_>> = Vec::new();
     let mut text_run = String::new();
     let mut image: Option<(String, String)> = None; // (dest, alt so far)
+    // A `||` opens a spoiler and the next one closes it; a block end closes one left open.
+    let mut spoiler_open = false;
 
     let flush_text = |run: &mut String,
                       events: &mut Vec<Event<'_>>,
                       out: &mut Rendered,
+                      spoiler_open: &mut bool,
                       resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>|
      -> Result<()> {
         if run.is_empty() {
             return Ok(());
         }
         let text = std::mem::take(run);
-        push_text_with_wikilinks(&text, events, out, resolve)?;
+        push_text(&text, events, out, spoiler_open, resolve)?;
         Ok(())
     };
 
@@ -101,21 +112,55 @@ pub fn render(
             Event::Text(t) => text_run.push_str(&t),
             Event::Html(t) | Event::InlineHtml(t) => text_run.push_str(&t),
             Event::Start(Tag::Image { dest_url, .. }) => {
-                flush_text(&mut text_run, &mut events, &mut out, resolve)?;
+                flush_text(
+                    &mut text_run,
+                    &mut events,
+                    &mut out,
+                    &mut spoiler_open,
+                    resolve,
+                )?;
                 image = Some((dest_url.into_string(), String::new()));
             }
             // A newline the author typed is a line break they meant.
             Event::SoftBreak => {
-                flush_text(&mut text_run, &mut events, &mut out, resolve)?;
+                flush_text(
+                    &mut text_run,
+                    &mut events,
+                    &mut out,
+                    &mut spoiler_open,
+                    resolve,
+                )?;
                 events.push(Event::HardBreak);
             }
             other => {
-                flush_text(&mut text_run, &mut events, &mut out, resolve)?;
+                flush_text(
+                    &mut text_run,
+                    &mut events,
+                    &mut out,
+                    &mut spoiler_open,
+                    resolve,
+                )?;
+                if let Event::End(end) = &other
+                    && spoiler_open
+                    && ends_block(end)
+                {
+                    events.push(Event::Html(CowStr::from(SPOILER_CLOSE)));
+                    spoiler_open = false;
+                }
                 events.push(other);
             }
         }
     }
-    flush_text(&mut text_run, &mut events, &mut out, resolve)?;
+    flush_text(
+        &mut text_run,
+        &mut events,
+        &mut out,
+        &mut spoiler_open,
+        resolve,
+    )?;
+    if spoiler_open {
+        events.push(Event::Html(CowStr::from(SPOILER_CLOSE)));
+    }
     assign_heading_ids(&mut events, &mut out.headings);
 
     pulldown_cmark::html::push_html(&mut out.html, events.into_iter());
@@ -210,12 +255,51 @@ fn text_of_html(html: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// A block boundary, where a spoiler left open is closed so it cannot swallow the next block.
+fn ends_block(end: &TagEnd) -> bool {
+    matches!(
+        end,
+        TagEnd::Paragraph
+            | TagEnd::Heading(_)
+            | TagEnd::Item
+            | TagEnd::TableCell
+            | TagEnd::BlockQuote(_)
+            | TagEnd::FootnoteDefinition
+    )
+}
+
+/// Text outside code: `||` toggles a spoiler, and the pieces between are scanned for wikilinks.
+fn push_text<'a>(
+    text: &str,
+    events: &mut Vec<Event<'a>>,
+    out: &mut Rendered,
+    spoiler_open: &mut bool,
+    resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
+) -> Result<()> {
+    let mut rest = text;
+    while let Some(pos) = rest.find("||") {
+        push_text_with_wikilinks(&rest[..pos], events, out, resolve)?;
+        let marker = if *spoiler_open {
+            SPOILER_CLOSE
+        } else {
+            SPOILER_OPEN
+        };
+        events.push(Event::Html(CowStr::from(marker)));
+        *spoiler_open = !*spoiler_open;
+        rest = &rest[pos + 2..];
+    }
+    push_text_with_wikilinks(rest, events, out, resolve)
+}
+
 fn push_text_with_wikilinks<'a>(
     text: &str,
     events: &mut Vec<Event<'a>>,
     out: &mut Rendered,
     resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
 ) -> Result<()> {
+    if text.is_empty() {
+        return Ok(());
+    }
     let mut copied_to = 0;
     for link in wikilink::find_wikilinks(text) {
         if link.start > copied_to {
@@ -409,6 +493,67 @@ mod tests {
         let r = render_with("## [[A & B|see \"A\"]]\n", &[("A & B", "n1")]);
         assert_eq!(r.headings[0].text, "see \"A\"");
         assert_eq!(r.headings[0].id, "see-a");
+    }
+
+    #[test]
+    fn spoilers_hide_text_until_revealed_and_close_at_the_block_end() {
+        let r = render_with(
+            "The boss drops ||a golden key||.\n\nOpen ||never closed\n",
+            &[],
+        );
+        assert!(
+            r.html
+                .contains(&format!("drops {SPOILER_OPEN}a golden key</span>.")),
+            "{}",
+            r.html
+        );
+        assert!(
+            r.html
+                .contains(&format!("Open {SPOILER_OPEN}never closed</span></p>")),
+            "{}",
+            r.html
+        );
+    }
+
+    #[test]
+    fn a_spoiler_can_hold_emphasis_and_a_wikilink_but_not_a_code_span() {
+        let r = render_with(
+            "||see *this* [[Oak Log]]||\n\n`a || b`\n",
+            &[("Oak Log", "n1")],
+        );
+        assert!(
+            r.html.contains(&format!(
+                "<p>{SPOILER_OPEN}see <em>this</em> <a class=\"wikilink\""
+            )),
+            "{}",
+            r.html
+        );
+        assert!(r.html.contains("</a></span></p>"), "{}", r.html);
+        assert!(r.html.contains("<code>a || b</code>"), "{}", r.html);
+    }
+
+    #[test]
+    fn alerts_and_footnotes_render() {
+        let r = render_with(
+            "> [!NOTE]\n> Found in caves.\n\nText[^1].\n\n[^1]: The small print.\n",
+            &[],
+        );
+        assert!(
+            r.html
+                .contains("<blockquote class=\"markdown-alert-note\">"),
+            "{}",
+            r.html
+        );
+        assert!(
+            r.html.contains("class=\"footnote-reference\""),
+            "{}",
+            r.html
+        );
+        assert!(
+            r.html.contains("class=\"footnote-definition\""),
+            "{}",
+            r.html
+        );
     }
 
     #[test]

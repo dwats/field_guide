@@ -427,6 +427,98 @@ td {
   margin-bottom: 0;
 }
 
+/* Alerts (`> [!NOTE]` and friends): a coloured bar and a small title instead of the quote mark. */
+.preview blockquote[class^="markdown-alert-"] {
+  --alert: var(--tag-blue);
+  padding-left: var(--space-4);
+  border-left-color: var(--alert);
+}
+
+.preview blockquote[class^="markdown-alert-"]::before {
+  position: static;
+  display: block;
+  margin-bottom: 2px;
+  font-family: inherit;
+  font-size: var(--small);
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  color: var(--alert);
+}
+
+.preview blockquote.markdown-alert-note::before {
+  content: "Note";
+}
+
+.preview blockquote.markdown-alert-tip {
+  --alert: var(--tag-green);
+}
+
+.preview blockquote.markdown-alert-tip::before {
+  content: "Tip";
+}
+
+.preview blockquote.markdown-alert-important {
+  --alert: var(--tag-purple);
+}
+
+.preview blockquote.markdown-alert-important::before {
+  content: "Important";
+}
+
+.preview blockquote.markdown-alert-warning {
+  --alert: var(--tag-orange);
+}
+
+.preview blockquote.markdown-alert-warning::before {
+  content: "Warning";
+}
+
+.preview blockquote.markdown-alert-caution {
+  --alert: var(--tag-red);
+}
+
+.preview blockquote.markdown-alert-caution::before {
+  content: "Caution";
+}
+
+/* A spoiler hides its text behind a solid block until clicked. */
+.preview .spoiler {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--fg);
+  color: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.preview .spoiler:not(.revealed) * {
+  color: transparent;
+}
+
+.preview .spoiler.revealed {
+  background: var(--chip-bg);
+  color: inherit;
+  user-select: auto;
+}
+
+.preview sup.footnote-reference a {
+  text-decoration: none;
+}
+
+.preview .footnote-definition {
+  display: flex;
+  gap: 6px;
+  margin-top: var(--space-2);
+  font-size: var(--small);
+  color: var(--muted);
+}
+
+.preview .footnote-definition p {
+  margin: 0;
+}
+
 .preview table {
   width: auto;
 }
