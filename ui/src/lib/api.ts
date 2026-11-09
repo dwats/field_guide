@@ -199,6 +199,10 @@ export interface MediaSummary {
   unreferenced_bytes: number;
   /** Free space on the vault's drive, or null when unknown. */
   free_space: number | null;
+  /** Unused media is over the warning threshold (core applies the setting). */
+  warn_unreferenced: boolean;
+  /** The vault's drive has under a gigabyte free. */
+  warn_low_space: boolean;
 }
 
 export interface CleanupReport {

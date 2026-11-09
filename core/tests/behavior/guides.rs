@@ -178,6 +178,38 @@ fn a_cover_keeps_its_crop_and_loses_it_with_the_cover() {
     assert!(matches!(err, Error::Invalid(_)), "{err:?}");
     assert_eq!(v.get_guide(&g).unwrap().cover_crop, Some(crop));
 
+    // The far edge is inside; one thousandth past it is not, and neither are values that would
+    // wrap a 16-bit sum.
+    let edge = CoverCrop {
+        x: 400,
+        y: 100,
+        w: 600,
+        h: 900,
+    };
+    v.set_guide_cover(&g, Some(&picture), Some(edge)).unwrap();
+    for bad in [
+        CoverCrop { x: 401, ..edge },
+        CoverCrop { y: 101, ..edge },
+        CoverCrop {
+            x: 65535,
+            y: 0,
+            w: 1,
+            h: 1,
+        },
+        CoverCrop {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 500,
+        },
+    ] {
+        let err = v
+            .set_guide_cover(&g, Some(&picture), Some(bad))
+            .unwrap_err();
+        assert!(matches!(err, Error::Invalid(_)), "{bad:?}: {err:?}");
+    }
+    assert_eq!(v.get_guide(&g).unwrap().cover_crop, Some(edge));
+
     let cleared = v.set_guide_cover(&g, None, Some(crop)).unwrap();
     assert_eq!((cleared.cover_media_id, cleared.cover_crop), (None, None));
 }

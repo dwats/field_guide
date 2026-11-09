@@ -25,7 +25,7 @@
     type Scope,
   } from "../lib/sidebar";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
-  import { findNode } from "../lib/tree";
+  import { findNode, jumpIndex } from "../lib/tree";
   import SidebarFrame from "./SidebarFrame.svelte";
   import TreeRow from "./TreeRow.svelte";
 
@@ -164,7 +164,10 @@
     return forcedOpen.has(id) || session.sidebar.expanded.includes(id);
   }
 
-  /** Up and Down move between rows; in the tree, Right opens or enters, Left closes or goes up. */
+  /**
+   * Up and Down move between rows, Home and End jump, typing a letter goes to the next row that
+   * starts with it; in the tree, Right opens or enters, Left closes or goes up.
+   */
   function rowKeys(container: HTMLElement | null, withTree: boolean) {
     return (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
@@ -179,6 +182,18 @@
       if (event.key === "Home" || event.key === "End") {
         event.preventDefault();
         names[event.key === "Home" ? 0 : names.length - 1]?.focus();
+        return;
+      }
+      if (event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const next = jumpIndex(
+          names.map((n) => n.textContent ?? ""),
+          index,
+          event.key,
+        );
+        if (next >= 0) {
+          event.preventDefault();
+          names[next]?.focus();
+        }
         return;
       }
       if (!withTree) return;

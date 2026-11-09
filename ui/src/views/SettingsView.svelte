@@ -287,7 +287,7 @@
     <div class="row">
       <h2>Media</h2>
       <span class="spacer"></span>
-      <button onclick={findUnused}>Find unused media</button>
+      <button onclick={findUnused}>Clean up unused media</button>
     </div>
     <p class="muted">
       Images are stored once by content in the vault's media folder. Nothing is removed on its own.

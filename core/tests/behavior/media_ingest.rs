@@ -3,7 +3,7 @@ use std::io::Cursor;
 use fieldguide_core::media::{PreparedMedia, prepare_image};
 use fieldguide_core::{Error, Vault};
 use image::codecs::gif::{GifEncoder, Repeat};
-use image::{Delay, Frame, ImageFormat, RgbaImage};
+use image::{Delay, Frame, GenericImageView, ImageFormat, RgbImage, RgbaImage};
 use tempfile::tempdir;
 
 fn checker(size: u32) -> RgbaImage {
@@ -40,6 +40,22 @@ fn animated_gif(frames: usize) -> Vec<u8> {
                 .unwrap();
         }
     }
+    out
+}
+
+/// The JPEG with an EXIF APP1 segment carrying only the orientation tag, as a camera writes it.
+fn with_orientation(jpeg: &[u8], orientation: u8) -> Vec<u8> {
+    let mut app1 = vec![0xFF, 0xE1, 0x00, 0x22];
+    app1.extend_from_slice(b"Exif\0\0");
+    // TIFF header, little endian, first IFD at offset 8; one entry: tag 0x0112, SHORT, count 1.
+    app1.extend_from_slice(b"II\x2a\x00\x08\x00\x00\x00");
+    app1.extend_from_slice(&[0x01, 0x00]);
+    app1.extend_from_slice(&[0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00]);
+    app1.extend_from_slice(&[orientation, 0x00, 0x00, 0x00]);
+    app1.extend_from_slice(&[0, 0, 0, 0]);
+    let mut out = jpeg[..2].to_vec();
+    out.extend_from_slice(&app1);
+    out.extend_from_slice(&jpeg[2..]);
     out
 }
 
@@ -86,6 +102,37 @@ fn animated_gifs_webp_and_svg_are_kept_as_they_are() {
         ("svg", "image/svg+xml")
     );
     assert_eq!(kept.bytes, svg);
+}
+
+#[test]
+fn photos_come_out_the_way_they_were_seen() {
+    let wide = RgbImage::from_fn(4, 2, |x, _| image::Rgb([x as u8 * 60, 0, 0]));
+    let mut jpeg = Cursor::new(Vec::new());
+    wide.write_to(&mut jpeg, ImageFormat::Jpeg).unwrap();
+    let plain = prepare_image(jpeg.get_ref(), Some("photo.jpg")).unwrap();
+    assert_eq!(
+        (plain.ext.as_str(), dims(&plain)),
+        ("webp", (Some(4), Some(2)))
+    );
+
+    // Orientation 6 means "rotate 90 degrees clockwise to view": the stored picture is upright
+    // and tall, since WebP has no place to carry the instruction.
+    let sideways = prepare_image(&with_orientation(jpeg.get_ref(), 6), Some("photo.jpg")).unwrap();
+    assert_eq!(dims(&sideways), (Some(2), Some(4)));
+    let decoded = image::load_from_memory(&sideways.bytes).unwrap();
+    assert_eq!(decoded.dimensions(), (2, 4));
+}
+
+#[test]
+fn the_bytes_decide_the_format_and_the_name_only_helps_svg() {
+    // A PNG called .svg is a PNG.
+    let png = encoded(&checker(3), ImageFormat::Png);
+    let stored = prepare_image(&png, Some("drawing.svg")).unwrap();
+    assert_eq!(stored.ext, "webp");
+    // Text that opens an svg tag is SVG whatever it is called.
+    let svg = b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>";
+    assert_eq!(prepare_image(svg, Some("pasted")).unwrap().ext, "svg");
+    assert_eq!(prepare_image(svg, None).unwrap().ext, "svg");
 }
 
 #[test]

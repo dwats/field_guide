@@ -28,7 +28,8 @@
   import { register } from "../lib/actions";
   import { onDrop, onPaste, pointIn, type DropPoint } from "../lib/drop";
   import { keysFor } from "../lib/keys";
-  import { altFromName, extensionOf, fileName, imageReference, isImagePath } from "../lib/media";
+  import { ingestFile, ingestPath } from "../lib/ingest";
+  import { altFromName, fileName, imageReference, isImagePath } from "../lib/media";
   import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
 
@@ -367,32 +368,31 @@
     if (!entry || sources.length === 0) return;
     const intoEditor =
       mode === "edit" && (at ? pointIn(editorPane, at) : (editor?.hasFocus() ?? false));
+    // Files already stored are placed even when a later one fails, so no stored file is left
+    // without a reference; the failure is reported after.
     const references: string[] = [];
-    try {
-      for (const source of sources) {
-        const media =
-          "path" in source
-            ? await api.ingestMediaPath(source.path)
-            : await api.ingestMedia(
-                new Uint8Array(await source.arrayBuffer()),
-                extensionOf(source.name) || source.type.split("/")[1] || "png",
-              );
+    let failure = "";
+    for (const source of sources) {
+      try {
+        const media = "path" in source ? await ingestPath(source.path) : await ingestFile(source);
         references.push(imageReference(media, altFromName("path" in source ? source.path : source.name)));
+      } catch (e) {
+        failure = errorMessage(e);
+        break;
       }
-    } catch (e) {
-      error = errorMessage(e);
-      return;
     }
-    error = "";
-    const block = references.join("\n");
-    if (intoEditor) {
-      editor?.insertText(`${block}\n`, at ?? undefined);
-    } else {
-      draft = draft.trim() === "" ? `${block}\n` : `${draft.trimEnd()}\n\n${block}\n`;
-      saveState = "dirty";
-      await save();
-      await refresh();
+    if (references.length > 0) {
+      const block = references.join("\n");
+      if (intoEditor) {
+        editor?.insertText(block, at ?? undefined);
+      } else {
+        draft = draft.trim() === "" ? `${block}\n` : `${draft.trimEnd()}\n\n${block}\n`;
+        saveState = "dirty";
+        await flush();
+        await refresh();
+      }
     }
+    error = failure;
   }
 
   /** Opens the viewer on the clicked image, over every image the body shows. */

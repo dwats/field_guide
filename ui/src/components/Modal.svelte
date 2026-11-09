@@ -6,6 +6,8 @@
   // `open`.
   import type { Snippet } from "svelte";
 
+  import { focusables, trapTab } from "../lib/focusTrap";
+
   interface Props {
     open: boolean;
     title: string;
@@ -20,22 +22,13 @@
   let opener: HTMLElement | null = null;
   const titleId = `dialog-title-${Math.random().toString(36).slice(2)}`;
 
-  const FOCUSABLE =
-    "a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
-
-  function focusables(): HTMLElement[] {
-    return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-      (el) => el.offsetParent !== null || el === document.activeElement,
-    );
-  }
-
   $effect(() => {
     if (!dialog) return;
     if (open && !dialog.open) {
       opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       dialog.show();
       const preferred = dialog.querySelector<HTMLElement>("[autofocus]");
-      (preferred ?? focusables()[0] ?? dialog).focus();
+      (preferred ?? focusables(dialog)[0] ?? dialog).focus();
     }
     if (!open && dialog.open) {
       dialog.close();
@@ -51,23 +44,8 @@
       onclose();
       return;
     }
-    if (event.key !== "Tab") return;
     // Tab cycles inside the dialog instead of reaching the page behind it.
-    const items = focusables();
-    if (items.length === 0) {
-      event.preventDefault();
-      return;
-    }
-    const first = items[0];
-    const last = items[items.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || active === dialog)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    trapTab(event, dialog);
   }
 </script>
 

@@ -60,15 +60,15 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Drop an image file onto the editor: it lands where dropped; drop one onto the page in Read mode: it is appended to the body.
 - [ ] Drop the same picture twice, once as PNG and once as BMP: one file in the media folder.
 - [ ] An animated GIF stays a `.gif` and still animates; an SVG stays an `.svg`.
-- [ ] Click an image: the viewer opens over the page with the counter, caption, and file details; Left and Right move between the body's images; Escape closes; Make primary image puts it first in the gallery.
+- [ ] Click an image, or Tab to it and press Enter: the viewer opens over the page with the counter, caption, and file details; Tab stays inside the viewer; Left and Right move between the body's images; Escape closes; Make primary image puts it first in the gallery.
 - [ ] Drop or paste an image on a guide page: it becomes the cover and the crop box opens; drag and zoom, Save; the poster on the guide page and on the card shows that frame; Adjust cover... in More reopens the box; Remove cover undoes it with Undo.
 - [ ] An image alone on its line in a body renders as a bordered figure floated right with its alt text as caption and text wrapping beside it; `"left"` as the image title floats it left, `"center"` centers it, `"full"` spans the width; an image inside a sentence stays inline.
 - [ ] The guides list shows 2:3 posters in rows that fill the window from the left, titles below; a guide without a cover shows a placeholder poster.
 - [ ] A dropped file that is not an image is skipped with a notice; a drop on the guides list or Settings shows where drops go.
 - [ ] Tag editor: drag a tag onto another with the mouse to nest it, and onto the Top level bar to move it up; a click without movement only selects.
-- [ ] Settings, Media: the totals line counts files and unused bytes; Find unused media lists only files no body, gallery, or cover refers to; Remove asks first and removes exactly those; the threshold field changes when the start-up notice appears.
+- [ ] Settings, Media: the totals line counts files and unused bytes; Clean up unused media lists only files no body, gallery, or cover refers to; Remove asks first and removes exactly those; the threshold field changes when the start-up notice appears.
 - [ ] At start, a notice appears when unused media exceeds the threshold, and another when the drive has under 1 GB free; each opens Settings.
-- [ ] Sidebar: with a tag row focused, Up and Down move between rows, Right opens a tag or enters its children, Left closes it or goes to its parent, Home and End jump; the entry list takes Up and Down too.
+- [ ] Sidebar: with a tag row focused, Up and Down move between rows, Right opens a tag or enters its children, Left closes it or goes to its parent, Home and End jump, typing a letter goes to the next row that starts with it; the entry list takes Up and Down and letters too.
 
 ## Boards
 

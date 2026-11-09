@@ -2,6 +2,10 @@
 
 import type { Media } from "./api";
 
+/**
+ * The files a drop offers to store. Mirrors the formats core's `prepare_image` accepts
+ * (`core/src/media.rs`); change both together.
+ */
 export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "tif", "tiff", "webp", "svg"];
 
 /** `<sha>.<ext>`, the name a stored file has on disk and in references. */
@@ -18,6 +22,15 @@ export function extensionOf(path: string): string {
   const base = path.split(/[\\/]/).pop() ?? path;
   const dot = base.lastIndexOf(".");
   return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+}
+
+/**
+ * The extension hint sent with a pasted or picked file: from its name, else from its MIME type
+ * (`image/svg+xml` gives `svg`), else `png`. Core sniffs the bytes; the hint matters for SVG.
+ */
+export function extensionHint(name: string, type: string): string {
+  const fromType = type.split("/")[1]?.split("+")[0] ?? "";
+  return extensionOf(name) || fromType || "png";
 }
 
 export function isImagePath(path: string): boolean {

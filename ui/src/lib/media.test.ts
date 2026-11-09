@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { altFromName, extensionOf, fileName, formatBytes, imageReference, isImagePath } from "./media";
+import {
+  altFromName,
+  extensionHint,
+  extensionOf,
+  fileName,
+  formatBytes,
+  imageReference,
+  isImagePath,
+} from "./media";
 
 const media = { sha256: "ab".repeat(32), ext: "webp" };
 
@@ -17,6 +25,13 @@ describe("references and names", () => {
     expect(extensionOf(".hidden")).toBe("");
     expect(isImagePath("a/b/c.jpeg")).toBe(true);
     expect(isImagePath("a/b/c.txt")).toBe(false);
+  });
+
+  it("hints the extension from the name, then the MIME type, then png", () => {
+    expect(extensionHint("shot.PNG", "image/png")).toBe("png");
+    expect(extensionHint("", "image/svg+xml")).toBe("svg");
+    expect(extensionHint("image.png", "image/jpeg")).toBe("png");
+    expect(extensionHint("", "")).toBe("png");
   });
 
   it("makes a caption from a meaningful file name only", () => {

@@ -1254,3 +1254,45 @@ fn a_media_entry_whose_extension_is_a_path_is_refused() {
     }
     assert!(matches!(import::read_archive(&bad), Err(Error::Archive(_))));
 }
+
+#[test]
+fn importing_into_a_guide_that_has_a_cover_keeps_that_cover() {
+    let f = fixture();
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+    let (_d, mut target) = empty_vault();
+    let local = guide(&mut target, "Minecraft");
+    let own = media(&mut target, 0x77);
+    let own_crop = CoverCrop {
+        x: 0,
+        y: 0,
+        w: 500,
+        h: 750,
+    };
+    target
+        .set_guide_cover(&local, Some(&own), Some(own_crop))
+        .unwrap();
+    let archive_id = import::read_archive(&archive).unwrap().guides[0]
+        .guide
+        .id
+        .clone();
+    import_all(
+        &mut target,
+        &archive,
+        &[GuideChoice {
+            archive_guide_id: archive_id,
+            target: Some(GuideTarget::Existing { id: local.clone() }),
+            add_tag: None,
+        }],
+        &ImportOptions::default(),
+    );
+    // Decided 2026-11-08: the local cover and its crop stay; the archive's picture is still
+    // imported as a file, since entries may refer to it.
+    let after = target.get_guide(&local).unwrap();
+    assert_eq!(after.cover_media_id, Some(own));
+    assert_eq!(after.cover_crop, Some(own_crop));
+}

@@ -16,7 +16,7 @@ use fieldguide_core::import::{
     self, ArchiveSummary, GuideChoice, ImportOptions, ImportPlan, ImportReport,
 };
 use fieldguide_core::markdown::Rendered;
-use fieldguide_core::media::{self, CleanupReport, Media, MediaDimensions, MediaSummary};
+use fieldguide_core::media::{self, CleanupReport, Media, MediaSummary};
 use fieldguide_core::relation::{
     CreateRelation, NewQualifier, QualifierValue, Relation, RelationFilter, RelationView,
 };
@@ -558,17 +558,6 @@ pub fn detach_media(state: S<'_>, entry_id: EntryId, media_id: MediaId) -> CmdRe
 
 /// Stores bytes as a media file. Phase 8 decides how large files cross the IPC boundary; until
 /// then the bytes travel as a JSON array, which is fine for screenshots.
-#[tauri::command(rename_all = "snake_case")]
-pub async fn store_media(
-    state: S<'_>,
-    bytes: Vec<u8>,
-    ext: String,
-    mime: String,
-    dimensions: MediaDimensions,
-) -> CmdResult<Media> {
-    state.with_vault(|v| v.store_media(&bytes, &ext, &mime, dimensions))
-}
-
 /// Stores an image from the clipboard or a file picker. The bytes travel as the raw request
 /// body, not JSON; the `x-ext` header carries the file extension as a hint (SVG has no magic
 /// bytes). Conversion runs on a worker thread, off the vault lock.
@@ -612,7 +601,8 @@ pub async fn ingest_media_path(state: S<'_>, path: String) -> CmdResult<Media> {
 
 #[tauri::command(rename_all = "snake_case")]
 pub fn media_summary(state: S<'_>) -> CmdResult<MediaSummary> {
-    state.with_vault(|v| v.media_summary())
+    let threshold = state.with_config(|c| (c.ui.unreferenced_warning_mb, false))?;
+    state.with_vault(|v| v.media_summary(threshold))
 }
 
 #[tauri::command(rename_all = "snake_case")]

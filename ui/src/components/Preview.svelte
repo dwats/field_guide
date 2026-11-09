@@ -1,10 +1,10 @@
 <script lang="ts">
   // Shows HTML from core's renderer. Media paths (`media/<sha>.<ext>`) are rewritten to the asset
   // protocol here, at render time only; the stored body never changes. Wikilink clicks are
-  // reported to the parent, which decides where to go; a click on an image reports its index so
-  // the parent can open the viewer; links to an anchor in the body scroll to it; a spoiler reveals
+  // reported to the parent, which decides where to go; a click or Enter on an image reports its
+  // index so the parent can open the viewer; links to an anchor in the body scroll to it; a spoiler reveals
   // on click or Enter. Other links stay inert in this phase.
-  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { mediaUrl } from "../lib/mediaUrl";
 
   interface Props {
     html: string;
@@ -34,13 +34,12 @@
     // Re-run after each new `html` lands in the DOM.
     void html;
     if (!container || !mediaDir) return;
-    const separator = mediaDir.includes("\\") ? "\\" : "/";
     for (const el of container.querySelectorAll<HTMLImageElement | HTMLVideoElement>(
       'img[src^="media/"], video[src^="media/"]',
     )) {
       const name = el.getAttribute("src")!.slice("media/".length);
       el.dataset.media = name;
-      el.src = convertFileSrc(`${mediaDir}${separator}${name}`);
+      el.src = mediaUrl(mediaDir, name)!;
     }
   });
 
@@ -86,6 +85,10 @@
     if ((event.key === "Enter" || event.key === " ") && target.classList.contains("spoiler")) {
       event.preventDefault();
       toggleSpoiler(target);
+    } else if (event.key === "Enter" && target instanceof HTMLImageElement && onimage) {
+      // Body images take focus (core gives them tabindex), so the viewer opens from the keyboard.
+      event.preventDefault();
+      onimage(Array.from(container.querySelectorAll("img")).indexOf(target));
     }
   }
 </script>

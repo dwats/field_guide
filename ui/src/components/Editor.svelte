@@ -14,6 +14,8 @@
   import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
   import { markdown } from "@codemirror/lang-markdown";
 
+  import { asOwnParagraph } from "../lib/insert";
+
   interface Props {
     value: string;
     onchange: (value: string) => void;
@@ -68,14 +70,14 @@
   });
 
   /**
-   * Inserts text at the caret, or at a window point when one is given (a drop), on its own line
-   * when the position is not at a line start, and keeps the editor focused.
+   * Inserts a block at the caret, or at a window point when one is given (a drop), as a paragraph
+   * of its own (a blank line each side where the text around it has none), and keeps the editor
+   * focused.
    */
   export function insertText(text: string, at?: { x: number; y: number }) {
     if (!view) return;
     const pos = (at ? view.posAtCoords(at) : null) ?? view.state.selection.main.head;
-    const line = view.state.doc.lineAt(pos);
-    const insert = pos > line.from ? `\n${text}` : text;
+    const insert = asOwnParagraph(view.state.doc.toString(), pos, text);
     view.dispatch({
       changes: { from: pos, insert },
       selection: { anchor: pos + insert.length },

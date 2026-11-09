@@ -51,22 +51,27 @@ pub struct PreparedMedia {
     pub dimensions: MediaDimensions,
 }
 
-/// Prepares image bytes from the clipboard or a file. The name is only a hint, for SVG, which
-/// has no magic bytes. Pure, so it can run outside the vault lock.
+/// Prepares image bytes from the clipboard or a file. The bytes decide the format; the name is a
+/// hint only for SVG, which has no magic bytes. Pure, so it can run outside the vault lock. The
+/// formats accepted here are mirrored in `ui/src/lib/media.ts` (`IMAGE_EXTENSIONS`), which
+/// decides which dropped files are offered at all; change both together.
 pub fn prepare_image(bytes: &[u8], name_hint: Option<&str>) -> Result<PreparedMedia> {
-    let hint = name_hint
-        .and_then(|name| Path::new(name).extension())
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase());
-    if hint.as_deref() == Some("svg") || looks_like_svg(bytes) {
-        return Ok(kept(
-            bytes,
-            "svg",
-            "image/svg+xml",
-            MediaDimensions::default(),
-        ));
-    }
-    let format = image::guess_format(bytes).map_err(|_| unsupported())?;
+    let Ok(format) = image::guess_format(bytes) else {
+        // Nothing binary matched. SVG is text, so the name or the opening tag has to say so.
+        let hint = name_hint
+            .and_then(|name| Path::new(name).extension())
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase());
+        if hint.as_deref() == Some("svg") || looks_like_svg(bytes) {
+            return Ok(kept(
+                bytes,
+                "svg",
+                "image/svg+xml",
+                MediaDimensions::default(),
+            ));
+        }
+        return Err(unsupported());
+    };
     match format {
         ImageFormat::WebP => {
             let (w, h) = image::load_from_memory_with_format(bytes, format)
@@ -85,7 +90,7 @@ pub fn prepare_image(bytes: &[u8], name_hint: Option<&str>) -> Result<PreparedMe
         | ImageFormat::Gif
         | ImageFormat::Bmp
         | ImageFormat::Tiff => {
-            let img = image::load_from_memory_with_format(bytes, format).map_err(unreadable)?;
+            let img = decode_upright(bytes, format)?;
             let (w, h) = img.dimensions();
             Ok(PreparedMedia {
                 bytes: lossless_webp(&img)?,
@@ -131,15 +136,30 @@ fn looks_like_svg(bytes: &[u8]) -> bool {
     head.contains("<svg")
 }
 
-/// A GIF with a second frame animates; converting it to a still would lose the motion.
+/// A GIF with a readable second frame animates; converting it to a still would lose the motion.
 fn is_animated_gif(bytes: &[u8]) -> Result<bool> {
     let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(unreadable)?;
     let mut frames = decoder.into_frames();
     frames.next();
-    Ok(frames.next().is_some())
+    Ok(matches!(frames.next(), Some(Ok(_))))
 }
 
-/// Lossless WebP keeps every pixel; RGB or RGBA depending on whether the source has alpha.
+/// Decodes and applies the EXIF orientation, so a photo a phone stored sideways comes out the
+/// way it was seen, and the dimensions are the ones seen. The stored WebP carries no EXIF.
+fn decode_upright(bytes: &[u8], format: ImageFormat) -> Result<image::DynamicImage> {
+    use image::ImageDecoder;
+    let mut reader = image::ImageReader::new(Cursor::new(bytes));
+    reader.set_format(format);
+    let mut decoder = reader.into_decoder().map_err(unreadable)?;
+    let orientation = decoder.orientation().map_err(unreadable)?;
+    let mut img = image::DynamicImage::from_decoder(decoder).map_err(unreadable)?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
+/// Lossless WebP keeps every pixel of an 8-bit image; RGB or RGBA depending on whether the
+/// source has alpha. WebP has no 16-bit mode, so a 16-bit PNG or TIFF is reduced to 8 bits per
+/// channel (design section 3).
 fn lossless_webp(img: &image::DynamicImage) -> Result<Vec<u8>> {
     use image::ExtendedColorType;
     let (w, h) = img.dimensions();
@@ -155,7 +175,8 @@ fn lossless_webp(img: &image::DynamicImage) -> Result<Vec<u8>> {
 }
 
 /// Totals for the Settings page and the notices (design section 3): every stored file, the ones
-/// nothing references, and the free space on the vault's drive (`None` for an in-memory vault).
+/// nothing references, the free space on the vault's drive (`None` for an in-memory vault), and
+/// whether either notice is due.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MediaSummary {
     pub files: usize,
@@ -163,7 +184,16 @@ pub struct MediaSummary {
     pub unreferenced_files: usize,
     pub unreferenced_bytes: u64,
     pub free_space: Option<u64>,
+    /// Unused media is over the warning threshold.
+    pub warn_unreferenced: bool,
+    /// The vault's drive has under [`LOW_SPACE_BYTES`] free.
+    pub warn_low_space: bool,
 }
+
+/// The unused-media notice threshold when the setting is unset (design section 3).
+pub const DEFAULT_UNREFERENCED_WARNING_MB: u32 = 250;
+/// Free space under this raises the low-disk notice (design section 3).
+pub const LOW_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// What a cleanup removed.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,8 +451,9 @@ impl Vault {
             .collect())
     }
 
-    /// Counts and sizes for Settings and the notices.
-    pub fn media_summary(&self) -> Result<MediaSummary> {
+    /// Counts and sizes for Settings and the notices. `warn_over_mb` is the user's threshold for
+    /// the unused-media notice; `None` takes the default.
+    pub fn media_summary(&self, warn_over_mb: Option<u32>) -> Result<MediaSummary> {
         let (files, bytes): (i64, Option<i64>) =
             self.conn()
                 .query_row("SELECT COUNT(*), SUM(bytes) FROM media", [], |row| {
@@ -433,15 +464,20 @@ impl Vault {
             .media_dir()
             .and_then(|dir| dir.parent().map(Path::to_path_buf))
             .and_then(|vault_dir| fs4::available_space(&vault_dir).ok());
+        let unreferenced_bytes: u64 = unreferenced
+            .iter()
+            .map(|m| u64::try_from(m.bytes).unwrap_or(0))
+            .sum();
+        let threshold =
+            u64::from(warn_over_mb.unwrap_or(DEFAULT_UNREFERENCED_WARNING_MB)) * 1024 * 1024;
         Ok(MediaSummary {
             files: usize::try_from(files).unwrap_or(0),
             bytes: u64::try_from(bytes.unwrap_or(0)).unwrap_or(0),
             unreferenced_files: unreferenced.len(),
-            unreferenced_bytes: unreferenced
-                .iter()
-                .map(|m| u64::try_from(m.bytes).unwrap_or(0))
-                .sum(),
+            unreferenced_bytes,
             free_space,
+            warn_unreferenced: unreferenced_bytes > threshold,
+            warn_low_space: free_space.is_some_and(|free| free < LOW_SPACE_BYTES),
         })
     }
 

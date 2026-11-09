@@ -140,6 +140,8 @@
   /** The keyboard map (lib/keys.ts). Plain keys such as F2 stay in fields where typing happens. */
   function onKey(event: KeyboardEvent) {
     if (session.startup?.fatal) return;
+    // A dialog or the image viewer owns the keyboard while it is open.
+    if (document.querySelector('dialog[open], [aria-modal="true"]:not(dialog)')) return;
     const action = actionFor(event);
     if (!action) return;
     // Inside a field, plain keys (F2) and Alt+arrows (the editor's word motions) are the field's.
@@ -232,19 +234,18 @@
     }
   }
 
-  /** Unused media over the threshold, or little room left on the vault's drive (design section 3). */
+  /** Unused media over the threshold, or little room left on the vault's drive; core decides. */
   async function warnAboutMedia() {
     try {
       const summary = await api.mediaSummary();
-      const limit = (session.prefs.unreferenced_warning_mb ?? 250) * 1024 * 1024;
       const openSettings = { label: "Open Settings", run: () => navigate({ view: "settings" }) };
-      if (summary.unreferenced_bytes > limit) {
+      if (summary.warn_unreferenced) {
         notify(
           `Unused media takes ${formatBytes(summary.unreferenced_bytes)}. Clean it up in Settings.`,
           { kind: "warning", action: openSettings },
         );
       }
-      if (summary.free_space !== null && summary.free_space < 1024 * 1024 * 1024) {
+      if (summary.warn_low_space && summary.free_space !== null) {
         notify(
           `The drive holding your data has ${formatBytes(summary.free_space)} free.`,
           { kind: "warning", action: openSettings },

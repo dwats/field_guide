@@ -22,7 +22,7 @@
   font-size: var(--font-size);
   line-height: var(--line-height);
 
-  /* Each colour token once, light then dark. Explicit values: system colours mixed with color-mix
+  /* Each color token once, light then dark. Explicit values: system colors mixed with color-mix
      gave muted text near 4:1 in dark mode, under what body text needs. */
   --bg: light-dark(#ffffff, #1e1e1e);
   --fg: light-dark(#1b1b1b, #e6e6e6);
@@ -34,7 +34,7 @@
   --warning-bg: light-dark(#fff4d6, #4a3b12);
   --chip-bg: light-dark(#e9e9e9, #333333);
 
-  /* Tag colours, picked in the tag editor. */
+  /* Tag colors, picked in the tag editor. */
   --tag-red: light-dark(#d93025, #f28b82);
   --tag-orange: light-dark(#e8710a, #fcad70);
   --tag-yellow: light-dark(#f9ab00, #fdd663);
@@ -167,7 +167,7 @@ button.link {
   color: var(--accent);
 }
 
-/* A button that is only an icon: square, centred, named by its aria-label and title. */
+/* A button that is only an icon: square, centered, named by its aria-label and title. */
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -510,7 +510,7 @@ td {
   margin-bottom: 0;
 }
 
-/* Alerts (`> [!NOTE]` and friends): a coloured bar and a small title instead of the quote mark. */
+/* Alerts (`> [!NOTE]` and friends): a colored bar and a small title instead of the quote mark. */
 .preview blockquote[class^="markdown-alert-"] {
   --alert: var(--tag-blue);
   padding-left: var(--space-4);

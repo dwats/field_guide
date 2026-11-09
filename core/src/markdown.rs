@@ -385,7 +385,8 @@ fn wrap_figures(events: &mut [Event<'_>], images: &[(usize, String, String, Stri
 }
 
 /// `<img>` for images, `<video controls>` for `.webm`. Any other destination is an ordinary image
-/// tag; the host decides whether it can serve it.
+/// tag; the host decides whether it can serve it. Images take focus (`tabindex="0"`) so the
+/// viewer opens from the keyboard.
 fn media_html(dest: &str, alt: &str) -> String {
     let is_video = dest
         .rsplit('.')
@@ -398,7 +399,11 @@ fn media_html(dest: &str, alt: &str) -> String {
             escape(alt)
         )
     } else {
-        format!("<img src=\"{}\" alt=\"{}\">", escape(dest), escape(alt))
+        format!(
+            "<img src=\"{}\" alt=\"{}\" tabindex=\"0\">",
+            escape(dest),
+            escape(alt)
+        )
     }
 }
 
@@ -463,7 +468,7 @@ mod tests {
         );
         assert!(
             r.html
-                .contains("<img src=\"media/abc.png\" alt=\"A stone\">"),
+                .contains("<img src=\"media/abc.png\" alt=\"A stone\" tabindex=\"0\">"),
             "{}",
             r.html
         );
@@ -483,19 +488,20 @@ mod tests {
         );
         assert!(
             r.html.contains(
-                "<figure class=\"figure figure-right\"><img src=\"media/abc.webp\" alt=\"A cave\"><figcaption>A cave</figcaption></figure>"
+                "<figure class=\"figure figure-right\"><img src=\"media/abc.webp\" alt=\"A cave\" tabindex=\"0\"><figcaption>A cave</figcaption></figure>"
             ),
             "{}",
             r.html
         );
         assert!(
-            r.html.contains("<figure class=\"figure figure-left\"><img src=\"media/def.webp\" alt=\"\"></figure>"),
+            r.html.contains("<figure class=\"figure figure-left\"><img src=\"media/def.webp\" alt=\"\" tabindex=\"0\"></figure>"),
             "{}",
             r.html
         );
         assert!(
-            r.html
-                .contains("<p>See <img src=\"media/i.webp\" alt=\"icon\"> inline.</p>"),
+            r.html.contains(
+                "<p>See <img src=\"media/i.webp\" alt=\"icon\" tabindex=\"0\"> inline.</p>"
+            ),
             "{}",
             r.html
         );

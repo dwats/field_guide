@@ -141,7 +141,6 @@ fn main() -> anyhow::Result<()> {
             commands::entry_gallery,
             commands::attach_media,
             commands::detach_media,
-            commands::store_media,
             commands::ingest_media,
             commands::ingest_media_path,
             commands::media_by_hash,

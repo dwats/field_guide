@@ -30,7 +30,21 @@
   const FRAME = { width: 220, height: 330 };
   let pan = $state<Pan>({ zoom: MIN_ZOOM, ox: 0, oy: 0 });
 
-  const image = $derived({ width: media.width || 1, height: media.height || 1 });
+  /** The picture's size as loaded; the stored size until then, which an SVG does not have. */
+  let natural = $state<{ width: number; height: number } | null>(null);
+  const image = $derived(natural ?? { width: media.width || 1, height: media.height || 1 });
+
+  $effect(() => {
+    void src;
+    natural = null;
+  });
+
+  function onload(event: Event) {
+    const el = event.currentTarget as HTMLImageElement;
+    if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+      natural = { width: el.naturalWidth, height: el.naturalHeight };
+    }
+  }
   const shown = $derived(displayed(image, FRAME, pan.zoom));
 
   // Each opening starts from the stored crop.
@@ -86,6 +100,7 @@
         {src}
         alt=""
         draggable="false"
+        {onload}
         style:width="{shown.width}px"
         style:height="{shown.height}px"
         style:left="{pan.ox}px"

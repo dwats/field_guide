@@ -19,7 +19,8 @@
   import { keysFor } from "../lib/keys";
   import { parseFilter } from "../lib/filter";
   import { when } from "../lib/format";
-  import { extensionOf, fileName, isImagePath } from "../lib/media";
+  import { ingestFile, ingestPath } from "../lib/ingest";
+  import { fileName, isImagePath } from "../lib/media";
   import { mediaUrl } from "../lib/mediaUrl";
   import { navigate, routeHash } from "../lib/router";
   import { freshSidebar, notify, session, setCurrent } from "../lib/session.svelte";
@@ -78,19 +79,10 @@
         notify("Drop an image to set the cover.");
         return;
       }
-      return setCover(() => api.ingestMediaPath(image));
+      return setCover(() => ingestPath(image));
     }),
   );
-  $effect(() =>
-    onPaste((files) =>
-      setCover(async () =>
-        api.ingestMedia(
-          new Uint8Array(await files[0].arrayBuffer()),
-          extensionOf(files[0].name) || files[0].type.split("/")[1] || "png",
-        ),
-      ),
-    ),
-  );
+  $effect(() => onPaste((files) => setCover(() => ingestFile(files[0]))));
 
   async function load() {
     try {
@@ -107,10 +99,14 @@
   /** Stores the image, makes it the cover, and opens the crop box; Undo puts the old cover back. */
   async function setCover(ingest: () => Promise<Media>) {
     if (!guide) return;
+    // The guide is captured: the page may show another one by the time the work, or Undo, lands.
+    const id = guide.id;
     const previous = { media: guide.cover_media_id, crop: guide.cover_crop };
     try {
       const media = await ingest();
-      guide = await api.setGuideCover(guide.id, media.id, null);
+      const updated = await api.setGuideCover(id, media.id, null);
+      if (guide?.id !== id) return;
+      guide = updated;
       cover = media;
       setCurrent(guide, null);
       error = "";
@@ -119,10 +115,12 @@
         action: {
           label: "Undo",
           run: async () => {
-            if (!guide) return;
+            const restored = await api.setGuideCover(id, previous.media, previous.crop);
+            if (guide?.id !== id) return;
             cropping = false;
-            guide = await api.setGuideCover(guide.id, previous.media, previous.crop);
+            guide = restored;
             cover = previous.media ? await api.getMedia(previous.media) : null;
+            setCurrent(guide, null);
           },
         },
       });
@@ -144,17 +142,21 @@
 
   async function removeCover() {
     if (!guide || !guide.cover_media_id) return;
+    const id = guide.id;
     const previous = { media: guide.cover_media_id, crop: guide.cover_crop };
     try {
-      guide = await api.setGuideCover(guide.id, null, null);
+      guide = await api.setGuideCover(id, null, null);
       cover = null;
+      setCurrent(guide, null);
       notify("Removed the cover.", {
         action: {
           label: "Undo",
           run: async () => {
-            if (!guide) return;
-            guide = await api.setGuideCover(guide.id, previous.media, previous.crop);
+            const restored = await api.setGuideCover(id, previous.media, previous.crop);
+            if (guide?.id !== id) return;
+            guide = restored;
             cover = await api.getMedia(previous.media);
+            setCurrent(guide, null);
           },
         },
       });

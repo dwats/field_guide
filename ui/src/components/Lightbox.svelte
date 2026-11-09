@@ -6,6 +6,7 @@
   import { untrack } from "svelte";
 
   import { api, errorMessage, type Media } from "../lib/api";
+  import { trapTab } from "../lib/focusTrap";
   import { when } from "../lib/format";
   import { fileName, formatBytes, imageReference } from "../lib/media";
   import { notify } from "../lib/session.svelte";
@@ -31,6 +32,7 @@
   let media = $state<Media | null>(null);
   let error = $state("");
   let closeButton = $state<HTMLButtonElement | null>(null);
+  let viewer = $state<HTMLElement | null>(null);
   let opener: HTMLElement | null = null;
 
   const image = $derived(images[index] ?? null);
@@ -52,9 +54,11 @@
 
   async function loadMedia(name: string) {
     try {
-      media = await api.mediaByHash(name.split(".")[0]);
+      const found = await api.mediaByHash(name.split(".")[0]);
+      // A quick step past this image: an earlier answer must not land on a later one.
+      if (image?.name === name) media = found;
     } catch (e) {
-      error = errorMessage(e);
+      if (image?.name === name) error = errorMessage(e);
     }
   }
 
@@ -64,6 +68,7 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
+    if (viewer) trapTab(event, viewer);
     if (event.key === "Escape") {
       event.preventDefault();
       onclose();
@@ -89,7 +94,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="viewer" role="dialog" aria-label="Image viewer">
+<div class="viewer" role="dialog" aria-modal="true" aria-label="Image viewer" bind:this={viewer}>
   <!-- A click beside the image closes, like Escape; the stage itself is not a control. -->
   <div class="stage" role="presentation" onclick={(e) => e.target === e.currentTarget && onclose()}>
     {#if image}<img src={image.src} alt={image.alt} />{/if}

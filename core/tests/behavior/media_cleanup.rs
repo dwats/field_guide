@@ -54,27 +54,43 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
         "largest first"
     );
 
-    let summary = v.media_summary().unwrap();
+    let summary = v.media_summary(None).unwrap();
     assert_eq!((summary.files, summary.bytes), (5, 500));
     assert_eq!(
         (summary.unreferenced_files, summary.unreferenced_bytes),
         (2, 440)
     );
     assert!(summary.free_space.is_some());
+    assert!(
+        !summary.warn_unreferenced,
+        "440 bytes is under the default threshold"
+    );
+    assert!(
+        v.media_summary(Some(0)).unwrap().warn_unreferenced,
+        "a zero threshold flags any unused byte"
+    );
 
-    // Asking to purge a referenced file is refused quietly; the orphan goes, file and row.
+    // Asking to purge referenced files (a body reference, a cover, a trashed entry's gallery) is
+    // refused quietly; the orphan goes, file and row.
     let orphan_path = v
         .media_file_path(&v.get_media(&orphan_small).unwrap())
         .unwrap();
     let inline_path = v.media_file_path(&v.get_media(&inline).unwrap()).unwrap();
     let report = v
-        .purge_media(&[orphan_small.clone(), inline.clone()])
+        .purge_media(&[
+            orphan_small.clone(),
+            inline.clone(),
+            cover.clone(),
+            in_gallery.clone(),
+        ])
         .unwrap();
     assert_eq!((report.removed, report.bytes), (1, 40));
     assert!(!orphan_path.exists());
     assert!(inline_path.exists());
     assert!(v.get_media(&orphan_small).is_err());
     assert!(v.get_media(&inline).is_ok());
+    assert!(v.get_media(&cover).is_ok());
+    assert!(v.get_media(&in_gallery).is_ok());
     assert_eq!(v.unreferenced_media().unwrap().len(), 1);
 
     // A file already gone from disk is no obstacle.

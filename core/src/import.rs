@@ -699,7 +699,9 @@ impl Vault {
             && let Some(sha256) = sha_from_entry(cover)
             && let Some(media) = self.find_media_by_hash(&sha256)?
         {
-            self.set_guide_cover(&guide_id, Some(&media.id), ag.guide.cover_crop)?;
+            // A crop outside the picture is dropped, not fatal: the cover is still worth having.
+            let crop = ag.guide.cover_crop.filter(|c| c.validate().is_ok());
+            self.set_guide_cover(&guide_id, Some(&media.id), crop)?;
         }
 
         let mut context = GuideContext {

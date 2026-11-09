@@ -18,8 +18,14 @@ pub struct CoverCrop {
 }
 
 impl CoverCrop {
-    fn validate(self) -> Result<()> {
-        if self.w == 0 || self.h == 0 || self.x + self.w > 1000 || self.y + self.h > 1000 {
+    /// Inside the picture and not empty. The sums are widened: the values are untrusted (an
+    /// archive, the IPC) and `u16` arithmetic would wrap.
+    pub(crate) fn validate(self) -> Result<()> {
+        if self.w == 0
+            || self.h == 0
+            || u32::from(self.x) + u32::from(self.w) > 1000
+            || u32::from(self.y) + u32::from(self.h) > 1000
+        {
             return Err(Error::Invalid(
                 "the cover crop must lie inside the picture".to_owned(),
             ));

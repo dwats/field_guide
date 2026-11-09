@@ -43,10 +43,10 @@
   async function load(name: string, tagIds: string[]) {
     try {
       guides = await api.listGuides({ name_contains: name || null, tag_ids: tagIds });
+      const withCover = guides.filter((g) => g.cover_media_id !== null);
+      const rows = await Promise.all(withCover.map((g) => api.getMedia(g.cover_media_id!)));
       const found: Record<string, Media> = {};
-      for (const guide of guides) {
-        if (guide.cover_media_id) found[guide.id] = await api.getMedia(guide.cover_media_id);
-      }
+      withCover.forEach((g, i) => (found[g.id] = rows[i]));
       covers = found;
       error = "";
     } catch (e) {
