@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { centred, clampOffset, coverScale, cropFor, cropStyle, panFor, rezoom } from "./cover";
+import { centered, clampOffset, coverScale, cropFor, cropStyle, panFor, rezoom } from "./cover";
 
 const frame = { width: 200, height: 300 };
 const wide = { width: 1600, height: 900 };
 
 describe("cover maths", () => {
-  it("covers the frame at zoom 1 and centres the picture", () => {
+  it("covers the frame at zoom 1 and centers the picture", () => {
     expect(coverScale(wide, frame)).toBeCloseTo(300 / 900);
-    const pan = centred(wide, frame);
+    const pan = centered(wide, frame);
     const crop = cropFor(pan, wide, frame);
     expect(crop).toEqual({ x: 313, y: 0, w: 375, h: 1000 });
   });
@@ -31,8 +31,8 @@ describe("cover maths", () => {
     expect(Math.abs(back.h - crop.h)).toBeLessThanOrEqual(1);
   });
 
-  it("zooms about the frame's centre within the limits", () => {
-    const start = centred(wide, frame);
+  it("zooms about the frame's center within the limits", () => {
+    const start = centered(wide, frame);
     const zoomed = rezoom(start, wide, frame, 2);
     expect(zoomed.zoom).toBe(2);
     const crop = cropFor(zoomed, wide, frame);

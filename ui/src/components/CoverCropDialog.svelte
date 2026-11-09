@@ -7,6 +7,7 @@
   import {
     MAX_ZOOM,
     MIN_ZOOM,
+    centered,
     clampOffset,
     cropFor,
     displayed,
@@ -61,6 +62,11 @@
   function setZoom(value: number) {
     pan = rezoom(pan, image, FRAME, value);
   }
+
+  /** Back to the whole picture, centered, with the box still open. */
+  function reset() {
+    pan = centered(image, FRAME);
+  }
 </script>
 
 <Modal {open} title="Adjust the cover" {onclose}>
@@ -96,10 +102,10 @@
         value={pan.zoom}
         oninput={(e) => setZoom(Number(e.currentTarget.value))}
       />
+      <button type="button" onclick={reset} title="Back to the whole picture, centered">Reset</button>
     </label>
   </div>
   {#snippet actions()}
-    <button onclick={() => void onsave(null)}>Show the centre</button>
     <button onclick={onclose}>Cancel</button>
     <button class="primary" onclick={() => void onsave(cropFor(pan, image, FRAME))}>Save</button>
   {/snippet}

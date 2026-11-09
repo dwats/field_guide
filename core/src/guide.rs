@@ -8,7 +8,7 @@ use crate::names::{self, normalize};
 use crate::{Error, GuideId, MediaId, Result, TagId, Vault, clock, tag};
 
 /// The part of the cover that cards show, in thousandths of the picture's width and height, so
-/// the same crop fits a frame of any size. Chosen in the crop box; `None` shows the centre.
+/// the same crop fits a frame of any size. Chosen in the crop box; `None` shows the center.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoverCrop {
     pub x: u16,

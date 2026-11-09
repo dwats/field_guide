@@ -40,13 +40,13 @@ export function clampOffset(ox: number, oy: number, image: Size, frame: Size, zo
   };
 }
 
-/** The pan that centres the picture at a zoom. */
-export function centred(image: Size, frame: Size, zoom = MIN_ZOOM): Pan {
+/** The pan that centers the picture at a zoom. */
+export function centered(image: Size, frame: Size, zoom = MIN_ZOOM): Pan {
   const d = displayed(image, frame, zoom);
   return { zoom, ox: (frame.width - d.width) / 2, oy: (frame.height - d.height) / 2 };
 }
 
-/** The same picture point stays under the frame's centre while the zoom changes. */
+/** The same picture point stays under the frame's center while the zoom changes. */
 export function rezoom(pan: Pan, image: Size, frame: Size, zoom: number): Pan {
   const before = displayed(image, frame, pan.zoom);
   const fx = (frame.width / 2 - pan.ox) / before.width;
@@ -67,9 +67,9 @@ export function cropFor(pan: Pan, image: Size, frame: Size): CoverCrop {
   return { x, y, w, h };
 }
 
-/** The pan that shows a stored crop; the centre at zoom 1 when there is none. */
+/** The pan that shows a stored crop; the center at zoom 1 when there is none. */
 export function panFor(crop: CoverCrop | null, image: Size, frame: Size): Pan {
-  if (!crop) return centred(image, frame);
+  if (!crop) return centered(image, frame);
   const width = (frame.width * 1000) / crop.w;
   const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, width / image.width / coverScale(image, frame)));
   const d = displayed(image, frame, zoom);

@@ -12,7 +12,7 @@
   --space-5: 24px;
   --row-h: 34px;
   --control-h: 32px;
-  --measure: 66ch;
+  --measure: 96ch;
   --sidebar-w: 260px;
   --panel-w: 320px;
   --radius: 4px;
@@ -61,7 +61,7 @@
   --space-5: 16px;
   --row-h: 26px;
   --control-h: 26px;
-  --measure: 76ch;
+  --measure: 110ch;
   --sidebar-w: 220px;
   --panel-w: 280px;
 }
@@ -205,7 +205,7 @@ textarea {
    margins would shrink it to its content. */
 .page {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1400px;
   box-sizing: border-box;
   margin: 0 auto;
   padding: var(--space-4) var(--space-5) 40px;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ChevronDown, ChevronRight } from "@lucide/svelte";
 
-  // One row in a sidebar list or tree: an optional chevron, a colour dot, the name, an optional
+  // One row in a sidebar list or tree: an optional chevron, a color dot, the name, an optional
   // marker, and a count. The name is a link when `href` is given, else a button. Every sidebar
   // and the Settings section list draw their rows with this, so they look and behave the same.
   interface Props {
@@ -15,7 +15,7 @@
     /** Chevron state; leave undefined for no chevron (an empty slot keeps names aligned). */
     open?: boolean;
     ontoggle?: () => void;
-    /** A CSS colour for the tag dot. */
+    /** A CSS color for the tag dot. */
     dot?: string | null;
     /** Title of a marker dot after the name, such as "The open entry has this tag". */
     marker?: string | null;

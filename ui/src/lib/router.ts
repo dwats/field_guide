@@ -10,7 +10,7 @@ export type Route =
 
 export const HOME: Route = { view: "guides" };
 
-/** Parses `location.hash`. Anything unrecognised is the guides view. */
+/** Parses `location.hash`. Anything unrecognized is the guides view. */
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, "").replace(/^\/+|\/+$/g, "");
   const parts = path.split("/").filter((p) => p.length > 0).map(decodeURIComponent);

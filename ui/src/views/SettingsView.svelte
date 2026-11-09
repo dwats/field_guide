@@ -82,8 +82,8 @@
   }
 </script>
 
-<!-- Pictures: a window with a sidebar, a content column, and a panel, drawn in the muted colour
-     with the part a setting changes in the accent colour. -->
+<!-- Pictures: a window with a sidebar, a content column, and a panel, drawn in the muted color
+     with the part a setting changes in the accent color. -->
 {#snippet lines(count: number, gap: number)}
   <svg viewBox="0 0 120 72">
     {#each Array.from({ length: count }, (_, i) => i) as i (i)}

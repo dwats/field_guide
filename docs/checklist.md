@@ -51,7 +51,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] `>` in the palette limits the list to commands.
 - [ ] Ctrl+N opens New entry inside a guide and New guide on the guides list; Ctrl+E toggles Read and Edit; Ctrl+R puts the caret in the relation line (opening the panel if folded); Ctrl+T opens Add tag; Ctrl+F focuses the sidebar search; Ctrl+, opens Settings; Alt+Left and Alt+Right go back and forward; F2 opens Rename outside a text field.
 - [ ] Guides list: the name filter and the global tags sit in the sidebar with guide counts; the toolbar holds the view toggle and New guide; "No guides match." offers Clear filter.
-- [ ] Tag editor: selecting a row fills the detail pane; Rename, Parent, and Colour apply at once; Add child tag and New tag open a dialog; Merge into... lists target paths and merges on pick; Delete tag asks first; arrow keys, F2, and Delete work in the tree; a coloured tag shows a dot in the sidebar, chips, and cards.
+- [ ] Tag editor: selecting a row fills the detail pane; Rename, Parent, and Color apply at once; Add child tag and New tag open a dialog; Merge into... lists target paths and merges on pick; Delete tag asks first; arrow keys, F2, and Delete work in the tree; a colored tag shows a dot in the sidebar, chips, and cards.
 - [ ] Settings: the sidebar lists the sections and marks the one in view; a click scrolls to it.
 
 ## Images
@@ -62,7 +62,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] An animated GIF stays a `.gif` and still animates; an SVG stays an `.svg`.
 - [ ] Click an image: the viewer opens over the page with the counter, caption, and file details; Left and Right move between the body's images; Escape closes; Make primary image puts it first in the gallery.
 - [ ] Drop or paste an image on a guide page: it becomes the cover and the crop box opens; drag and zoom, Save; the poster on the guide page and on the card shows that frame; Adjust cover... in More reopens the box; Remove cover undoes it with Undo.
-- [ ] An image alone on its line in a body renders as a bordered figure floated right with its alt text as caption and text wrapping beside it; `"left"` as the image title floats it left, `"center"` centres it, `"full"` spans the width; an image inside a sentence stays inline.
+- [ ] An image alone on its line in a body renders as a bordered figure floated right with its alt text as caption and text wrapping beside it; `"left"` as the image title floats it left, `"center"` centers it, `"full"` spans the width; an image inside a sentence stays inline.
 - [ ] The guides list shows 2:3 posters in rows that fill the window from the left, titles below; a guide without a cover shows a placeholder poster.
 - [ ] A dropped file that is not an image is skipped with a notice; a drop on the guides list or Settings shows where drops go.
 - [ ] Tag editor: drag a tag onto another with the mouse to nest it, and onto the Top level bar to move it up; a click without movement only selects.

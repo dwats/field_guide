@@ -21,7 +21,7 @@ export function flattenTags(nodes: TagNode[]): TagOption[] {
   return out;
 }
 
-/** The colour names a tag can carry; each has a `--tag-<name>` token in app.css. */
+/** The color names a tag can carry; each has a `--tag-<name>` token in app.css. */
 export const TAG_COLORS = [
   "red",
   "orange",
@@ -34,7 +34,7 @@ export const TAG_COLORS = [
   "gray",
 ] as const;
 
-/** The CSS value for a tag's colour, or null when it has none or an unknown one. */
+/** The CSS value for a tag's color, or null when it has none or an unknown one. */
 export function colorVar(color: string | null | undefined): string | null {
   return color && (TAG_COLORS as readonly string[]).includes(color) ? `var(--tag-${color})` : null;
 }

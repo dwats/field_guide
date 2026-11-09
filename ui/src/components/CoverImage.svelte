@@ -1,6 +1,6 @@
 <script lang="ts">
   // A cover inside a frame the parent sizes (posters are 2:3): the stored crop decides what
-  // shows, or the centre when there is none. The same crop fits any frame size.
+  // shows, or the center when there is none. The same crop fits any frame size.
   import type { CoverCrop } from "../lib/api";
   import { cropStyle } from "../lib/cover";
 

@@ -11,7 +11,7 @@ describe("references and names", () => {
     expect(imageReference(media)).toBe(`![](media/${"ab".repeat(32)}.webp)`);
   });
 
-  it("reads extensions and recognises image paths on both separators", () => {
+  it("reads extensions and recognizes image paths on both separators", () => {
     expect(extensionOf("C:\\shots\\Cave.PNG")).toBe("png");
     expect(extensionOf("/tmp/notes")).toBe("");
     expect(extensionOf(".hidden")).toBe("");

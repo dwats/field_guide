@@ -1,6 +1,6 @@
 <script lang="ts">
   // The tag editor (review 3.5): the tree on the left, a detail pane for the selected tag on the
-  // right. Selecting a row fills the pane: name, parent, colour, counts, and the actions. Drag a
+  // right. Selecting a row fills the pane: name, parent, color, counts, and the actions. Drag a
   // tag onto another to nest it, or onto the bar under the tree to make it top-level. The drag is
   // pointer events, not HTML drag and drop, which the window's native file drop would swallow.
   import { ChevronDown, ChevronRight, Plus } from "@lucide/svelte";
@@ -370,7 +370,7 @@
               </select>
             </div>
             <div class="field">
-              <label for={`${uid}-color`}>Colour</label>
+              <label for={`${uid}-color`}>Color</label>
               <div class="row">
                 <select
                   id={`${uid}-color`}
