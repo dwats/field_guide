@@ -70,6 +70,20 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] At start, a notice appears when unused media exceeds the threshold, and another when the drive has under 1 GB free; each opens Settings.
 - [ ] Sidebar: with a tag row focused, Up and Down move between rows, Right opens a tag or enters its children, Left closes it or goes to its parent, Home and End jump; the entry list takes Up and Down too.
 
+## Boards
+
+- [ ] The sidebar footer's Boards link and the palette's Boards command open the guide's board list; New board asks for a name and opens the board; a name already used by another board of the guide is refused with a message.
+- [ ] The picker panel lists the guide's entries; the search line narrows by text and `#Tag` chips, Stubs only narrows further; Add puts a card in the middle of the window, Add all fills the cells around it; an entry already on the board shows a check and Remove instead of Add.
+- [ ] Two cards whose entries are related show a line between them labelled with the verb, qualifiers on a second line, an arrowhead at the object unless the verb is symmetric; a body that mentions another member draws a dashed line; the Mentions toggle hides and shows that layer.
+- [ ] Adding a card whose entry is related to members already there draws those lines at once.
+- [ ] An entry from another guide added to the board shows only with Other guides on, with a dashed frame and the edge in the accent color; the count in the header says how many are hidden.
+- [ ] Dragging a card moves it and the lines follow; after a restart the card is where it was left. The wheel zooms around the pointer, dragging the background pans, Fit shows every card, and clicking the zoom readout returns to 100%.
+- [ ] A card takes focus: Enter opens the entry, Delete removes the card with Undo in the notice, arrows nudge it, Escape clears the selection; a second click on a card opens the entry.
+- [ ] The selected card shows in the panel with its relations, Open entry, and Remove from board; a card with a gallery shows its first image as the picture, proportions following the image; one without shows the title alone.
+- [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
+- [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.
+- [ ] Export and import a guide with a board: the board, its filters, and the card positions survive the round trip.
+
 ## Guides
 
 - [ ] Create a guide; it appears in cards and table views; the view choice survives a restart.

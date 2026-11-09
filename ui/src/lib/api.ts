@@ -219,6 +219,66 @@ export interface Media {
   created_at: string;
 }
 
+// ---- boards ----
+
+/** The picker's last filters and the display toggles. */
+export interface BoardFilters {
+  tag_ids: Id[];
+  text: string | null;
+  stubs_only: boolean;
+  /** Show cards from other guides and the edges that reach them. */
+  show_external: boolean;
+  /** Show the dashed mention layer. */
+  show_mentions: boolean;
+}
+
+export interface Board {
+  id: Id;
+  guide_id: Id;
+  name: string;
+  filters: BoardFilters;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BoardNode {
+  entry_id: Id;
+  x: number;
+  y: number;
+}
+
+export interface BoardCard {
+  entry: EntryRef;
+  x: number;
+  y: number;
+  /** The entry's primary image, or null for a plain card. */
+  image: Media | null;
+  /** The entry belongs to another guide. */
+  external: boolean;
+}
+
+export type EdgeKind = "relation" | "mention";
+
+export interface BoardEdge {
+  kind: EdgeKind;
+  /** The relation id, or `mention:<from>:<to>`. */
+  id: string;
+  from: Id;
+  to: Id;
+  /** The words in the verb slot; empty for a mention. */
+  label: string;
+  /** The qualifiers as one line; empty without qualifiers. */
+  detail: string;
+  symmetric: boolean;
+  external: boolean;
+}
+
+export interface BoardView {
+  board: Board;
+  cards: BoardCard[];
+  edges: BoardEdge[];
+}
+
 // ---- relations and vocabulary (used from phase 5 on) ----
 
 export interface Verb {
@@ -427,6 +487,20 @@ export const api = {
   purgeMedia: (ids: Id[]) => invoke<CleanupReport>("purge_media", { ids }),
   setGuideCover: (id: Id, media_id: Id | null, crop: CoverCrop | null = null) =>
     invoke<Guide>("set_guide_cover", { id, media_id, crop }),
+
+  listBoards: (guide_id: Id) => invoke<Board[]>("list_boards", { guide_id }),
+  createBoard: (guide_id: Id, name: string) => invoke<Board>("create_board", { guide_id, name }),
+  getBoard: (id: Id) => invoke<Board>("get_board", { id }),
+  renameBoard: (id: Id, name: string) => invoke<Board>("rename_board", { id, name }),
+  setBoardFilters: (id: Id, filters: BoardFilters) =>
+    invoke<Board>("set_board_filters", { id, filters }),
+  deleteBoard: (id: Id) => invoke<void>("delete_board", { id }),
+  boardView: (id: Id) => invoke<BoardView>("board_view", { id }),
+  /** Puts entries on the board; the ones already there keep their place. Returns how many were added. */
+  addBoardNodes: (id: Id, nodes: BoardNode[]) => invoke<number>("add_board_nodes", { id, nodes }),
+  setBoardPositions: (id: Id, nodes: BoardNode[]) =>
+    invoke<void>("set_board_positions", { id, nodes }),
+  removeBoardNode: (id: Id, entry_id: Id) => invoke<void>("remove_board_node", { id, entry_id }),
 
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>

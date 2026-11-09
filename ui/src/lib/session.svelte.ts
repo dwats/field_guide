@@ -6,6 +6,7 @@
 import {
   api,
   errorMessage,
+  type Board,
   type Entry,
   type EntrySummary,
   type Guide,
@@ -77,8 +78,8 @@ export const session = $state({
   notices: [] as Notice[],
   /** Most recent rename per entry id. */
   renames: {} as Record<string, RenameRecord>,
-  /** The guide and entry the current view shows; the top bar and the sidebar read these. */
-  current: { guide: null as Guide | null, entry: null as Entry | null },
+  /** The guide, entry, and board the current view shows; the top bar and the sidebar read these. */
+  current: { guide: null as Guide | null, entry: null as Entry | null, board: null as Board | null },
   /** Bumped after a change the rest of the shell should reload for (tree, counts, lists). */
   revision: 0,
   sidebar: freshSidebar(null),
@@ -112,8 +113,12 @@ export function dismiss(id: number): void {
 }
 
 /** Views call this once they know what they show. */
-export function setCurrent(guide: Guide | null, entry: Entry | null = null): void {
-  session.current = { guide, entry };
+export function setCurrent(
+  guide: Guide | null,
+  entry: Entry | null = null,
+  board: Board | null = null,
+): void {
+  session.current = { guide, entry, board };
 }
 
 /** Marks that data changed, so the sidebar's tree, counts, and list reload. */

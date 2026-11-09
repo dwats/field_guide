@@ -5,6 +5,8 @@ export type Route =
   | { view: "guide"; guideId: string }
   | { view: "tags"; guideId: string }
   | { view: "trash"; guideId: string }
+  | { view: "boards"; guideId: string }
+  | { view: "board"; boardId: string }
   | { view: "entry"; entryId: string }
   | { view: "settings" };
 
@@ -19,9 +21,11 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "guide" && parts[1]) {
     if (parts[2] === "tags") return { view: "tags", guideId: parts[1] };
     if (parts[2] === "trash") return { view: "trash", guideId: parts[1] };
+    if (parts[2] === "boards") return { view: "boards", guideId: parts[1] };
     return { view: "guide", guideId: parts[1] };
   }
   if (parts[0] === "entry" && parts[1]) return { view: "entry", entryId: parts[1] };
+  if (parts[0] === "board" && parts[1]) return { view: "board", boardId: parts[1] };
   return HOME;
 }
 
@@ -35,6 +39,10 @@ export function routeHash(route: Route): string {
       return `#/guide/${encodeURIComponent(route.guideId)}/tags`;
     case "trash":
       return `#/guide/${encodeURIComponent(route.guideId)}/trash`;
+    case "boards":
+      return `#/guide/${encodeURIComponent(route.guideId)}/boards`;
+    case "board":
+      return `#/board/${encodeURIComponent(route.boardId)}`;
     case "entry":
       return `#/entry/${encodeURIComponent(route.entryId)}`;
     case "settings":

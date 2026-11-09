@@ -21,6 +21,8 @@
   import { formatBytes } from "./lib/media";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
   import { DEFAULT_PREFS, dismiss, notify, savePrefs, session } from "./lib/session.svelte";
+  import BoardView from "./views/BoardView.svelte";
+  import BoardsView from "./views/BoardsView.svelte";
   import EntryView from "./views/EntryView.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
@@ -37,8 +39,15 @@
   /** The notice slot shows one notice at a time; the rest wait behind it. */
   const current = $derived(session.notices[0]);
   const inGuide = $derived(
-    route.view === "guide" || route.view === "tags" || route.view === "entry" || route.view === "trash",
+    route.view === "guide" ||
+      route.view === "tags" ||
+      route.view === "entry" ||
+      route.view === "trash" ||
+      route.view === "boards" ||
+      route.view === "board",
   );
+  /** Pages that scroll their own columns instead of the main column. */
+  const split = $derived(route.view === "entry" || route.view === "board");
   /** The sidebar column: a rail when collapsed, the dragged width, else the density preset's. */
   const sidebarWidth = $derived(
     session.prefs.sidebar_collapsed
@@ -76,7 +85,11 @@
     out.push({ text: guide.name, href: routeHash({ view: "guide", guideId: guide.id }) });
     if (route.view === "tags") out.push({ text: "Tags" });
     else if (route.view === "trash") out.push({ text: "Trash" });
-    else if (route.view === "entry" && session.current.entry) {
+    else if (route.view === "boards") out.push({ text: "Boards" });
+    else if (route.view === "board" && session.current.board) {
+      out.push({ text: "Boards", href: routeHash({ view: "boards", guideId: guide.id }) });
+      out.push({ text: session.current.board.name });
+    } else if (route.view === "entry" && session.current.entry) {
       out.push({ text: session.current.entry.title });
     }
     return out;
@@ -168,6 +181,9 @@
         return;
       case "trash":
         if (session.current.guide) navigate({ view: "trash", guideId: session.current.guide.id });
+        return;
+      case "boards":
+        if (session.current.guide) navigate({ view: "boards", guideId: session.current.guide.id });
         return;
       default:
         perform(action);
@@ -322,7 +338,7 @@
     {:else}
       <GuidesSidebar />
     {/if}
-    <main tabindex="-1" class:split={route.view === "entry"}>
+    <main tabindex="-1" class:split>
       {#if route.view === "guides"}
         <GuidesView />
       {:else if route.view === "guide"}
@@ -331,6 +347,10 @@
         <TagsView guideId={route.guideId} />
       {:else if route.view === "trash"}
         <TrashView guideId={route.guideId} />
+      {:else if route.view === "boards"}
+        <BoardsView guideId={route.guideId} />
+      {:else if route.view === "board"}
+        <BoardView boardId={route.boardId} />
       {:else if route.view === "entry"}
         <EntryView entryId={route.entryId} />
       {:else if route.view === "settings"}
@@ -427,7 +447,7 @@
     /* The gutter is always reserved, so a page that grows a scrollbar does not shift sideways. */
     scrollbar-gutter: stable;
   }
-  /* The entry page scrolls its own columns. */
+  /* The entry page and the board scroll their own columns. */
   main.split {
     overflow: hidden;
     scrollbar-gutter: auto;

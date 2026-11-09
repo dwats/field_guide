@@ -94,7 +94,9 @@ Order change (decided 2026-11-08): Phase 8, Media, is built before Phase 7, Boar
 
 ## Phase 7: Board
 
-Manual cork boards (`docs/design.md` section 6): a picker with the guide's search and tag filters to add entries one at a time or in bulk, instant-photo cards with the primary image and the title as caption, edges between members drawn as entries arrive, external and mentions toggles, SVG pan and zoom, persisted positions, several named boards per guide. Decorations and textures are in Later.
+Manual cork boards (`docs/design.md` section 6): a picker with the guide's search and tag filters to add entries one at a time or in bulk, instant-photo cards with the primary image and the title as caption, edges between members drawn as entries arrive, external and mentions toggles, pan and zoom, persisted positions, several named boards per guide. Decorations and textures are in Later.
+
+Built 2026-11-08 in two batches: core (`board_view` with cards, primary images, relation and mention edges; `add_board_nodes`; picker filters in `BoardFilters`, the topic and hops fields of the first design removed) and UI (the board list, the board page with canvas and picker panel, the sidebar footer link, the palette command). The "few hundred cards" check waits for a walkthrough with a generated guide.
 
 Done when: a board with a few hundred cards stays responsive while dragging; reopening a board restores membership and positions; adding an entry whose relations reach members already on the board draws those edges with no further action.
 

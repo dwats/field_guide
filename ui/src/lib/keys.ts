@@ -17,6 +17,7 @@ export type Action =
   | "toggle-panel"
   | "tag-editor"
   | "trash"
+  | "boards"
   | "dismiss-notice"
   | "density-compact"
   | "density-roomy";

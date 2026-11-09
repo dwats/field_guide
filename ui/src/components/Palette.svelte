@@ -34,7 +34,12 @@
 
   const inGuide = $derived(
     session.current.guide !== null &&
-      (route.view === "guide" || route.view === "entry" || route.view === "tags" || route.view === "trash"),
+      (route.view === "guide" ||
+        route.view === "entry" ||
+        route.view === "tags" ||
+        route.view === "trash" ||
+        route.view === "boards" ||
+        route.view === "board"),
   );
   /** The id, not the object, so a reload of the same guide changes nothing here. */
   const guideId = $derived(inGuide ? (session.current.guide?.id ?? null) : null);
@@ -98,6 +103,7 @@
       list.push(
         { action: "focus-search", label: "Search this guide" },
         { action: "tag-editor", label: "Tag editor" },
+        { action: "boards", label: "Boards" },
         { action: "trash", label: "Trash" },
       );
     }

@@ -351,6 +351,12 @@
       <a href={routeHash({ view: "tags", guideId })} aria-current={route.view === "tags" ? "page" : undefined}>
         Tag editor
       </a>
+      <a
+        href={routeHash({ view: "boards", guideId })}
+        aria-current={route.view === "boards" || route.view === "board" ? "page" : undefined}
+      >
+        Boards
+      </a>
     </nav>
   </SidebarFrame>
 {/if}
