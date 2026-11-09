@@ -164,8 +164,7 @@ fn fixture() -> Fixture {
         &BoardFilters {
             tag_ids: vec![blocks.id.clone()],
             text: Some("stone".to_owned()),
-            topic_entry_ids: vec![stone.clone()],
-            hops: 2,
+            stubs_only: true,
             show_external: true,
             show_mentions: false,
         },
@@ -238,8 +237,7 @@ struct BoardSnap {
     name: String,
     tag_paths: Vec<String>,
     text: Option<String>,
-    topics: Vec<String>,
-    hops: u32,
+    stubs_only: bool,
     show_external: bool,
     show_mentions: bool,
     nodes: Vec<(String, f64, f64)>,
@@ -318,13 +316,6 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
     for b in v.list_boards(guide_id).unwrap() {
         let mut tag_paths: Vec<String> = b.filters.tag_ids.iter().map(&path).collect();
         tag_paths.sort();
-        let mut topics: Vec<String> = b
-            .filters
-            .topic_entry_ids
-            .iter()
-            .map(|n| v.get_entry(n).unwrap().title)
-            .collect();
-        topics.sort();
         let mut nodes: Vec<(String, f64, f64)> = v
             .board_layout(&b.id)
             .unwrap()
@@ -336,8 +327,7 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             name: b.name,
             tag_paths,
             text: b.filters.text,
-            topics,
-            hops: b.filters.hops,
+            stubs_only: b.filters.stubs_only,
             show_external: b.filters.show_external,
             show_mentions: b.filters.show_mentions,
             nodes,

@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use fieldguide_core::backup::{self, BACKUPS_TO_KEEP, BackupInfo};
-use fieldguide_core::board::{Board, BoardFilters, BoardNode};
+use fieldguide_core::board::{Board, BoardFilters, BoardNode, BoardView};
 use fieldguide_core::config::UiPrefs;
 use fieldguide_core::entry::{Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord};
 use fieldguide_core::export::{ExportReport, ExportScope};
@@ -507,6 +507,16 @@ pub fn delete_board(state: S<'_>, id: BoardId) -> CmdResult<()> {
 #[tauri::command(rename_all = "snake_case")]
 pub fn board_layout(state: S<'_>, id: BoardId) -> CmdResult<Vec<BoardNode>> {
     state.with_vault(|v| v.board_layout(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn board_view(state: S<'_>, id: BoardId) -> CmdResult<BoardView> {
+    state.with_vault(|v| v.board_view(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn add_board_nodes(state: S<'_>, id: BoardId, nodes: Vec<BoardNode>) -> CmdResult<usize> {
+    state.with_vault(|v| v.add_board_nodes(&id, &nodes))
 }
 
 #[tauri::command(rename_all = "snake_case")]

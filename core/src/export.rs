@@ -374,13 +374,7 @@ impl Vault {
                                 .filter_map(|t| tag_paths.get(t).cloned())
                                 .collect(),
                             text: board.filters.text.clone(),
-                            topic_entry_ids: board
-                                .filters
-                                .topic_entry_ids
-                                .iter()
-                                .map(|n| n.0.clone())
-                                .collect(),
-                            hops: board.filters.hops,
+                            stubs_only: board.filters.stubs_only,
                             show_external: board.filters.show_external,
                             show_mentions: board.filters.show_mentions,
                         },

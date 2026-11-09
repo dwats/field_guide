@@ -133,6 +133,8 @@ fn main() -> anyhow::Result<()> {
             commands::set_board_filters,
             commands::delete_board,
             commands::board_layout,
+            commands::board_view,
+            commands::add_board_nodes,
             commands::set_board_positions,
             commands::remove_board_node,
             commands::get_media,

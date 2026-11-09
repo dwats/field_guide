@@ -1,16 +1,24 @@
-//! Boards: named views of a guide's entries and edges, each with saved filters and node positions.
-//! See `docs/design.md` section 6. Core owns the data; which entries a board shows and how they are
-//! laid out is the UI's job in a later phase.
+//! Boards: cork boards the user fills by hand, several per guide, each with saved node positions.
+//! See `docs/design.md` section 6. `board_node` is membership and position; `filters_json` keeps
+//! the picker's last filters and the display toggles, never a membership rule. Core also answers
+//! what a board shows: its cards with their primary image and every edge between members.
+
+use std::collections::HashSet;
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
+use crate::media::{self, Media};
 use crate::names::{self, normalize};
-use crate::{BoardId, EntryId, Error, GuideId, Result, TagId, Vault, clock, entry, guide};
+use crate::relation::{self, EntryRef};
+use crate::{
+    BoardId, EntryId, Error, GuideId, RelationId, Result, TagId, Vault, clock, entry, guide,
+};
 
-/// Saved filters. All optional; an empty filter shows the whole guide.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The picker's last filters and the display toggles. All optional; a board starts with mentions
+/// shown and other guides hidden.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoardFilters {
     /// Tag chips, each with ancestor inclusion.
     #[serde(default)]
@@ -18,16 +26,30 @@ pub struct BoardFilters {
     /// Free text, run as a prefix search.
     #[serde(default)]
     pub text: Option<String>,
-    /// Topics: entries whose neighbourhood the board shows.
     #[serde(default)]
-    pub topic_entry_ids: Vec<EntryId>,
-    /// How many edges away from a topic an entry may be. Ignored without topics.
-    #[serde(default)]
-    pub hops: u32,
+    pub stubs_only: bool,
+    /// Show cards from other guides and the edges that reach them.
     #[serde(default)]
     pub show_external: bool,
-    #[serde(default)]
+    /// Show the dashed mention layer.
+    #[serde(default = "yes")]
     pub show_mentions: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for BoardFilters {
+    fn default() -> Self {
+        BoardFilters {
+            tag_ids: Vec::new(),
+            text: None,
+            stubs_only: false,
+            show_external: false,
+            show_mentions: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,8 +70,54 @@ pub struct BoardNode {
     pub y: f64,
 }
 
+/// A card on the board: a member entry, where it sits, and its picture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardCard {
+    pub entry: EntryRef,
+    pub x: f64,
+    pub y: f64,
+    /// The entry's primary image: the first gallery item. None for a plain card.
+    pub image: Option<Media>,
+    /// The entry belongs to another guide.
+    pub external: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKind {
+    Relation,
+    Mention,
+}
+
+/// A line between two cards: a relation in canonical direction, or a mention from the body that
+/// names the target to the target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardEdge {
+    pub kind: EdgeKind,
+    /// The relation id, or `mention:<from>:<to>`.
+    pub id: String,
+    pub from: EntryId,
+    pub to: EntryId,
+    /// The words in the verb slot; empty for a mention.
+    pub label: String,
+    /// The qualifiers as one line, `label value · label value`; empty without qualifiers.
+    pub detail: String,
+    /// Both ends read the same label, so the line has no direction.
+    pub symmetric: bool,
+    /// Either end is in another guide.
+    pub external: bool,
+}
+
+/// Everything a board page draws.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardView {
+    pub board: Board,
+    pub cards: Vec<BoardCard>,
+    pub edges: Vec<BoardEdge>,
+}
+
 impl Vault {
-    /// Creates a board with empty filters. Names are unique per guide, case-insensitively.
+    /// Creates a board with default filters. Names are unique per guide, case-insensitively.
     pub fn create_board(&mut self, guide_id: &GuideId, name: &str) -> Result<Board> {
         let name = names::clean_label("board name", name)?;
         let tx = self.savepoint()?;
@@ -116,8 +184,7 @@ impl Vault {
         Ok(())
     }
 
-    /// Saved positions on a board, ordered by entry id. Entries without a saved position are laid
-    /// out by the UI when the board opens.
+    /// Saved positions on a board, ordered by entry id.
     pub fn board_layout(&self, id: &BoardId) -> Result<Vec<BoardNode>> {
         load_board(self.conn(), id)?;
         let mut stmt = self.conn().prepare(
@@ -131,6 +198,169 @@ impl Vault {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// The board as drawn: its live members as cards, with the first gallery item as the picture,
+    /// and every relation and mention whose ends are both on the board. A member in the trash is
+    /// left out, with its edges, until it is restored. External cards and edges are flagged, not
+    /// filtered; the toggles are the page's.
+    pub fn board_view(&self, id: &BoardId) -> Result<BoardView> {
+        let conn = self.conn();
+        let board = load_board(conn, id)?;
+
+        let mut cards = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT e.id, e.guide_id, e.title, e.is_stub, e.deleted_at, n.x, n.y
+                 FROM board_node n JOIN entry e ON e.id = n.entry_id
+                 WHERE n.board_id = ?1 AND e.deleted_at IS NULL
+                 ORDER BY e.title_norm, e.id",
+            )?;
+            let rows = stmt.query_map(params![id], |row| {
+                Ok((
+                    EntryRef {
+                        id: row.get(0)?,
+                        guide_id: row.get(1)?,
+                        title: row.get(2)?,
+                        is_stub: row.get(3)?,
+                        deleted_at: row.get(4)?,
+                    },
+                    row.get::<_, f64>(5)?,
+                    row.get::<_, f64>(6)?,
+                ))
+            })?;
+            for row in rows {
+                let (entry, x, y) = row?;
+                cards.push(BoardCard {
+                    external: entry.guide_id != board.guide_id,
+                    entry,
+                    x,
+                    y,
+                    image: None,
+                });
+            }
+        }
+        {
+            // Gallery order, first item per entry wins.
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {}, nm.entry_id FROM board_node n
+                 JOIN entry_media nm ON nm.entry_id = n.entry_id
+                 JOIN media m ON m.id = nm.media_id
+                 WHERE n.board_id = ?1
+                 ORDER BY nm.entry_id, nm.sort, m.created_at, m.id",
+                media::COLUMNS
+            ))?;
+            let rows = stmt.query_map(params![id], |row| {
+                Ok((row.get::<_, EntryId>(9)?, media::media_from_row(row)?))
+            })?;
+            let mut seen = HashSet::new();
+            for row in rows {
+                let (entry_id, image) = row?;
+                if !seen.insert(entry_id.clone()) {
+                    continue;
+                }
+                if let Some(card) = cards.iter_mut().find(|c| c.entry.id == entry_id) {
+                    card.image = Some(image);
+                }
+            }
+        }
+
+        let mut edges = Vec::new();
+        let relation_ids: Vec<RelationId> = {
+            let mut stmt = conn.prepare(
+                "SELECT r.id FROM relation r
+                 JOIN board_node s ON s.board_id = ?1 AND s.entry_id = r.subject_entry_id
+                 JOIN board_node o ON o.board_id = ?1 AND o.entry_id = r.object_entry_id
+                 ORDER BY r.id",
+            )?;
+            let rows = stmt.query_map(params![id], |row| row.get(0))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        for relation_id in relation_ids {
+            let relation = relation::load_relation(conn, &relation_id)?;
+            if relation.subject.deleted_at.is_some() || relation.object.deleted_at.is_some() {
+                continue;
+            }
+            let relation = relation.without_trashed_values();
+            edges.push(BoardEdge {
+                kind: EdgeKind::Relation,
+                id: relation.id.0.clone(),
+                external: relation.subject.guide_id != board.guide_id
+                    || relation.object.guide_id != board.guide_id,
+                from: relation.subject.id,
+                to: relation.object.id,
+                label: relation::verb_slot(&relation.verb.label),
+                detail: relation::qualifiers_text(&relation.qualifiers),
+                symmetric: relation.verb.symmetric,
+            });
+        }
+        {
+            // One row per pair: an entry that names its target by title and by alias has two
+            // mention rows.
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT m.entry_id, m.target_entry_id, a.guide_id, b.guide_id
+                 FROM mention m
+                 JOIN board_node s ON s.board_id = ?1 AND s.entry_id = m.entry_id
+                 JOIN board_node o ON o.board_id = ?1 AND o.entry_id = m.target_entry_id
+                 JOIN entry a ON a.id = m.entry_id
+                 JOIN entry b ON b.id = m.target_entry_id
+                 WHERE m.entry_id != m.target_entry_id
+                   AND a.deleted_at IS NULL AND b.deleted_at IS NULL
+                 ORDER BY m.entry_id, m.target_entry_id",
+            )?;
+            let rows = stmt.query_map(params![id], |row| {
+                Ok((
+                    row.get::<_, EntryId>(0)?,
+                    row.get::<_, EntryId>(1)?,
+                    row.get::<_, GuideId>(2)?,
+                    row.get::<_, GuideId>(3)?,
+                ))
+            })?;
+            for row in rows {
+                let (from, to, from_guide, to_guide) = row?;
+                edges.push(BoardEdge {
+                    kind: EdgeKind::Mention,
+                    id: format!("mention:{}:{}", from.0, to.0),
+                    external: from_guide != board.guide_id || to_guide != board.guide_id,
+                    from,
+                    to,
+                    label: String::new(),
+                    detail: String::new(),
+                    symmetric: false,
+                });
+            }
+        }
+
+        Ok(BoardView {
+            board,
+            cards,
+            edges,
+        })
+    }
+
+    /// Puts entries on a board at the given positions. An entry already on the board keeps its
+    /// place. Returns how many were added.
+    pub fn add_board_nodes(&mut self, id: &BoardId, nodes: &[BoardNode]) -> Result<usize> {
+        let tx = self.savepoint()?;
+        load_board(&tx, id)?;
+        let mut added = 0;
+        for node in nodes {
+            check_position(node)?;
+            entry::load_summary(&tx, &node.entry_id)?;
+            added += tx.execute(
+                "INSERT INTO board_node (board_id, entry_id, x, y) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (board_id, entry_id) DO NOTHING",
+                params![id, node.entry_id, node.x, node.y],
+            )?;
+        }
+        if added > 0 {
+            tx.execute(
+                "UPDATE board SET updated_at = ?2 WHERE id = ?1",
+                params![id, clock::now()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(added)
     }
 
     /// Saves where an entry sits on a board, replacing any earlier position.
@@ -151,16 +381,12 @@ impl Vault {
         )
     }
 
-    /// Saves several positions at once, for example after a force layout settles.
+    /// Saves several positions at once, adding entries that are not on the board yet.
     pub fn set_board_positions(&mut self, id: &BoardId, nodes: &[BoardNode]) -> Result<()> {
         let tx = self.savepoint()?;
         load_board(&tx, id)?;
         for node in nodes {
-            if !node.x.is_finite() || !node.y.is_finite() {
-                return Err(Error::Invalid(
-                    "a board position must be a finite number".to_owned(),
-                ));
-            }
+            check_position(node)?;
             entry::load_summary(&tx, &node.entry_id)?;
             tx.execute(
                 "INSERT INTO board_node (board_id, entry_id, x, y) VALUES (?1, ?2, ?3, ?4)
@@ -176,7 +402,7 @@ impl Vault {
         Ok(())
     }
 
-    /// Forgets an entry's position on a board. The entry itself is untouched.
+    /// Takes an entry off a board. The entry itself is untouched.
     pub fn remove_board_node(&mut self, id: &BoardId, entry_id: &EntryId) -> Result<()> {
         let removed = self.conn().execute(
             "DELETE FROM board_node WHERE board_id = ?1 AND entry_id = ?2",
@@ -186,6 +412,16 @@ impl Vault {
             return Err(not_found("board node", entry_id));
         }
         Ok(())
+    }
+}
+
+fn check_position(node: &BoardNode) -> Result<()> {
+    if node.x.is_finite() && node.y.is_finite() {
+        Ok(())
+    } else {
+        Err(Error::Invalid(
+            "a board position must be a finite number".to_owned(),
+        ))
     }
 }
 
@@ -279,4 +515,24 @@ pub(crate) fn retag_filters(conn: &Connection, from: &TagId, to: Option<&TagId>)
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BoardFilters;
+
+    #[test]
+    fn filters_saved_by_the_first_design_still_parse() {
+        let json = r#"{"tag_ids":["t1"],"text":"iron","topic_entry_ids":["e1"],"hops":2,"show_external":true,"show_mentions":false}"#;
+        let filters: BoardFilters = serde_json::from_str(json).unwrap();
+        assert_eq!(filters.tag_ids, [crate::TagId("t1".to_owned())]);
+        assert_eq!(filters.text.as_deref(), Some("iron"));
+        assert!(!filters.stubs_only);
+        assert!(filters.show_external);
+        assert!(!filters.show_mentions);
+
+        let fresh: BoardFilters = serde_json::from_str("{}").unwrap();
+        assert_eq!(fresh, BoardFilters::default());
+        assert!(fresh.show_mentions, "the mention layer starts shown");
+    }
 }

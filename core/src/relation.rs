@@ -560,8 +560,18 @@ impl Line {
     }
 }
 
-fn verb_slot(label: &str) -> String {
+/// The words in the verb slot, as every reader shows them.
+pub(crate) fn verb_slot(label: &str) -> String {
     label.to_uppercase()
+}
+
+/// `label value · label value`: the qualifiers as one line, for places without entry links.
+pub(crate) fn qualifiers_text(qualifiers: &[Qualifier]) -> String {
+    qualifiers
+        .iter()
+        .map(|q| format!("{} {}", q.label.label, value_text(&q.value)))
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 fn value_text(value: &QualifierValueView) -> String {

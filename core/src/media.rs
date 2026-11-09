@@ -502,10 +502,10 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-const COLUMNS: &str =
+pub(crate) const COLUMNS: &str =
     "m.id, m.sha256, m.ext, m.mime, m.bytes, m.width, m.height, m.duration_ms, m.created_at";
 
-fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Media> {
+pub(crate) fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Media> {
     Ok(Media {
         id: row.get(0)?,
         sha256: row.get(1)?,

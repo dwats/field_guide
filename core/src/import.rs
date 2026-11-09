@@ -1259,7 +1259,7 @@ impl Vault {
                     self.create_board(&context.guide_id, &file.name)?
                 }
             };
-            let mut filters = BoardFilters {
+            let filters = BoardFilters {
                 tag_ids: file
                     .filters
                     .tag_paths
@@ -1267,20 +1267,10 @@ impl Vault {
                     .filter_map(|p| context.tags_by_path.get(p).cloned())
                     .collect(),
                 text: file.filters.text.clone(),
-                topic_entry_ids: Vec::new(),
-                hops: file.filters.hops,
+                stubs_only: file.filters.stubs_only,
                 show_external: file.filters.show_external,
                 show_mentions: file.filters.show_mentions,
             };
-            for topic in &file.filters.topic_entry_ids {
-                let id = ids
-                    .get(topic)
-                    .cloned()
-                    .unwrap_or_else(|| EntryId(topic.clone()));
-                if self.get_entry(&id).is_ok() {
-                    filters.topic_entry_ids.push(id);
-                }
-            }
             self.set_board_filters(&board.id, &filters)?;
             let mut nodes = Vec::new();
             for node in &file.nodes {

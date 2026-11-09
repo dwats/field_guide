@@ -152,20 +152,34 @@ pub struct BoardFile {
 }
 
 /// Board filters with tag ids replaced by paths, so they map onto another vault's tags.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoardFiltersFile {
     #[serde(default)]
     pub tag_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    #[serde(default)]
-    pub topic_entry_ids: Vec<String>,
-    #[serde(default)]
-    pub hops: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stubs_only: bool,
     #[serde(default)]
     pub show_external: bool,
-    #[serde(default)]
+    #[serde(default = "yes")]
     pub show_mentions: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for BoardFiltersFile {
+    fn default() -> Self {
+        BoardFiltersFile {
+            tag_paths: Vec::new(),
+            text: None,
+            stubs_only: false,
+            show_external: false,
+            show_mentions: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
