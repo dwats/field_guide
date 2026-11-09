@@ -183,8 +183,12 @@ textarea {
   background: var(--bg);
 }
 
+/* A page is a flex item of the main column: without an explicit width, its automatic side
+   margins would shrink it to its content. */
 .page {
+  width: 100%;
   max-width: 1100px;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: var(--space-4) var(--space-5) 40px;
 }
