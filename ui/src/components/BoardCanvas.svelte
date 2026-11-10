@@ -210,6 +210,18 @@
     void tick().then(() => editor?.focus());
   });
 
+  /**
+   * Keyboard focus selects the item as a press would, so the panel's actions (Tie a string,
+   * Delete, colors) reach it without a pointer. While tying, focus only moves; the choice is
+   * made with Enter.
+   */
+  function focused(key: string) {
+    reveal(key);
+    if (pointerFocus || tying) return;
+    const colon = key.indexOf(":");
+    onselect({ kind: key.slice(0, colon) as "entry" | "note", id: key.slice(colon + 1) });
+  }
+
   /** Pans so an item focused from the keyboard is in view; a pointer press needs no help. */
   function reveal(key: string) {
     if (pointerFocus || !root) return;
@@ -678,6 +690,7 @@
           aria-label={twine.label}
           onpointerdown={(event) => pressString(event, twine.string)}
           onkeydown={(event) => stringKeys(event, twine.string)}
+          onfocus={() => !tying && onselect({ kind: "string", id: twine.string.id })}
         >
           <title>{twine.label}</title>
           {#if selected}<path class="outline" d={twine.d} />{/if}
@@ -717,7 +730,7 @@
         style:height="{rect.h}px"
         onpointerdown={(event) => pressCard(event, card)}
         onkeydown={(event) => cardKeys(event, card)}
-        onfocus={() => reveal(key)}
+        onfocus={() => focused(key)}
       >
         {#if url}
           <img src={url} alt="" style:height="{rect.h - FRAME - CAPTION_H}px" draggable="false" />
@@ -752,7 +765,7 @@
         onpointerdown={(event) => pressNote(event, item)}
         onclick={(event) => clickNote(event, id)}
         onkeydown={(event) => noteKeys(event, item)}
-        onfocus={() => reveal(key)}
+        onfocus={() => focused(key)}
       >
         {#if editing}
           <textarea
