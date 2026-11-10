@@ -100,6 +100,12 @@ Built 2026-11-08 in two batches: core (`board_view` with cards, primary images, 
 
 Done when: a board with a few hundred cards stays responsive while dragging; reopening a board restores membership and positions; adding an entry whose relations reach members already on the board draws those edges with no further action.
 
+## Phase 7b: Board notes and strings
+
+Decided 2026-11-09 after the first boards walkthrough: free-standing markdown notes with working check boxes, strings between any two items with a label and a color, and a per-board background (`docs/design.md` section 6). Schema version 5 adds `board_note` and `board_string`; the board file in an archive carries both.
+
+Done when: a note's check box flips the marker in its markdown and survives a reload; a string between a card and a note follows both when they move and goes when either is removed; export and import carry notes, strings, and the background without loss.
+
 ## Phase 8: Media
 
 Drag-and-drop and clipboard paste of images into the editor and the body. Dropped files arrive through the window's native drag-drop events as paths and core reads them from disk, so nothing large passes through the webview; pasted bytes travel as a raw request body. The tag editor's drag moves to pointer events first, since Tauri's native drop and HTML drag and drop cannot coexist on Windows. Content-addressed storage with atomic writes; images converted to lossless WebP. An image viewer over the page after Wikipedia's, with "Make primary image". Guide cover art. "Clean up unused media" in Settings with the file list and total; the unreferenced-size and low-disk notices. Sidebar tree keyboard navigation.
@@ -138,5 +144,5 @@ Not scheduled. Candidates that need their own decision before they get a phase.
 
 - Video: drag-and-drop of `.webm` into entries, playback in the preview. The renderer already turns `media/*.webm` into a video element, so an archive that carries one plays. Without transcoding, which the binary cannot carry, every clip is stored as recorded, so this may not be worth its weight.
 - Lossy WebP as a setting beside the lossless default (`docs/design.md` section 11).
-- Board decorations (raised 2026-11-08; the boards themselves are Phase 7). Free-standing notes with a background color that render markdown (check lists, tables, text), dropped images positioned by hand with a thin white border so they read as photographs, icon push pins (arrows, checks, crosses, key, lock, skull, and more), and drawings. Items connect with edges styled as twine in several colors. Backgrounds: cork, grid, or blank, each light or dark.
+- Board decorations beyond Phase 7b (raised 2026-11-08): dropped images positioned by hand with a thin white border so they read as photographs, icon push pins (arrows, checks, crosses, key, lock, skull, and more), and drawings.
 - Drawing tool (raised 2026-11-08). A simple, fast canvas for a map, a cross section, or a room layout: layers, bucket fill, shapes (circle, square, triangle, line), and the usual paint-tool key combinations for snapping angles and keeping symmetry. Output is an image stored as media, so it drops into entries and boards like any other picture.

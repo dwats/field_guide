@@ -66,4 +66,10 @@ Core tests run against in-memory SQLite. Export, import, backup, and data-direct
 - UI tooling is ESM (Vite requires it). Keep the UI dumb: call `invoke`, render the result, send actions back.
 
 ## Sub-agents
-Use Opus, Sonnet or Haiku subagents for tasks on tasks that they would be a best fit for. Do not use Fable for subagents without permission from the user.
+Use Opus or Sonnet subagents on tasks that they would be a best fit for. You are acting as a team lead or product owner. Delegate tasks to subagents or parallel subagents.
+
+Examples:
+- Opus - Use for reasoning-heavy phases, architecture, debugging complex issues, algorithm design. Think thoroughly, return a concise conclusion the orchestrator can act on.
+- Sonnet - Use for mechanical tasks, boilerplate, tests, formatting, simple edits. Execute efficiently.
+
+Important: Do not use Fable for subagents without permission from the user.
