@@ -576,6 +576,10 @@ td {
 /* Figures (an image alone on its line): a bordered thumbnail with the alt text as caption,
    floated right so text wraps beside it, as in an encyclopedia. The image's title moves it. */
 .preview figure.figure {
+  /* Above quotes and alerts, which are positioned for their marks and would otherwise cover the
+     part of the picture their boxes run under. */
+  position: relative;
+  z-index: 1;
   float: right;
   clear: right;
   width: 280px;

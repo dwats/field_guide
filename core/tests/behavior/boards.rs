@@ -320,3 +320,22 @@ fn a_board_shows_its_live_members_and_every_edge_between_them() {
         Err(Error::NotFound { .. })
     ));
 }
+
+#[test]
+fn a_card_shows_the_body_image_when_the_gallery_is_empty() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let picture = media(&mut v, 0x5a);
+    let sha = format!("{:02x}", 0x5a).repeat(32);
+    let stone = entry(&mut v, &g, "Stone", &format!("![s](media/{sha}.png)"));
+    // Adopted on save; even with the gallery cleared the card keeps a picture.
+    assert_eq!(v.entry_gallery(&stone).unwrap()[0].id, picture);
+    v.detach_media(&stone, &picture).unwrap();
+    assert!(v.entry_gallery(&stone).unwrap().is_empty());
+
+    let board = v.create_board(&g, "Overview").unwrap().id;
+    v.add_board_nodes(&board, &[node(&stone, 0.0, 0.0)])
+        .unwrap();
+    let view = v.board_view(&board).unwrap();
+    assert_eq!(view.cards[0].image.as_ref().map(|m| &m.id), Some(&picture));
+}

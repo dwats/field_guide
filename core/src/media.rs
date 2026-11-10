@@ -202,6 +202,52 @@ pub struct CleanupReport {
     pub bytes: u64,
 }
 
+/// The media row for a stored file's hash, if the vault has it.
+pub(crate) fn media_id_by_hash(conn: &Connection, sha256: &str) -> Result<Option<MediaId>> {
+    Ok(conn
+        .query_row(
+            "SELECT id FROM media WHERE sha256 = ?1",
+            params![sha256],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+/// Makes the first stored image a body references the entry's primary image when the gallery is
+/// empty (design section 3), so a card has a picture without a further step. A gallery the user
+/// has arranged, or cleared, is left alone until the next save.
+pub(crate) fn adopt_primary(conn: &Connection, entry_id: &EntryId, body_md: &str) -> Result<()> {
+    let has_gallery: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM entry_media WHERE entry_id = ?1)",
+        params![entry_id],
+        |row| row.get(0),
+    )?;
+    if has_gallery {
+        return Ok(());
+    }
+    for sha256 in inline_media_hashes(body_md) {
+        if let Some(media_id) = media_id_by_hash(conn, &sha256)? {
+            conn.execute(
+                "INSERT INTO entry_media (entry_id, media_id, sort) VALUES (?1, ?2, 0)",
+                params![entry_id, media_id],
+            )?;
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+/// The first stored image a body references: what a card shows for an entry whose gallery is
+/// empty, such as one written before the primary image was adopted on save.
+pub(crate) fn first_body_image(conn: &Connection, body_md: &str) -> Result<Option<Media>> {
+    for sha256 in inline_media_hashes(body_md) {
+        if let Some(id) = media_id_by_hash(conn, &sha256)? {
+            return Ok(Some(load_media(conn, &id)?));
+        }
+    }
+    Ok(None)
+}
+
 /// `media/<64 hex>.<ext>` references in a body, by hash.
 pub(crate) fn inline_media_hashes(body: &str) -> Vec<String> {
     let mut hashes = Vec::new();

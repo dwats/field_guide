@@ -60,6 +60,9 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Drop an image file onto the editor: it lands where dropped; drop one onto the page in Read mode: it is appended to the body.
 - [ ] Drop the same picture twice, once as PNG and once as BMP: one file in the media folder.
 - [ ] An animated GIF stays a `.gif` and still animates; an SVG stays an `.svg`.
+- [ ] Click anywhere on a floated figure, including the part beside a quote or an alert: the viewer opens.
+- [ ] Paste the first image into an entry that has no gallery: a board card for the entry shows it; Make primary image on another image changes the card.
+- [ ] The Images button in the entry header opens the album: every image as a thumbnail, the primary marked; a click opens the viewer on it; the button is disabled when the entry has no images.
 - [ ] Click an image, or Tab to it and press Enter: the viewer opens over the page with the counter, caption, and file details; Tab stays inside the viewer; Left and Right move between the body's images; Escape closes; Make primary image puts it first in the gallery.
 - [ ] Drop or paste an image on a guide page: it becomes the cover and the crop box opens; drag and zoom, Save; the poster on the guide page and on the card shows that frame; Adjust cover... in More reopens the box; Remove cover undoes it with Undo.
 - [ ] An image alone on its line in a body renders as a bordered figure floated right with its alt text as caption and text wrapping beside it; `"left"` as the image title floats it left, `"center"` centers it, `"full"` spans the width; an image inside a sentence stays inline.
@@ -79,7 +82,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] An entry from another guide added to the board shows only with Other guides on, with a dashed frame and the edge in the accent color; the count in the header says how many are hidden.
 - [ ] Dragging a card moves it and the lines follow; after a restart the card is where it was left. The wheel zooms around the pointer, dragging the background pans, Fit shows every card, and clicking the zoom readout returns to 100%.
 - [ ] A card takes focus: Enter or Space opens the entry, Delete removes the card with Undo in the notice and focus moves to the canvas, arrows nudge it, Escape clears the selection; Tab to a card off the edge pans it into view; with the canvas focused, arrows pan and plus and minus zoom; a second click on a card opens the entry.
-- [ ] Hide panel on the board folds it to a rail and the choice survives a restart, shared with the entry page's panel.
+- [ ] Hide panel on the board folds it to a rail and the choice survives a restart, shared with the entry page's panel; the plus button opens the panel if it was folded and puts the caret in its search.
 - [ ] The selected card shows in the panel with its relations, Open entry, and Remove from board; a card with a gallery shows its first image as the picture, proportions following the image; one without shows the title alone.
 - [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
 - [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.

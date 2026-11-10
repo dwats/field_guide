@@ -53,6 +53,7 @@
   }: Props = $props();
 
   let search = $state("");
+  let searchInput = $state<HTMLInputElement | null>(null);
   let stubsOnly = $state(false);
   let tags = $state<TagOption[]>([]);
   let tagsLoaded = $state(false);
@@ -120,6 +121,12 @@
     return () => clearTimeout(timer);
   });
 
+  /** Puts the caret in the search field; the board's Add entries button calls this. */
+  export function focusSearch() {
+    searchInput?.focus();
+    searchInput?.select();
+  }
+
   async function loadTags(id: string) {
     try {
       tags = flattenTags(await api.tagTree(id));
@@ -180,6 +187,7 @@
       <h2 class="region-head">Add entries</h2>
       <div class="fields">
         <input
+          bind:this={searchInput}
           type="search"
           placeholder="Search this guide"
           aria-label="Search entries to add"

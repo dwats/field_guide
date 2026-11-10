@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
 use crate::names::{self, normalize};
-use crate::{EntryId, Error, GuideId, Result, TagId, Vault, clock, guide, search, tag, wikilink};
+use crate::{
+    EntryId, Error, GuideId, Result, TagId, Vault, clock, guide, media, search, tag, wikilink,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -134,6 +136,7 @@ impl Vault {
             params![id, body_md, clock::now()],
         )?;
         refresh_mentions(&tx, id, &guide_id, body_md)?;
+        media::adopt_primary(&tx, id, body_md)?;
         tx.commit()?;
         load_entry(self.conn(), id)
     }
@@ -634,6 +637,7 @@ pub(crate) fn insert_entry(
     replace_tags(conn, &id, guide_id, tag_ids)?;
     refresh_mentions(conn, &id, guide_id, body_md)?;
     adopt_mentions(conn, &id, guide_id, &title)?;
+    media::adopt_primary(conn, &id, body_md)?;
     Ok(id)
 }
 
@@ -707,6 +711,7 @@ pub(crate) fn overwrite_imported(
         params![id, body_md, is_stub, updated_at],
     )?;
     refresh_mentions(conn, id, &guide_id, body_md)?;
+    media::adopt_primary(conn, id, body_md)?;
     Ok(())
 }
 

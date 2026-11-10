@@ -5,10 +5,12 @@
   // left. Moving to Trash does not confirm; it offers Undo in a notice instead. Images dropped or
   // pasted onto the editor go in where they land; elsewhere on the page they join the end of the
   // body. A click on an image opens the viewer over the page.
+  import { Images } from "@lucide/svelte";
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
   import EntryPanel from "../components/EntryPanel.svelte";
+  import ImageAlbum from "../components/ImageAlbum.svelte";
   import Lightbox, { type LightboxImage } from "../components/Lightbox.svelte";
   import Menu from "../components/Menu.svelte";
   import Modal from "../components/Modal.svelte";
@@ -29,6 +31,7 @@
   import { onDrop, onPaste, pointIn, type DropPoint } from "../lib/drop";
   import { keysFor } from "../lib/keys";
   import { ingestFile, ingestPath } from "../lib/ingest";
+  import { mediaSrc } from "../lib/mediaUrl";
   import { altFromName, fileName, imageReference, isImagePath } from "../lib/media";
   import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
@@ -57,6 +60,7 @@
   let panel = $state<ReturnType<typeof EntryPanel> | null>(null);
   let tagPicker = $state<ReturnType<typeof TagPicker> | null>(null);
   let viewer = $state<{ images: LightboxImage[]; index: number } | null>(null);
+  let albumOpen = $state(false);
 
   let renaming = $state(false);
   let titleDraft = $state("");
@@ -70,6 +74,7 @@
 
   const undoable = $derived(entry ? session.renames[entry.id] : undefined);
   const primaryName = $derived(gallery[0] ? fileName(gallery[0]) : null);
+  const hasImages = $derived(gallery.length > 0 || /<img /.test(rendered?.html ?? ""));
 
   $effect(() => {
     const id = entryId;
@@ -395,12 +400,26 @@
     error = failure;
   }
 
-  /** Opens the viewer on the clicked image, over every image the body shows. */
-  function openImage(index: number) {
-    const images: LightboxImage[] = Array.from(
+  /** Every image of the entry: the body's in order, then gallery items the body does not show. */
+  function allImages(): LightboxImage[] {
+    const body: LightboxImage[] = Array.from(
       content?.querySelectorAll<HTMLImageElement>(".preview img") ?? [],
     ).map((img) => ({ src: img.currentSrc || img.src, alt: img.alt, name: img.dataset.media ?? null }));
+    const shown = new Set(body.map((image) => image.name));
+    const extra: LightboxImage[] = gallery
+      .filter((media) => !shown.has(fileName(media)))
+      .flatMap((media) => {
+        const src = mediaSrc(media);
+        return src ? [{ src, alt: "", name: fileName(media) }] : [];
+      });
+    return [...body, ...extra];
+  }
+
+  /** Opens the viewer on an image, from a click in the body or a thumbnail in the album. */
+  function openImage(index: number) {
+    const images = allImages();
     if (images.length === 0) return;
+    albumOpen = false;
     viewer = { images, index: Math.min(Math.max(index, 0), images.length - 1) };
   }
 
@@ -446,6 +465,15 @@
               {/if}
             {/if}
           </span>
+          <button
+            class="icon-button"
+            aria-label="Images"
+            title={hasImages ? "Images" : "This entry has no images"}
+            disabled={!hasImages}
+            onclick={() => (albumOpen = true)}
+          >
+            <Images size={18} />
+          </button>
           <Menu>
             {#snippet items(close)}
               <button
@@ -612,6 +640,13 @@
   {/if}
 </div>
 
+<ImageAlbum
+  open={albumOpen}
+  images={albumOpen ? allImages() : []}
+  {primaryName}
+  onclose={() => (albumOpen = false)}
+  onopen={openImage}
+/>
 {#if viewer}
   <Lightbox
     images={viewer.images}

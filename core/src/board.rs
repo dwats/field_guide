@@ -264,6 +264,15 @@ impl Vault {
                 }
             }
         }
+        // An empty gallery still gives the card the first picture in the body (design section 3).
+        for card in cards.iter_mut().filter(|c| c.image.is_none()) {
+            let body: String = conn.query_row(
+                "SELECT body_md FROM entry WHERE id = ?1",
+                params![card.entry.id],
+                |row| row.get(0),
+            )?;
+            card.image = media::first_body_image(conn, &body)?;
+        }
 
         let mut edges = Vec::new();
         let relation_ids: Vec<RelationId> = {

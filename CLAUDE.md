@@ -64,3 +64,6 @@ Core tests run against in-memory SQLite. Export, import, backup, and data-direct
 - Migrations are numbered SQL files in `core/migrations/`, forward only.
 - Line endings are LF everywhere; `.gitattributes` enforces it.
 - UI tooling is ESM (Vite requires it). Keep the UI dumb: call `invoke`, render the result, send actions back.
+
+## Sub-agents
+Use Opus, Sonnet or Haiku subagents for tasks on tasks that they would be a best fit for. Do not use Fable for subagents without permission from the user.

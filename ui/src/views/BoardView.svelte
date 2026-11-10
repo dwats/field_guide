@@ -47,6 +47,7 @@
   let selectedId = $state<string | null>(null);
   let view = $state<Viewport>({ x: 0, y: 0, k: 1 });
   let canvas = $state<ReturnType<typeof BoardCanvas> | null>(null);
+  let panel = $state<ReturnType<typeof BoardPanel> | null>(null);
   let renaming = $state(false);
   let creating = $state(false);
   let confirmingDelete = $state(false);
@@ -270,6 +271,13 @@
   function togglePanel() {
     void savePrefs({ panel_collapsed: !session.prefs.panel_collapsed });
   }
+
+  /** Add entries: the picker panel opens if it was hidden, and its search takes the caret. */
+  async function openPicker() {
+    if (session.prefs.panel_collapsed) await savePrefs({ panel_collapsed: false });
+    await tick();
+    panel?.focusSearch();
+  }
 </script>
 
 <div class="board-page">
@@ -307,10 +315,9 @@
         </button>
         <button
           class="primary icon-button"
-          aria-pressed={panelOpen}
           aria-label="Add entries"
-          title={panelOpen ? "Add entries (hides the panel)" : "Add entries"}
-          onclick={togglePanel}
+          title="Add entries"
+          onclick={() => void openPicker()}
         >
           <Plus size={18} />
         </button>
@@ -372,6 +379,7 @@
   </div>
   {#if board && guide && filters}
     <BoardPanel
+      bind:this={panel}
       open={panelOpen}
       ontoggle={togglePanel}
       guideId={guide.id}
