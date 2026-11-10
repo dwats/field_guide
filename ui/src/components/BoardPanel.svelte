@@ -1,19 +1,24 @@
 <script lang="ts">
   // The board's right panel (design section 6): the picker, with the guide's search line, tag
   // chips, and Stubs only, listing the entries to add one at a time or all at once; above it,
-  // the selected card with its relations. The picker's fields are saved with the board and come
-  // back when it opens. It folds to a rail like the entry panel.
+  // the selected card with its relations, the selected note with its color, or the selected
+  // string with its label and color. The picker's fields are saved with the board and come back
+  // when it opens. It folds to a rail like the entry panel.
   import { Check, PanelRightClose, PanelRightOpen, Plus, X } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import {
     api,
     errorMessage,
+    NOTE_COLORS,
+    STRING_COLORS,
     type BoardCard,
     type BoardFilters,
+    type BoardNote,
+    type BoardString,
     type EntrySummary,
   } from "../lib/api";
-  import { pickerFilters, sameFilters, searchLine } from "../lib/board";
+  import { noteName, pickerFilters, sameFilters, searchLine } from "../lib/board";
   import { parseFilter, type ParsedFilter } from "../lib/filter";
   import { routeHash } from "../lib/router";
   import { queryFor } from "../lib/sidebar";
@@ -34,6 +39,19 @@
     onremove: (id: string) => void;
     selected: BoardCard | null;
     onopen: (id: string) => void;
+    selectedNote: BoardNote | null;
+    selectedString: BoardString | null;
+    /** The names of the selected string's two ends. */
+    stringEnds: [string, string] | null;
+    /** True while the next item activated on the canvas becomes a string's other end. */
+    tying: boolean;
+    ontie: () => void;
+    onnotecolor: (id: string, color: string) => void;
+    oneditnote: (id: string) => void;
+    onremovenote: (id: string) => void;
+    onstringlabel: (id: string, label: string) => void;
+    onstringcolor: (id: string, color: string) => void;
+    onremovestring: (id: string) => void;
     /** Bump to reload the list and the relations after a change. */
     version: number;
   }
@@ -49,8 +67,31 @@
     onremove,
     selected,
     onopen,
+    selectedNote,
+    selectedString,
+    stringEnds,
+    tying,
+    ontie,
+    onnotecolor,
+    oneditnote,
+    onremovenote,
+    onstringlabel,
+    onstringcolor,
+    onremovestring,
     version,
   }: Props = $props();
+
+  /** The selected string's label as typed; it is saved when the field changes. */
+  let label = $state("");
+
+  // The field follows the selected string and its saved label.
+  $effect(() => {
+    label = selectedString?.label ?? "";
+  });
+
+  function colorName(color: string): string {
+    return color.charAt(0).toUpperCase() + color.slice(1);
+  }
 
   let search = $state("");
   let searchInput = $state<HTMLInputElement | null>(null);
@@ -177,9 +218,67 @@
         <div class="row actions">
           <button onclick={() => onopen(selected.entry.id)}>Open entry</button>
           <button onclick={() => onremove(selected.entry.id)}>Remove from board</button>
+          <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
         </div>
         <div class="relations">
           <RelationList entryId={selected.entry.id} guideId={selected.entry.guide_id} {version} />
+        </div>
+      </section>
+    {/if}
+    {#if selectedNote}
+      {@const note = selectedNote}
+      <section class="selected" aria-label="Selected note">
+        <h2 class="region-head">Selected note</h2>
+        <p class="item-name">{noteName(note.body_md)}</p>
+        <div class="row swatches" role="group" aria-label="Note color">
+          {#each NOTE_COLORS as color (color)}
+            <button
+              class="swatch"
+              style:background="var(--note-{color})"
+              aria-pressed={note.color === color}
+              aria-label={colorName(color)}
+              title={colorName(color)}
+              onclick={() => onnotecolor(note.id, color)}
+            ></button>
+          {/each}
+        </div>
+        <div class="row actions">
+          <button onclick={() => oneditnote(note.id)}>Edit note</button>
+          <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
+          <button onclick={() => onremovenote(note.id)}>Delete note</button>
+        </div>
+      </section>
+    {/if}
+    {#if selectedString}
+      {@const string = selectedString}
+      <section class="selected" aria-label="Selected string">
+        <h2 class="region-head">Selected string</h2>
+        {#if stringEnds}
+          <p class="item-name">{stringEnds[0]} to {stringEnds[1]}</p>
+        {/if}
+        <div class="fields">
+          <input
+            type="text"
+            placeholder="Label"
+            aria-label="String label"
+            bind:value={label}
+            onchange={() => onstringlabel(string.id, label)}
+          />
+        </div>
+        <div class="row swatches" role="group" aria-label="String color">
+          {#each STRING_COLORS as color (color)}
+            <button
+              class="swatch"
+              style:background="var(--string-{color})"
+              aria-pressed={string.color === color}
+              aria-label={colorName(color)}
+              title={colorName(color)}
+              onclick={() => onstringcolor(string.id, color)}
+            ></button>
+          {/each}
+        </div>
+        <div class="row actions">
+          <button onclick={() => onremovestring(string.id)}>Delete string</button>
         </div>
       </section>
     {/if}
@@ -276,8 +375,36 @@
     padding-bottom: var(--space-2);
   }
   .card-title,
-  .actions {
+  .actions,
+  .swatches {
     padding: 2px var(--space-3);
+  }
+  .item-name {
+    margin: 0;
+    padding: 2px var(--space-3);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .swatches {
+    gap: 6px;
+  }
+  .swatch {
+    width: 24px;
+    height: 24px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+  }
+  .swatch[aria-pressed="true"] {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .actions button[aria-pressed="true"] {
+    background: var(--chip-bg);
+    font-weight: 600;
   }
   .card-title .name {
     font-weight: 600;

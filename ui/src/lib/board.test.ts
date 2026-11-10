@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { BoardCard, BoardEdge, BoardFilters } from "./api";
+import type { BoardCard, BoardEdge, BoardFilters, BoardString } from "./api";
 import {
   CAPTION_H,
   CARD_W,
@@ -18,7 +18,13 @@ import {
   pickerFilters,
   placeNear,
   sameFilters,
+  noteName,
+  noteRect,
   searchLine,
+  stringMidpoint,
+  stringPath,
+  stringSag,
+  stringShown,
   toWorld,
   zoomAt,
 } from "./board";
@@ -30,6 +36,7 @@ const filters: BoardFilters = {
   stubs_only: false,
   show_external: false,
   show_mentions: true,
+  background: "dots",
 };
 
 function edge(partial: Partial<BoardEdge> & Pick<BoardEdge, "id" | "from" | "to">): BoardEdge {
@@ -193,5 +200,86 @@ describe("picker filters", () => {
     expect(sameFilters(back, saved)).toBe(false);
     expect(sameFilters(back, { ...saved, tag_ids: ["t2"] })).toBe(true);
     expect(pickerFilters(filters, parseFilter(""), false, tags).text).toBeNull();
+  });
+
+  it("keeps the background and tells a changed one apart", () => {
+    const cork: BoardFilters = { ...filters, background: "cork" };
+    expect(pickerFilters(cork, parseFilter("iron"), false, tags).background).toBe("cork");
+    expect(sameFilters(cork, filters)).toBe(false);
+  });
+});
+
+/** The curve's point at t, from the path's own numbers. */
+function onPath(path: string, t: number) {
+  const [ax, ay, cx, cy, bx, by] = path.match(/-?[\d.]+(e-?\d+)?/g)!.map(Number);
+  const u = 1 - t;
+  return {
+    x: u * u * ax + 2 * u * t * cx + t * t * bx,
+    y: u * u * ay + 2 * u * t * cy + t * t * by,
+  };
+}
+
+describe("strings", () => {
+  it("runs from one end to the other", () => {
+    const a = { x: 10, y: 20 };
+    const b = { x: 310, y: -80 };
+    const path = stringPath(a, b);
+    expect(path.startsWith("M 10 20 Q")).toBe(true);
+    expect(onPath(path, 0)).toEqual(a);
+    const end = onPath(path, 1);
+    expect(end.x).toBeCloseTo(b.x);
+    expect(end.y).toBeCloseTo(b.y);
+  });
+
+  it("hangs below the straight line by 8 percent of the distance, at least 6 px", () => {
+    const a = { x: 0, y: 0 };
+    const b = { x: 500, y: 0 };
+    expect(stringSag(a, b)).toBeCloseTo(40);
+    expect(stringMidpoint(a, b)).toEqual({ x: 250, y: 40 });
+    expect(stringSag(a, { x: 30, y: 0 })).toBe(6);
+    expect(stringMidpoint(a, { x: 30, y: 0 })).toEqual({ x: 15, y: 6 });
+    // A vertical string still hangs downward, on screen, not sideways.
+    const mid = stringMidpoint({ x: 0, y: 0 }, { x: 0, y: 200 });
+    expect(mid.x).toBe(0);
+    expect(mid.y).toBeGreaterThan(100);
+  });
+
+  it("puts the label on the curve itself", () => {
+    const a = { x: -40, y: 70 };
+    const b = { x: 260, y: 10 };
+    const mid = stringMidpoint(a, b);
+    const half = onPath(stringPath(a, b), 0.5);
+    expect(mid.x).toBeCloseTo(half.x);
+    expect(mid.y).toBeCloseTo(half.y);
+  });
+
+  it("shows only when both ends are drawn", () => {
+    const tie = (from: BoardString["from"], to: BoardString["to"]): BoardString => ({
+      id: "s",
+      board_id: "b",
+      from,
+      to,
+      label: "",
+      color: "red",
+      created_at: "",
+    });
+    const cards = new Set(["a", "b"]);
+    const notes = new Set(["n"]);
+    expect(stringShown(tie({ kind: "entry", id: "a" }, { kind: "note", id: "n" }), cards, notes)).toBe(true);
+    expect(stringShown(tie({ kind: "entry", id: "a" }, { kind: "entry", id: "b" }), cards, notes)).toBe(true);
+    expect(stringShown(tie({ kind: "entry", id: "x" }, { kind: "note", id: "n" }), cards, notes)).toBe(false);
+    expect(stringShown(tie({ kind: "note", id: "n" }, { kind: "entry", id: "x" }), cards, notes)).toBe(false);
+    expect(stringShown(tie({ kind: "note", id: "n" }, { kind: "note", id: "m" }), cards, notes)).toBe(false);
+  });
+
+  it("names a note by its first line of text", () => {
+    expect(noteName("")).toBe("Empty note");
+    expect(noteName("\n  \n## Clues\n- one")).toBe("Clues");
+    expect(noteName("- [ ] find the **key**")).toBe("find the key");
+    expect(noteName("x".repeat(50))).toBe(`${"x".repeat(39)}...`);
+  });
+
+  it("measures a note by its width and its rendered height", () => {
+    expect(noteRect({ x: 5, y: 6, w: 220 }, 90)).toEqual({ x: 5, y: 6, w: 220, h: 90 });
   });
 });

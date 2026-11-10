@@ -2,6 +2,8 @@
 //! See `docs/design.md` section 6. `board_node` is membership and position; `filters_json` keeps
 //! the picker's last filters and the display toggles, never a membership rule. Core also answers
 //! what a board shows: its cards with their primary image and every edge between members.
+//! Notes (markdown cards that live on one board) and strings (ties between two items) are the
+//! board's own objects; a string goes with either end through triggers in migration 0005.
 
 use std::collections::HashSet;
 
@@ -9,12 +11,31 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
+use crate::markdown::{self, RenderOptions};
 use crate::media::{self, Media};
 use crate::names::{self, normalize};
 use crate::relation::{self, EntryRef};
 use crate::{
-    BoardId, EntryId, Error, GuideId, RelationId, Result, TagId, Vault, clock, entry, guide,
+    BoardId, BoardNoteId, BoardStringId, EntryId, Error, GuideId, RelationId, Result, TagId, Vault,
+    clock, entry, guide,
 };
+
+/// What the canvas is drawn on. Saved with the display toggles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Background {
+    #[default]
+    Dots,
+    Cork,
+    Grid,
+    Blank,
+}
+
+pub const NOTE_COLORS: [&str; 5] = ["yellow", "pink", "blue", "green", "white"];
+pub const STRING_COLORS: [&str; 4] = ["red", "blue", "green", "black"];
+pub const NOTE_DEFAULT_WIDTH: f64 = 220.0;
+/// Narrower than this and a line of text no longer fits.
+pub(crate) const NOTE_MIN_WIDTH: f64 = 120.0;
 
 /// The picker's last filters and the display toggles. All optional; a board starts with mentions
 /// shown and other guides hidden.
@@ -34,6 +55,8 @@ pub struct BoardFilters {
     /// Show the dashed mention layer.
     #[serde(default = "yes")]
     pub show_mentions: bool,
+    #[serde(default)]
+    pub background: Background,
 }
 
 fn yes() -> bool {
@@ -48,6 +71,7 @@ impl Default for BoardFilters {
             stubs_only: false,
             show_external: false,
             show_mentions: true,
+            background: Background::Dots,
         }
     }
 }
@@ -108,12 +132,110 @@ pub struct BoardEdge {
     pub external: bool,
 }
 
+/// A markdown card that lives on one board. The height follows the content, so only the width is
+/// stored.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardNote {
+    pub id: BoardNoteId,
+    pub board_id: BoardId,
+    pub body_md: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    /// One of `NOTE_COLORS`.
+    pub color: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// The fields to change on a note; `None` keeps the current value.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct BoardNoteUpdate {
+    #[serde(default)]
+    pub body_md: Option<String>,
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub w: Option<f64>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EndKind {
+    Entry,
+    Note,
+}
+
+impl EndKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EndKind::Entry => "entry",
+            EndKind::Note => "note",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<EndKind> {
+        match text {
+            "entry" => Some(EndKind::Entry),
+            "note" => Some(EndKind::Note),
+            _ => None,
+        }
+    }
+}
+
+/// One end of a string: an entry card on the board or a note of the board.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StringEnd {
+    pub kind: EndKind,
+    /// An `EntryId` or a `BoardNoteId`, as a string.
+    pub id: String,
+}
+
+/// A tie between two items on one board, with an optional label.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardString {
+    pub id: BoardStringId,
+    pub board_id: BoardId,
+    pub from: StringEnd,
+    pub to: StringEnd,
+    pub label: String,
+    /// One of `STRING_COLORS`.
+    pub color: String,
+    pub created_at: String,
+}
+
+/// The fields to change on a string; `None` keeps the current value.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardStringUpdate {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+/// A note as drawn: the row plus its rendered body. `tasks` is how many task markers the body has.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardNoteView {
+    pub note: BoardNote,
+    pub html: String,
+    pub tasks: usize,
+}
+
 /// Everything a board page draws.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardView {
     pub board: Board,
     pub cards: Vec<BoardCard>,
     pub edges: Vec<BoardEdge>,
+    /// Ordered by creation.
+    pub notes: Vec<BoardNoteView>,
+    /// Ordered by creation. Every string is here, including those whose entry end is not among
+    /// `cards` (a trashed member); the page leaves those out.
+    pub strings: Vec<BoardString>,
 }
 
 impl Vault {
@@ -340,10 +462,33 @@ impl Vault {
             }
         }
 
+        let mut notes = Vec::new();
+        for note in load_notes(conn, id)? {
+            let mut resolve = |target: &str| {
+                self.lookup_entry(&board.guide_id, target)
+                    .map(|n| n.map(|n| n.id))
+            };
+            let rendered = markdown::render_with(
+                &note.body_md,
+                &mut resolve,
+                RenderOptions {
+                    interactive_tasks: true,
+                },
+            )?;
+            notes.push(BoardNoteView {
+                tasks: markdown::count_tasks(&note.body_md),
+                html: rendered.html,
+                note,
+            });
+        }
+        let strings = load_strings(conn, id)?;
+
         Ok(BoardView {
             board,
             cards,
             edges,
+            notes,
+            strings,
         })
     }
 
@@ -422,16 +567,381 @@ impl Vault {
         }
         Ok(())
     }
+
+    /// Adds a note at `(x, y)` with the default width and color.
+    pub fn create_board_note(
+        &mut self,
+        board_id: &BoardId,
+        body_md: &str,
+        x: f64,
+        y: f64,
+    ) -> Result<BoardNote> {
+        check_finite(x, y)?;
+        let tx = self.savepoint()?;
+        load_board(&tx, board_id)?;
+        let now = clock::now();
+        let note = BoardNote {
+            id: BoardNoteId::generate(),
+            board_id: board_id.clone(),
+            body_md: body_md.to_owned(),
+            x,
+            y,
+            w: NOTE_DEFAULT_WIDTH,
+            color: NOTE_COLORS[0].to_owned(),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        insert_note(&tx, &note)?;
+        touch_board(&tx, board_id)?;
+        tx.commit()?;
+        Ok(note)
+    }
+
+    pub fn update_board_note(
+        &mut self,
+        id: &BoardNoteId,
+        update: &BoardNoteUpdate,
+    ) -> Result<BoardNote> {
+        let tx = self.savepoint()?;
+        let mut note = load_note(&tx, id)?;
+        if let Some(body) = &update.body_md {
+            note.body_md = body.clone();
+        }
+        note.x = update.x.unwrap_or(note.x);
+        note.y = update.y.unwrap_or(note.y);
+        check_finite(note.x, note.y)?;
+        if let Some(w) = update.w {
+            if !w.is_finite() || w < NOTE_MIN_WIDTH {
+                return Err(Error::Invalid(format!(
+                    "a note's width must be a number of at least {NOTE_MIN_WIDTH}"
+                )));
+            }
+            note.w = w;
+        }
+        if let Some(color) = &update.color {
+            note.color = check_color("note", color, &NOTE_COLORS)?;
+        }
+        note.updated_at = clock::now();
+        write_note(&tx, &note)?;
+        tx.commit()?;
+        Ok(note)
+    }
+
+    /// Deletes a note and, through the trigger, every string tied to it.
+    pub fn delete_board_note(&mut self, id: &BoardNoteId) -> Result<()> {
+        let tx = self.savepoint()?;
+        let note = load_note(&tx, id)?;
+        tx.execute("DELETE FROM board_note WHERE id = ?1", params![id])?;
+        touch_board(&tx, &note.board_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Flips the `index`-th check box in a note's body (0-based, document order).
+    pub fn toggle_note_task(&mut self, id: &BoardNoteId, index: usize) -> Result<BoardNote> {
+        let tx = self.savepoint()?;
+        let mut note = load_note(&tx, id)?;
+        note.body_md = markdown::toggle_task(&note.body_md, index).ok_or_else(|| {
+            Error::Invalid(format!(
+                "the note has {} check box(es); there is no number {}",
+                markdown::count_tasks(&note.body_md),
+                index + 1
+            ))
+        })?;
+        note.updated_at = clock::now();
+        write_note(&tx, &note)?;
+        tx.commit()?;
+        Ok(note)
+    }
+
+    /// Ties two items of one board. Both ends must be on the board and differ; two strings
+    /// between the same items are allowed.
+    pub fn create_board_string(
+        &mut self,
+        board_id: &BoardId,
+        from: &StringEnd,
+        to: &StringEnd,
+        label: &str,
+    ) -> Result<BoardString> {
+        if from == to {
+            return Err(Error::Invalid(
+                "a string needs two different ends".to_owned(),
+            ));
+        }
+        let tx = self.savepoint()?;
+        load_board(&tx, board_id)?;
+        check_end(&tx, board_id, from)?;
+        check_end(&tx, board_id, to)?;
+        let string = BoardString {
+            id: BoardStringId::generate(),
+            board_id: board_id.clone(),
+            from: from.clone(),
+            to: to.clone(),
+            label: label.trim().to_owned(),
+            color: STRING_COLORS[0].to_owned(),
+            created_at: clock::now(),
+        };
+        insert_string(&tx, &string)?;
+        touch_board(&tx, board_id)?;
+        tx.commit()?;
+        Ok(string)
+    }
+
+    pub fn update_board_string(
+        &mut self,
+        id: &BoardStringId,
+        update: &BoardStringUpdate,
+    ) -> Result<BoardString> {
+        let tx = self.savepoint()?;
+        let mut string = load_string(&tx, id)?;
+        if let Some(label) = &update.label {
+            string.label = label.trim().to_owned();
+        }
+        if let Some(color) = &update.color {
+            string.color = check_color("string", color, &STRING_COLORS)?;
+        }
+        tx.execute(
+            "UPDATE board_string SET label = ?2, color = ?3 WHERE id = ?1",
+            params![id, string.label, string.color],
+        )?;
+        touch_board(&tx, &string.board_id)?;
+        tx.commit()?;
+        Ok(string)
+    }
+
+    pub fn delete_board_string(&mut self, id: &BoardStringId) -> Result<()> {
+        let tx = self.savepoint()?;
+        let string = load_string(&tx, id)?;
+        tx.execute("DELETE FROM board_string WHERE id = ?1", params![id])?;
+        touch_board(&tx, &string.board_id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// A board's notes, ordered by creation.
+    pub(crate) fn board_notes(&self, board_id: &BoardId) -> Result<Vec<BoardNote>> {
+        load_notes(self.conn(), board_id)
+    }
+
+    /// A board's strings, ordered by creation.
+    pub(crate) fn board_strings(&self, board_id: &BoardId) -> Result<Vec<BoardString>> {
+        load_strings(self.conn(), board_id)
+    }
 }
 
-fn check_position(node: &BoardNode) -> Result<()> {
-    if node.x.is_finite() && node.y.is_finite() {
+fn check_finite(x: f64, y: f64) -> Result<()> {
+    if x.is_finite() && y.is_finite() {
         Ok(())
     } else {
         Err(Error::Invalid(
             "a board position must be a finite number".to_owned(),
         ))
     }
+}
+
+fn check_color(kind: &str, color: &str, allowed: &[&str]) -> Result<String> {
+    if allowed.contains(&color) {
+        Ok(color.to_owned())
+    } else {
+        Err(Error::Invalid(format!(
+            "a {kind} color must be one of {}; got \"{color}\"",
+            allowed.join(", ")
+        )))
+    }
+}
+
+/// An end must be on the board now: an entry card (a `board_node` row) or one of its notes.
+fn check_end(conn: &Connection, board_id: &BoardId, end: &StringEnd) -> Result<()> {
+    if end_on_board(conn, board_id, end)? {
+        Ok(())
+    } else {
+        Err(Error::Invalid(format!(
+            "a string end must be on the board: no {} {} there",
+            end.kind.as_str(),
+            end.id
+        )))
+    }
+}
+
+/// Whether an end is on the board. Import uses it to drop a string whose end did not arrive.
+pub(crate) fn end_on_board(conn: &Connection, board_id: &BoardId, end: &StringEnd) -> Result<bool> {
+    let sql = match end.kind {
+        EndKind::Entry => {
+            "SELECT EXISTS (SELECT 1 FROM board_node WHERE board_id = ?1 AND entry_id = ?2)"
+        }
+        EndKind::Note => "SELECT EXISTS (SELECT 1 FROM board_note WHERE board_id = ?1 AND id = ?2)",
+    };
+    Ok(conn.query_row(sql, params![board_id, end.id], |row| row.get(0))?)
+}
+
+fn touch_board(conn: &Connection, board_id: &BoardId) -> Result<()> {
+    conn.execute(
+        "UPDATE board SET updated_at = ?2 WHERE id = ?1",
+        params![board_id, clock::now()],
+    )?;
+    Ok(())
+}
+
+const NOTE_COLUMNS: &str = "id, board_id, body_md, x, y, w, color, created_at, updated_at";
+
+fn note_from_row(row: &Row<'_>) -> rusqlite::Result<BoardNote> {
+    Ok(BoardNote {
+        id: row.get(0)?,
+        board_id: row.get(1)?,
+        body_md: row.get(2)?,
+        x: row.get(3)?,
+        y: row.get(4)?,
+        w: row.get(5)?,
+        color: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
+}
+
+fn load_note(conn: &Connection, id: &BoardNoteId) -> Result<BoardNote> {
+    conn.query_row(
+        &format!("SELECT {NOTE_COLUMNS} FROM board_note WHERE id = ?1"),
+        params![id],
+        note_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| not_found("board note", id))
+}
+
+fn load_notes(conn: &Connection, board_id: &BoardId) -> Result<Vec<BoardNote>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {NOTE_COLUMNS} FROM board_note WHERE board_id = ?1 ORDER BY created_at, id"
+    ))?;
+    let rows = stmt.query_map(params![board_id], note_from_row)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Writes a whole note row, id and timestamps included. Import uses it to keep the archive's.
+pub(crate) fn insert_note(conn: &Connection, note: &BoardNote) -> Result<()> {
+    conn.execute(
+        &format!(
+            "INSERT INTO board_note ({NOTE_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        ),
+        params![
+            note.id,
+            note.board_id,
+            note.body_md,
+            note.x,
+            note.y,
+            note.w,
+            note.color,
+            note.created_at,
+            note.updated_at
+        ],
+    )?;
+    Ok(())
+}
+
+fn write_note(conn: &Connection, note: &BoardNote) -> Result<()> {
+    conn.execute(
+        "UPDATE board_note SET body_md = ?2, x = ?3, y = ?4, w = ?5, color = ?6, updated_at = ?7
+         WHERE id = ?1",
+        params![
+            note.id,
+            note.body_md,
+            note.x,
+            note.y,
+            note.w,
+            note.color,
+            note.updated_at
+        ],
+    )?;
+    touch_board(conn, &note.board_id)
+}
+
+/// Whether any board holds a note with this id, so import can keep an archive id only when free.
+pub(crate) fn note_exists(conn: &Connection, id: &BoardNoteId) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM board_note WHERE id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
+pub(crate) fn string_exists(conn: &Connection, id: &BoardStringId) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM board_string WHERE id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
+const STRING_COLUMNS: &str =
+    "id, board_id, from_kind, from_id, to_kind, to_id, label, color, created_at";
+
+fn string_from_row(row: &Row<'_>) -> rusqlite::Result<BoardString> {
+    let end = |kind_col: usize, id_col: usize| -> rusqlite::Result<StringEnd> {
+        let text: String = row.get(kind_col)?;
+        let kind = EndKind::parse(&text).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                kind_col,
+                rusqlite::types::Type::Text,
+                format!("unknown string end kind {text:?}").into(),
+            )
+        })?;
+        Ok(StringEnd {
+            kind,
+            id: row.get(id_col)?,
+        })
+    };
+    Ok(BoardString {
+        id: row.get(0)?,
+        board_id: row.get(1)?,
+        from: end(2, 3)?,
+        to: end(4, 5)?,
+        label: row.get(6)?,
+        color: row.get(7)?,
+        created_at: row.get(8)?,
+    })
+}
+
+fn load_string(conn: &Connection, id: &BoardStringId) -> Result<BoardString> {
+    conn.query_row(
+        &format!("SELECT {STRING_COLUMNS} FROM board_string WHERE id = ?1"),
+        params![id],
+        string_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| not_found("board string", id))
+}
+
+fn load_strings(conn: &Connection, board_id: &BoardId) -> Result<Vec<BoardString>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {STRING_COLUMNS} FROM board_string WHERE board_id = ?1 ORDER BY created_at, id"
+    ))?;
+    let rows = stmt.query_map(params![board_id], string_from_row)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Writes a whole string row, id and timestamp included, without checking its ends. Import
+/// checks them first with `end_on_board`.
+pub(crate) fn insert_string(conn: &Connection, string: &BoardString) -> Result<()> {
+    conn.execute(
+        &format!(
+            "INSERT INTO board_string ({STRING_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        ),
+        params![
+            string.id,
+            string.board_id,
+            string.from.kind.as_str(),
+            string.from.id,
+            string.to.kind.as_str(),
+            string.to.id,
+            string.label,
+            string.color,
+            string.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+fn check_position(node: &BoardNode) -> Result<()> {
+    check_finite(node.x, node.y)
 }
 
 const COLUMNS: &str = "id, guide_id, name, filters_json, created_at, updated_at";
@@ -528,7 +1038,7 @@ pub(crate) fn retag_filters(conn: &Connection, from: &TagId, to: Option<&TagId>)
 
 #[cfg(test)]
 mod tests {
-    use super::BoardFilters;
+    use super::{Background, BoardFilters};
 
     #[test]
     fn filters_saved_by_the_first_design_still_parse() {
@@ -540,8 +1050,22 @@ mod tests {
         assert!(filters.show_external);
         assert!(!filters.show_mentions);
 
+        assert_eq!(
+            filters.background,
+            Background::Dots,
+            "filters saved before backgrounds existed show dots"
+        );
+
         let fresh: BoardFilters = serde_json::from_str("{}").unwrap();
         assert_eq!(fresh, BoardFilters::default());
         assert!(fresh.show_mentions, "the mention layer starts shown");
+
+        let cork: BoardFilters = serde_json::from_str(r#"{"background":"cork"}"#).unwrap();
+        assert_eq!(cork.background, Background::Cork);
+        assert!(
+            serde_json::to_string(&cork)
+                .unwrap()
+                .contains(r#""background":"cork""#)
+        );
     }
 }

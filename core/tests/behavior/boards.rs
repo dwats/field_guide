@@ -1,6 +1,10 @@
 use fieldguide_core::Error;
-use fieldguide_core::board::{BoardFilters, BoardNode, EdgeKind};
+use fieldguide_core::board::{
+    Background, BoardFilters, BoardNode, BoardNoteUpdate, BoardStringUpdate, EdgeKind, EndKind,
+    NOTE_DEFAULT_WIDTH, StringEnd,
+};
 use fieldguide_core::vocabulary::NewVerb;
+use fieldguide_core::{BoardId, BoardNoteId, BoardStringId, EntryId, Vault};
 
 use crate::common::*;
 
@@ -30,6 +34,7 @@ fn boards_are_named_per_guide_and_keep_their_filters() {
         stubs_only: true,
         show_external: true,
         show_mentions: false,
+        background: Background::Grid,
     };
     let saved = v.set_board_filters(&crafting.id, &filters).unwrap();
     assert_eq!(saved.filters, filters);
@@ -338,4 +343,360 @@ fn a_card_shows_the_body_image_when_the_gallery_is_empty() {
         .unwrap();
     let view = v.board_view(&board).unwrap();
     assert_eq!(view.cards[0].image.as_ref().map(|m| &m.id), Some(&picture));
+}
+
+fn card_end(id: &EntryId) -> StringEnd {
+    StringEnd {
+        kind: EndKind::Entry,
+        id: id.0.clone(),
+    }
+}
+
+fn note_end(id: &BoardNoteId) -> StringEnd {
+    StringEnd {
+        kind: EndKind::Note,
+        id: id.0.clone(),
+    }
+}
+
+fn string_ids(v: &Vault, board: &BoardId) -> Vec<BoardStringId> {
+    v.board_view(board)
+        .unwrap()
+        .strings
+        .into_iter()
+        .map(|s| s.id)
+        .collect()
+}
+
+#[test]
+fn notes_are_created_edited_and_deleted_with_their_colors_and_widths_checked() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+
+    let note = v
+        .create_board_note(&board, "Find the key", 10.0, -20.0)
+        .unwrap();
+    assert_eq!(
+        (note.x, note.y, note.w, note.color.as_str()),
+        (10.0, -20.0, NOTE_DEFAULT_WIDTH, "yellow")
+    );
+    assert!(matches!(
+        v.create_board_note(&board, "", f64::INFINITY, 0.0),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        v.create_board_note(&BoardId::generate(), "", 0.0, 0.0),
+        Err(Error::NotFound { .. })
+    ));
+
+    let moved = v
+        .update_board_note(
+            &note.id,
+            &BoardNoteUpdate {
+                x: Some(50.0),
+                w: Some(300.0),
+                color: Some("pink".to_owned()),
+                ..BoardNoteUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (
+            moved.body_md.as_str(),
+            moved.x,
+            moved.y,
+            moved.w,
+            moved.color.as_str()
+        ),
+        ("Find the key", 50.0, -20.0, 300.0, "pink"),
+        "unset fields keep their values"
+    );
+    let edited = v
+        .update_board_note(
+            &note.id,
+            &BoardNoteUpdate {
+                body_md: Some("Found it".to_owned()),
+                w: Some(120.0),
+                ..BoardNoteUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!((edited.body_md.as_str(), edited.w), ("Found it", 120.0));
+
+    for bad in [
+        BoardNoteUpdate {
+            color: Some("purple".to_owned()),
+            ..BoardNoteUpdate::default()
+        },
+        BoardNoteUpdate {
+            w: Some(119.0),
+            ..BoardNoteUpdate::default()
+        },
+        BoardNoteUpdate {
+            w: Some(f64::NAN),
+            ..BoardNoteUpdate::default()
+        },
+        BoardNoteUpdate {
+            y: Some(f64::NEG_INFINITY),
+            ..BoardNoteUpdate::default()
+        },
+    ] {
+        assert!(
+            matches!(v.update_board_note(&note.id, &bad), Err(Error::Invalid(_))),
+            "{bad:?}"
+        );
+    }
+    let view = v.board_view(&board).unwrap();
+    assert_eq!(view.notes.len(), 1);
+    assert_eq!(
+        view.notes[0].note, edited,
+        "a refused update changes nothing"
+    );
+
+    v.delete_board_note(&note.id).unwrap();
+    assert!(v.board_view(&board).unwrap().notes.is_empty());
+    assert!(matches!(
+        v.delete_board_note(&note.id),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        v.update_board_note(&note.id, &BoardNoteUpdate::default()),
+        Err(Error::NotFound { .. })
+    ));
+}
+
+#[test]
+fn a_note_check_box_flips_its_marker_and_the_view_draws_live_boxes() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let stone = entry(&mut v, &g, "Stone", "- [ ] inert in an entry");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let note = v
+        .create_board_note(
+            &board,
+            "- [ ] get [[Stone]]\n- [x] find the door\n",
+            0.0,
+            0.0,
+        )
+        .unwrap();
+
+    let view = v.board_view(&board).unwrap();
+    let drawn = &view.notes[0];
+    assert_eq!(drawn.tasks, 2);
+    assert!(
+        drawn
+            .html
+            .contains(r#"<input type="checkbox" class="task" data-task="0">"#),
+        "{}",
+        drawn.html
+    );
+    assert!(
+        drawn
+            .html
+            .contains(r#"<input type="checkbox" class="task" data-task="1" checked>"#),
+        "{}",
+        drawn.html
+    );
+    assert!(!drawn.html.contains("disabled"), "{}", drawn.html);
+    assert!(
+        drawn
+            .html
+            .contains(&format!("data-entry-id=\"{}\"", stone.as_str())),
+        "wikilinks resolve in the board's guide: {}",
+        drawn.html
+    );
+    assert!(
+        v.render_entry(&stone).unwrap().html.contains("disabled"),
+        "entry bodies keep inert check boxes"
+    );
+
+    let toggled = v.toggle_note_task(&note.id, 0).unwrap();
+    assert_eq!(
+        toggled.body_md,
+        "- [x] get [[Stone]]\n- [x] find the door\n"
+    );
+    let toggled = v.toggle_note_task(&note.id, 1).unwrap();
+    assert_eq!(
+        toggled.body_md,
+        "- [x] get [[Stone]]\n- [ ] find the door\n"
+    );
+    assert_eq!(
+        v.board_view(&board).unwrap().notes[0].note.body_md,
+        toggled.body_md,
+        "the flip is saved"
+    );
+    assert!(matches!(
+        v.toggle_note_task(&note.id, 2),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        v.toggle_note_task(&BoardNoteId::generate(), 0),
+        Err(Error::NotFound { .. })
+    ));
+}
+
+#[test]
+fn strings_tie_cards_and_notes_of_one_board_and_check_their_ends() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let other = v.create_board(&g, "Other").unwrap().id;
+    let stone = entry(&mut v, &g, "Stone", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
+    let off_board = entry(&mut v, &g, "Dirt", "");
+    v.add_board_nodes(
+        &board,
+        &[node(&stone, 0.0, 0.0), node(&pickaxe, 100.0, 0.0)],
+    )
+    .unwrap();
+    let note = v.create_board_note(&board, "clue", 50.0, 50.0).unwrap();
+    let elsewhere = v.create_board_note(&other, "not here", 0.0, 0.0).unwrap();
+
+    let to_note = v
+        .create_board_string(&board, &card_end(&stone), &note_end(&note.id), "  hint  ")
+        .unwrap();
+    assert_eq!(
+        (to_note.label.as_str(), to_note.color.as_str()),
+        ("hint", "red")
+    );
+    let between_cards = v
+        .create_board_string(&board, &card_end(&stone), &card_end(&pickaxe), "")
+        .unwrap();
+    let again = v
+        .create_board_string(&board, &card_end(&pickaxe), &card_end(&stone), "")
+        .unwrap();
+    assert_eq!(
+        string_ids(&v, &board),
+        [
+            to_note.id.clone(),
+            between_cards.id.clone(),
+            again.id.clone()
+        ],
+        "duplicates are allowed and strings come in creation order"
+    );
+    assert_eq!(v.board_view(&board).unwrap().strings[0], to_note);
+
+    let unknown_note = StringEnd {
+        kind: EndKind::Note,
+        id: stone.0.clone(),
+    };
+    for (from, to) in [
+        (card_end(&stone), card_end(&stone)),
+        (note_end(&note.id), note_end(&note.id)),
+        (card_end(&stone), card_end(&off_board)),
+        (card_end(&stone), note_end(&elsewhere.id)),
+        (unknown_note, card_end(&pickaxe)),
+    ] {
+        assert!(
+            matches!(
+                v.create_board_string(&board, &from, &to, ""),
+                Err(Error::Invalid(_))
+            ),
+            "{from:?} to {to:?}"
+        );
+    }
+
+    let blue = v
+        .update_board_string(
+            &again.id,
+            &BoardStringUpdate {
+                label: Some(" opens ".to_owned()),
+                color: Some("blue".to_owned()),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (blue.label.as_str(), blue.color.as_str()),
+        ("opens", "blue")
+    );
+    assert!(matches!(
+        v.update_board_string(
+            &again.id,
+            &BoardStringUpdate {
+                color: Some("yellow".to_owned()),
+                ..BoardStringUpdate::default()
+            }
+        ),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(v.board_view(&board).unwrap().strings[2], blue);
+    v.delete_board_string(&again.id).unwrap();
+    assert!(matches!(
+        v.delete_board_string(&again.id),
+        Err(Error::NotFound { .. })
+    ));
+    assert_eq!(string_ids(&v, &board), [to_note.id, between_cards.id]);
+}
+
+#[test]
+fn a_string_goes_with_either_end() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let stone = entry(&mut v, &g, "Stone", "");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "");
+    let ore = entry(&mut v, &g, "Ore", "");
+    v.add_board_nodes(
+        &board,
+        &[
+            node(&stone, 0.0, 0.0),
+            node(&pickaxe, 1.0, 0.0),
+            node(&ore, 2.0, 0.0),
+        ],
+    )
+    .unwrap();
+    let clue = v.create_board_note(&board, "clue", 0.0, 9.0).unwrap();
+    let spare = v.create_board_note(&board, "spare", 9.0, 9.0).unwrap();
+    let mut tie =
+        |from: StringEnd, to: StringEnd| v.create_board_string(&board, &from, &to, "").unwrap().id;
+    let _stone_pickaxe = tie(card_end(&stone), card_end(&pickaxe));
+    let _pickaxe_clue = tie(card_end(&pickaxe), note_end(&clue.id));
+    let ore_spare = tie(card_end(&ore), note_end(&spare.id));
+    let _clue_spare = tie(note_end(&clue.id), note_end(&spare.id));
+    let ore_stone = tie(card_end(&ore), card_end(&stone));
+
+    // A trashed card leaves the view, but its strings wait for it to be restored.
+    v.trash_entry(&ore).unwrap();
+    assert_eq!(string_ids(&v, &board).len(), 5);
+    v.restore_entry(&ore).unwrap();
+
+    v.remove_board_node(&board, &pickaxe).unwrap();
+    assert_eq!(string_ids(&v, &board).len(), 3);
+    v.delete_board_note(&clue.id).unwrap();
+    assert_eq!(
+        string_ids(&v, &board),
+        [ore_spare.clone(), ore_stone.clone()]
+    );
+
+    // Purging an entry drops its card from every board, and its strings with it.
+    v.trash_entry(&ore).unwrap();
+    v.purge_entry(&ore).unwrap();
+    assert!(string_ids(&v, &board).is_empty());
+    assert_eq!(v.board_view(&board).unwrap().notes.len(), 1);
+}
+
+#[test]
+fn notes_and_strings_go_with_their_board() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let stone = entry(&mut v, &g, "Stone", "");
+    v.add_board_nodes(&board, &[node(&stone, 0.0, 0.0)])
+        .unwrap();
+    let note = v.create_board_note(&board, "- [ ] a", 0.0, 9.0).unwrap();
+    let string = v
+        .create_board_string(&board, &card_end(&stone), &note_end(&note.id), "")
+        .unwrap();
+
+    v.delete_board(&board).unwrap();
+    assert!(matches!(
+        v.toggle_note_task(&note.id, 0),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        v.delete_board_string(&string.id),
+        Err(Error::NotFound { .. })
+    ));
+    assert_eq!(v.get_entry(&stone).unwrap().title, "Stone");
 }

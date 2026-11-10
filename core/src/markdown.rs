@@ -66,16 +66,66 @@ impl Vault {
     }
 }
 
+/// How a body is drawn where the defaults do not fit.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderOptions {
+    /// Task markers become live check boxes, `<input type="checkbox" class="task" data-task="N">`,
+    /// N counting from 0 in document order. Board notes use this; entry bodies keep inert boxes.
+    pub interactive_tasks: bool,
+}
+
+const PARSE_OPTIONS: Options = Options::ENABLE_TABLES
+    .union(Options::ENABLE_STRIKETHROUGH)
+    .union(Options::ENABLE_TASKLISTS)
+    .union(Options::ENABLE_FOOTNOTES)
+    .union(Options::ENABLE_GFM);
+
 /// Renders with a caller-supplied resolver from link text to entry id.
 pub fn render(
     body: &str,
     resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
 ) -> Result<Rendered> {
-    let options = Options::ENABLE_TABLES
-        | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TASKLISTS
-        | Options::ENABLE_FOOTNOTES
-        | Options::ENABLE_GFM;
+    render_with(body, resolve, RenderOptions::default())
+}
+
+/// The number of task markers in a body: the check boxes `render_with` draws.
+pub fn count_tasks(body: &str) -> usize {
+    Parser::new_ext(body, PARSE_OPTIONS)
+        .filter(|e| matches!(e, Event::TaskListMarker(_)))
+        .count()
+}
+
+/// Flips the `index`-th task marker (0-based, document order): `[ ]` becomes `[x]`, and `[x]` or
+/// `[X]` becomes `[ ]`. None when the body has fewer markers. The parser finds the markers, so a
+/// `[ ]` in a code block or outside a list item never counts and the index always matches the
+/// `data-task` number the renderer wrote.
+pub fn toggle_task(body_md: &str, index: usize) -> Option<String> {
+    let (_, range) = Parser::new_ext(body_md, PARSE_OPTIONS)
+        .into_offset_iter()
+        .filter(|(e, _)| matches!(e, Event::TaskListMarker(_)))
+        .nth(index)?;
+    let marker = &body_md[range.clone()];
+    let open = marker.find('[')?;
+    let inner = range.start + open + 1;
+    let flipped = match body_md.as_bytes().get(inner)? {
+        b' ' => "x",
+        b'x' | b'X' => " ",
+        _ => return None,
+    };
+    let mut out = String::with_capacity(body_md.len());
+    out.push_str(&body_md[..inner]);
+    out.push_str(flipped);
+    out.push_str(&body_md[inner + 1..]);
+    Some(out)
+}
+
+/// Renders with a resolver and options.
+pub fn render_with(
+    body: &str,
+    resolve: &mut dyn FnMut(&str) -> Result<Option<EntryId>>,
+    options: RenderOptions,
+) -> Result<Rendered> {
+    let mut tasks = 0;
     let mut out = Rendered::default();
     let mut events: Vec<Event<'_>> = Vec::new();
     let mut text_run = String::new();
@@ -99,7 +149,7 @@ pub fn render(
         Ok(())
     };
 
-    for event in Parser::new_ext(body, options) {
+    for event in Parser::new_ext(body, PARSE_OPTIONS) {
         if let Some((_, alt, _)) = image.as_mut() {
             match event {
                 Event::End(TagEnd::Image) => {
@@ -115,6 +165,20 @@ pub fn render(
         }
         match event {
             Event::Text(t) => text_run.push_str(&t),
+            Event::TaskListMarker(done) if options.interactive_tasks => {
+                flush_text(
+                    &mut text_run,
+                    &mut events,
+                    &mut out,
+                    &mut spoiler_open,
+                    resolve,
+                )?;
+                let checked = if done { " checked" } else { "" };
+                events.push(Event::Html(CowStr::from(format!(
+                    "<input type=\"checkbox\" class=\"task\" data-task=\"{tasks}\"{checked}>"
+                ))));
+                tasks += 1;
+            }
             Event::Html(t) | Event::InlineHtml(t) => text_run.push_str(&t),
             Event::Start(Tag::Image {
                 dest_url, title, ..

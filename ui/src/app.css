@@ -45,6 +45,19 @@
   --tag-pink: light-dark(#d01884, #ff8bcb);
   --tag-gray: light-dark(#5f6368, #9aa0a6);
 
+  /* Board notes and strings, shared by the canvas and the panel's swatches. A note keeps the
+     page's text color, so the dark values are deep tints. "Black" twine turns light gray in dark
+     mode, where black would vanish. */
+  --note-yellow: light-dark(#fff3a6, #57501f);
+  --note-pink: light-dark(#ffd3e4, #5a2b40);
+  --note-blue: light-dark(#d2e7ff, #243e5a);
+  --note-green: light-dark(#d6f3cb, #2b4727);
+  --note-white: light-dark(#ffffff, #3b3b3b);
+  --string-red: light-dark(#c62828, #ef6b6b);
+  --string-blue: light-dark(#1565c0, #6aaef5);
+  --string-green: light-dark(#2e7d32, #7cc883);
+  --string-black: light-dark(#1f1f1f, #cfcfcf);
+
   background: var(--bg);
   color: var(--fg);
 }

@@ -7,7 +7,10 @@
 use std::path::{Path, PathBuf};
 
 use fieldguide_core::backup::{self, BACKUPS_TO_KEEP, BackupInfo};
-use fieldguide_core::board::{Board, BoardFilters, BoardNode, BoardView};
+use fieldguide_core::board::{
+    Board, BoardFilters, BoardNode, BoardNote, BoardNoteUpdate, BoardString, BoardStringUpdate,
+    BoardView, StringEnd,
+};
 use fieldguide_core::config::UiPrefs;
 use fieldguide_core::entry::{Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord};
 use fieldguide_core::export::{ExportReport, ExportScope};
@@ -25,8 +28,8 @@ use fieldguide_core::vocabulary::{
     Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb, VerbMatch, VocabularyCopy,
 };
 use fieldguide_core::{
-    BoardId, EntryId, GuideId, MediaId, QualifierId, QualifierLabelId, RelationId, TagId, Vault,
-    VerbId,
+    BoardId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, QualifierId, QualifierLabelId,
+    RelationId, TagId, Vault, VerbId,
 };
 use tauri::State;
 
@@ -527,6 +530,61 @@ pub fn set_board_positions(state: S<'_>, id: BoardId, nodes: Vec<BoardNode>) -> 
 #[tauri::command(rename_all = "snake_case")]
 pub fn remove_board_node(state: S<'_>, id: BoardId, entry_id: EntryId) -> CmdResult<()> {
     state.with_vault(|v| v.remove_board_node(&id, &entry_id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_board_note(
+    state: S<'_>,
+    board_id: BoardId,
+    body_md: String,
+    x: f64,
+    y: f64,
+) -> CmdResult<BoardNote> {
+    state.with_vault(|v| v.create_board_note(&board_id, &body_md, x, y))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_board_note(
+    state: S<'_>,
+    id: BoardNoteId,
+    update: BoardNoteUpdate,
+) -> CmdResult<BoardNote> {
+    state.with_vault(|v| v.update_board_note(&id, &update))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_board_note(state: S<'_>, id: BoardNoteId) -> CmdResult<()> {
+    state.with_vault(|v| v.delete_board_note(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn toggle_note_task(state: S<'_>, id: BoardNoteId, index: usize) -> CmdResult<BoardNote> {
+    state.with_vault(|v| v.toggle_note_task(&id, index))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_board_string(
+    state: S<'_>,
+    board_id: BoardId,
+    from: StringEnd,
+    to: StringEnd,
+    label: String,
+) -> CmdResult<BoardString> {
+    state.with_vault(|v| v.create_board_string(&board_id, &from, &to, &label))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_board_string(
+    state: S<'_>,
+    id: BoardStringId,
+    update: BoardStringUpdate,
+) -> CmdResult<BoardString> {
+    state.with_vault(|v| v.update_board_string(&id, &update))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_board_string(state: S<'_>, id: BoardStringId) -> CmdResult<()> {
+    state.with_vault(|v| v.delete_board_string(&id))
 }
 
 // ---- media ----

@@ -15,7 +15,10 @@ use crate::archive::{
     self, BoardFile, Endpoint, GuideFile, Manifest, QualifierLabelFile, RelationLine, TagTree,
     VerbFile,
 };
-use crate::board::{BoardFilters, BoardNode};
+use crate::board::{
+    self, BoardFilters, BoardNode, BoardNote, BoardString, EndKind, NOTE_COLORS,
+    NOTE_DEFAULT_WIDTH, NOTE_MIN_WIDTH, STRING_COLORS, StringEnd,
+};
 use crate::entry;
 use crate::frontmatter;
 use crate::guide::NewGuide;
@@ -25,8 +28,8 @@ use crate::relation::{self, LabelSpec, NewQualifier, QualifierValue};
 use crate::similarity::{self, Similarity};
 use crate::vocabulary::{Direction, NewQualifierLabel, NewVerb, Verb};
 use crate::{
-    EntryId, Error, GuideId, QualifierLabelId, RelationId, Result, TagId, Vault, VerbId, clock,
-    fsutil, wikilink,
+    BoardNoteId, BoardStringId, EntryId, Error, GuideId, QualifierLabelId, RelationId, Result,
+    TagId, Vault, VerbId, clock, fsutil, wikilink,
 };
 
 /// A parsed archive, held in memory until it is applied.
@@ -1243,7 +1246,7 @@ impl Vault {
     ) -> Result<()> {
         for file in &ag.boards {
             // A board is identified by its name within the guide: importing again replaces the
-            // saved filters and positions instead of adding a copy.
+            // saved filters, positions, notes, and strings instead of adding a copy.
             let existing = self
                 .list_boards(&context.guide_id)?
                 .into_iter()
@@ -1253,6 +1256,14 @@ impl Vault {
                     for node in self.board_layout(&board.id)? {
                         self.remove_board_node(&board.id, &node.entry_id)?;
                     }
+                    self.conn().execute(
+                        "DELETE FROM board_note WHERE board_id = ?1",
+                        rusqlite::params![board.id],
+                    )?;
+                    self.conn().execute(
+                        "DELETE FROM board_string WHERE board_id = ?1",
+                        rusqlite::params![board.id],
+                    )?;
                     report.boards_updated += 1;
                     board
                 }
@@ -1272,6 +1283,7 @@ impl Vault {
                 stubs_only: file.filters.stubs_only,
                 show_external: file.filters.show_external,
                 show_mentions: file.filters.show_mentions,
+                background: file.filters.background,
             };
             self.set_board_filters(&board.id, &filters)?;
             let mut nodes = Vec::new();
@@ -1290,6 +1302,93 @@ impl Vault {
             }
             if !nodes.is_empty() {
                 self.set_board_positions(&board.id, &nodes)?;
+            }
+
+            // Notes keep their archive ids unless another board already holds one, as happens
+            // when an archive is imported as a new guide twice.
+            let mut note_ids: HashMap<&str, BoardNoteId> = HashMap::new();
+            for note in &file.notes {
+                let wanted = BoardNoteId(note.id.clone());
+                let id = if board::note_exists(self.conn(), &wanted)? {
+                    BoardNoteId::generate()
+                } else {
+                    wanted
+                };
+                // A hand-edited archive may carry values the app never writes; they fall back to
+                // the defaults rather than fail the import.
+                let color = if NOTE_COLORS.contains(&note.color.as_str()) {
+                    note.color.clone()
+                } else {
+                    NOTE_COLORS[0].to_owned()
+                };
+                let w = if note.w.is_finite() && note.w >= NOTE_MIN_WIDTH {
+                    note.w
+                } else {
+                    NOTE_DEFAULT_WIDTH
+                };
+                let finite = |n: f64| if n.is_finite() { n } else { 0.0 };
+                board::insert_note(
+                    self.conn(),
+                    &BoardNote {
+                        id: id.clone(),
+                        board_id: board.id.clone(),
+                        body_md: note.body_md.clone(),
+                        x: finite(note.x),
+                        y: finite(note.y),
+                        w,
+                        color,
+                        created_at: note.created_at.clone(),
+                        updated_at: note.updated_at.clone(),
+                    },
+                )?;
+                note_ids.insert(note.id.as_str(), id);
+            }
+
+            for string in &file.strings {
+                let end = |file_end: &archive::StringEndFile| -> Option<StringEnd> {
+                    let kind = EndKind::parse(&file_end.kind)?;
+                    let id = match kind {
+                        EndKind::Entry => ids
+                            .get(&file_end.id)
+                            .map(|id| id.0.clone())
+                            .unwrap_or_else(|| file_end.id.clone()),
+                        EndKind::Note => note_ids.get(file_end.id.as_str())?.0.clone(),
+                    };
+                    Some(StringEnd { kind, id })
+                };
+                let (Some(from), Some(to)) = (end(&string.from), end(&string.to)) else {
+                    continue;
+                };
+                // A string whose end did not arrive has nothing to tie.
+                if from == to
+                    || !board::end_on_board(self.conn(), &board.id, &from)?
+                    || !board::end_on_board(self.conn(), &board.id, &to)?
+                {
+                    continue;
+                }
+                let wanted = BoardStringId(string.id.clone());
+                let id = if board::string_exists(self.conn(), &wanted)? {
+                    BoardStringId::generate()
+                } else {
+                    wanted
+                };
+                let color = if STRING_COLORS.contains(&string.color.as_str()) {
+                    string.color.clone()
+                } else {
+                    STRING_COLORS[0].to_owned()
+                };
+                board::insert_string(
+                    self.conn(),
+                    &BoardString {
+                        id,
+                        board_id: board.id.clone(),
+                        from,
+                        to,
+                        label: string.label.trim().to_owned(),
+                        color,
+                        created_at: string.created_at.clone(),
+                    },
+                )?;
             }
         }
         Ok(())

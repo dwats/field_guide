@@ -1,9 +1,9 @@
 // Geometry and rules for the board page (design section 6): card sizes from image proportions,
 // where an edge meets a card, parallel edges fanning out, the pan-and-zoom viewport, where new
-// cards land, which cards and edges the toggles show, and the picker's saved filters. Pure, so
-// it is tested without a DOM.
+// cards land, which cards and edges the toggles show, the picker's saved filters, and the notes
+// and strings tied between items. Pure, so it is tested without a DOM.
 
-import type { BoardCard, BoardEdge, BoardFilters } from "./api";
+import type { BoardCard, BoardEdge, BoardFilters, BoardNote, BoardString, StringEnd } from "./api";
 import { formatFilter, type ParsedFilter } from "./filter";
 import { findByPath, type TagOption } from "./tags";
 
@@ -279,9 +279,82 @@ export function sameFilters(a: BoardFilters, b: BoardFilters): boolean {
     a.stubs_only === b.stubs_only &&
     a.show_external === b.show_external &&
     a.show_mentions === b.show_mentions &&
+    a.background === b.background &&
     a.tag_ids.length === b.tag_ids.length &&
     a.tag_ids.every((id, i) => id === b.tag_ids[i])
   );
+}
+
+/** What the board has selected: a card (by entry id), a note, or a string. */
+export type Selection = { kind: "entry" | "note" | "string"; id: string } | null;
+
+/** The narrowest a note gets; core refuses less. */
+export const NOTE_MIN_W = 120;
+/** A note's height before the page has measured it. */
+export const NOTE_PLAIN_H = 48;
+
+export function noteRect(note: Pick<BoardNote, "x" | "y" | "w">, height: number): Rect {
+  return { x: note.x, y: note.y, w: note.w, h: height };
+}
+
+/** A note's name for screen readers and titles: its first line without markdown marks. */
+export function noteName(body: string): string {
+  for (const raw of body.split("\n")) {
+    const line = raw
+      .replace(/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)*/, "")
+      .replace(/^\[[ xX]\]\s*/, "")
+      .replace(/[*_`~]/g, "")
+      .trim();
+    if (line) return line.length > 40 ? `${line.slice(0, 39)}...` : line;
+  }
+  return "Empty note";
+}
+
+/** The key an item's rect is filed under: `entry:<id>` or `note:<id>`. */
+export function endKey(end: StringEnd): string {
+  return `${end.kind}:${end.id}`;
+}
+
+/**
+ * A string shows when both its ends are drawn: an entry end must be among the shown cards, a
+ * note end among the notes.
+ */
+export function stringShown(
+  string: BoardString,
+  shownCards: Set<string>,
+  notes: Set<string>,
+): boolean {
+  const shown = (end: StringEnd) =>
+    end.kind === "entry" ? shownCards.has(end.id) : notes.has(end.id);
+  return shown(string.from) && shown(string.to);
+}
+
+/**
+ * How far a string hangs below the straight line at its middle: 8 percent of the distance, at
+ * least 6 px.
+ */
+export function stringSag(a: Point, b: Point): number {
+  return Math.max(6, Math.hypot(b.x - a.x, b.y - a.y) * 0.08);
+}
+
+/**
+ * The control point of a string's quadratic curve. A quadratic's middle sits halfway between
+ * the chord's middle and the control point, so the control point hangs twice the sag below.
+ */
+function stringControl(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + 2 * stringSag(a, b) };
+}
+
+/** A string as an SVG path: a quadratic curve from `a` to `b` that hangs downward. */
+export function stringPath(a: Point, b: Point): string {
+  const c = stringControl(a, b);
+  return `M ${a.x} ${a.y} Q ${c.x} ${c.y} ${b.x} ${b.y}`;
+}
+
+/** The point on a string's curve halfway along it (t = 0.5), where its label goes. */
+export function stringMidpoint(a: Point, b: Point): Point {
+  const c = stringControl(a, b);
+  return { x: (a.x + 2 * c.x + b.x) / 4, y: (a.y + 2 * c.y + b.y) / 4 };
 }
 
 function clamp(value: number, low: number, high: number): number {

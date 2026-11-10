@@ -86,7 +86,11 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] The selected card shows in the panel with its relations, Open entry, and Remove from board; a card with a gallery shows its first image as the picture, proportions following the image; one without shows the title alone.
 - [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
 - [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.
-- [ ] Export and import a guide with a board: the board, its filters, and the card positions survive the round trip.
+- [ ] Export and import a guide with a board: the board, its filters, the card positions, the notes, the strings, and the background survive the round trip.
+- [ ] The header's plus makes a note at the middle of the window and opens it for editing; typing markdown with a task list and saving shows the rendered note; clicking a check box flips it and the change survives a reload; the panel's color swatches recolor the note; Delete removes it with Undo.
+- [ ] With a card or a note selected, dragging its pin onto another item ties a string drawn as a sagging curve above the relation lines; the panel's label and color apply to it; a click on the string selects it; Delete removes it with Undo; "Tie a string" in the panel does the same from the keyboard.
+- [ ] Removing a card or deleting a note takes its strings with it.
+- [ ] More, Background: Dots, Grid, Cork, and Blank change the canvas, follow light and dark, pan with the board, and come back after a reload.
 
 ## Guides
 

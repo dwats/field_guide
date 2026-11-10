@@ -91,3 +91,11 @@ id_type!(
     /// Identifies a board: a named view of a guide with saved filters and positions.
     BoardId
 );
+id_type!(
+    /// Identifies a note: a markdown card that lives on one board only.
+    BoardNoteId
+);
+id_type!(
+    /// Identifies a string: a tie between two items on one board.
+    BoardStringId
+);

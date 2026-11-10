@@ -234,7 +234,11 @@ export interface BoardFilters {
   show_external: boolean;
   /** Show the dashed mention layer. */
   show_mentions: boolean;
+  background: Background;
 }
+
+/** The canvas pattern behind the cards. */
+export type Background = "dots" | "cork" | "grid" | "blank";
 
 export interface Board {
   id: Id;
@@ -277,10 +281,68 @@ export interface BoardEdge {
   external: boolean;
 }
 
+/** A free-standing markdown note on a board; the height follows the content. */
+export interface BoardNote {
+  id: Id;
+  board_id: Id;
+  body_md: string;
+  x: number;
+  y: number;
+  w: number;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Only the fields that are set change. */
+export interface BoardNoteUpdate {
+  body_md?: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  color?: string;
+}
+
+export type EndKind = "entry" | "note";
+
+/** One end of a string: an entry card (its entry id) or a note (its note id). */
+export interface StringEnd {
+  kind: EndKind;
+  id: Id;
+}
+
+export interface BoardString {
+  id: Id;
+  board_id: Id;
+  from: StringEnd;
+  to: StringEnd;
+  label: string;
+  color: string;
+  created_at: string;
+}
+
+/** Only the fields that are set change. */
+export interface BoardStringUpdate {
+  label?: string;
+  color?: string;
+}
+
+/** A note as drawn: the row plus its rendered body; `tasks` counts its task markers. */
+export interface BoardNoteView {
+  note: BoardNote;
+  html: string;
+  tasks: number;
+}
+
+export const NOTE_COLORS = ["yellow", "pink", "blue", "green", "white"] as const;
+export const STRING_COLORS = ["red", "blue", "green", "black"] as const;
+
 export interface BoardView {
   board: Board;
   cards: BoardCard[];
   edges: BoardEdge[];
+  notes: BoardNoteView[];
+  strings: BoardString[];
 }
 
 // ---- relations and vocabulary (used from phase 5 on) ----
@@ -505,6 +567,20 @@ export const api = {
   setBoardPositions: (id: Id, nodes: BoardNode[]) =>
     invoke<void>("set_board_positions", { id, nodes }),
   removeBoardNode: (id: Id, entry_id: Id) => invoke<void>("remove_board_node", { id, entry_id }),
+  /** A new note, 220 wide and yellow, with its top-left corner at (x, y). */
+  createBoardNote: (board_id: Id, body_md: string, x: number, y: number) =>
+    invoke<BoardNote>("create_board_note", { board_id, body_md, x, y }),
+  updateBoardNote: (id: Id, update: BoardNoteUpdate) =>
+    invoke<BoardNote>("update_board_note", { id, update }),
+  /** Deletes the note and every string tied to it. */
+  deleteBoardNote: (id: Id) => invoke<void>("delete_board_note", { id }),
+  /** Flips the index-th task marker (0-based, document order) in the note's markdown. */
+  toggleNoteTask: (id: Id, index: number) => invoke<BoardNote>("toggle_note_task", { id, index }),
+  createBoardString: (board_id: Id, from: StringEnd, to: StringEnd, label = "") =>
+    invoke<BoardString>("create_board_string", { board_id, from, to, label }),
+  updateBoardString: (id: Id, update: BoardStringUpdate) =>
+    invoke<BoardString>("update_board_string", { id, update }),
+  deleteBoardString: (id: Id) => invoke<void>("delete_board_string", { id }),
 
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>

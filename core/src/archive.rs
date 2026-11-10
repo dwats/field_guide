@@ -16,6 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::board::Background;
 use crate::guide::CoverCrop;
 
 /// Bumped when an older build could misread a newer archive. Import refuses anything newer.
@@ -149,6 +150,10 @@ pub struct BoardFile {
     pub filters: BoardFiltersFile,
     #[serde(default)]
     pub nodes: Vec<BoardNodeFile>,
+    #[serde(default)]
+    pub notes: Vec<BoardNoteFile>,
+    #[serde(default)]
+    pub strings: Vec<BoardStringFile>,
 }
 
 /// Board filters with tag ids replaced by paths, so they map onto another vault's tags.
@@ -164,6 +169,8 @@ pub struct BoardFiltersFile {
     pub show_external: bool,
     #[serde(default = "yes")]
     pub show_mentions: bool,
+    #[serde(default)]
+    pub background: Background,
 }
 
 fn yes() -> bool {
@@ -178,6 +185,7 @@ impl Default for BoardFiltersFile {
             stubs_only: false,
             show_external: false,
             show_mentions: true,
+            background: Background::Dots,
         }
     }
 }
@@ -187,6 +195,38 @@ pub struct BoardNodeFile {
     pub entry_id: String,
     pub x: f64,
     pub y: f64,
+}
+
+/// A note with its own id and timestamps, which import keeps.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardNoteFile {
+    pub id: String,
+    pub body_md: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub color: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardStringFile {
+    pub id: String,
+    pub from: StringEndFile,
+    pub to: StringEndFile,
+    #[serde(default)]
+    pub label: String,
+    pub color: String,
+    pub created_at: String,
+}
+
+/// An entry end names the archive's entry id; a note end names a note in the same board file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StringEndFile {
+    /// `entry` or `note`.
+    pub kind: String,
+    pub id: String,
 }
 
 fn is_false(value: &bool) -> bool {

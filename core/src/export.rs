@@ -15,9 +15,11 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use crate::archive::{
-    self, BoardFile, BoardFiltersFile, BoardNodeFile, Endpoint, GuideFile, Manifest,
-    QualifierLabelFile, QualifierLine, RelationLine, ScopeRecord, TagTree, VerbFile, VerbRef,
+    self, BoardFile, BoardFiltersFile, BoardNodeFile, BoardNoteFile, BoardStringFile, Endpoint,
+    GuideFile, Manifest, QualifierLabelFile, QualifierLine, RelationLine, ScopeRecord,
+    StringEndFile, TagTree, VerbFile, VerbRef,
 };
+use crate::board::{EndKind, StringEnd};
 use crate::frontmatter::{self, FrontMatter};
 use crate::media::inline_media_hashes;
 use crate::relation::{self, QualifierValueView, Relation};
@@ -386,6 +388,7 @@ impl Vault {
                             stubs_only: board.filters.stubs_only,
                             show_external: board.filters.show_external,
                             show_mentions: board.filters.show_mentions,
+                            background: board.filters.background,
                         },
                         nodes: nodes
                             .iter()
@@ -393,6 +396,39 @@ impl Vault {
                                 entry_id: n.entry_id.0.clone(),
                                 x: n.x,
                                 y: n.y,
+                            })
+                            .collect(),
+                        notes: self
+                            .board_notes(&board.id)?
+                            .into_iter()
+                            .map(|n| BoardNoteFile {
+                                id: n.id.0,
+                                body_md: n.body_md,
+                                x: n.x,
+                                y: n.y,
+                                w: n.w,
+                                color: n.color,
+                                created_at: n.created_at,
+                                updated_at: n.updated_at,
+                            })
+                            .collect(),
+                        // A string whose entry end is in the trash goes the way of that node.
+                        strings: self
+                            .board_strings(&board.id)?
+                            .into_iter()
+                            .filter(|s| {
+                                [&s.from, &s.to].iter().all(|end| {
+                                    end.kind == EndKind::Note
+                                        || nodes.iter().any(|n| n.entry_id.0 == end.id)
+                                })
+                            })
+                            .map(|s| BoardStringFile {
+                                id: s.id.0,
+                                from: end_file(&s.from),
+                                to: end_file(&s.to),
+                                label: s.label,
+                                color: s.color,
+                                created_at: s.created_at,
                             })
                             .collect(),
                     };
@@ -588,6 +624,13 @@ fn relation_line(
                 },
             })
             .collect(),
+    }
+}
+
+fn end_file(end: &StringEnd) -> StringEndFile {
+    StringEndFile {
+        kind: end.kind.as_str().to_owned(),
+        id: end.id.clone(),
     }
 }
 

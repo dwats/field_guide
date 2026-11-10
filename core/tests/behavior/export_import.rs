@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use fieldguide_core::board::{BoardFilters, BoardNode};
+use fieldguide_core::board::{Background, BoardFilters, BoardNode, EndKind, StringEnd};
 use fieldguide_core::entry::NewEntry;
 use fieldguide_core::export::ExportScope;
 use fieldguide_core::guide::CoverCrop;
@@ -27,7 +27,8 @@ const PNG: &[u8] = b"\x89PNG stand-in bytes for a screenshot";
 /// Two guides exercising every exported entity: colored nested tags, global tags, a cover, entries
 /// with aliases and inline plus gallery media, slug collisions, a trashed entry with an edge,
 /// vocabulary with inverses and defaults, ordered qualifiers, a symmetric edge, a cross-guide
-/// edge, and a board with filters and positions.
+/// edge, and a board with filters, positions, a cork background, a note with a task list, and
+/// strings from a card to the note and between two cards.
 struct Fixture {
     dir: TempDir,
     v: Vault,
@@ -168,6 +169,7 @@ fn fixture() -> Fixture {
             stubs_only: true,
             show_external: true,
             show_mentions: false,
+            background: Background::Cork,
         },
     )
     .unwrap();
@@ -187,6 +189,36 @@ fn fixture() -> Fixture {
         ],
     )
     .unwrap();
+    let note = v
+        .create_board_note(
+            &board,
+            "Plan\n\n- [x] mine [[Stone Block]]\n- [ ] smelt",
+            40.0,
+            -8.5,
+        )
+        .unwrap();
+    v.update_board_note(
+        &note.id,
+        &fieldguide_core::board::BoardNoteUpdate {
+            w: Some(260.0),
+            color: Some("green".to_owned()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let to_note = v
+        .create_board_string(&board, &card(&stone), &note_end(&note.id), "start here")
+        .unwrap();
+    v.update_board_string(
+        &to_note.id,
+        &fieldguide_core::board::BoardStringUpdate {
+            color: Some("blue".to_owned()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    v.create_board_string(&board, &card(&cobble), &card(&stone), "")
+        .unwrap();
 
     Fixture {
         dir,
@@ -197,6 +229,20 @@ fn fixture() -> Fixture {
         cobble,
         ore,
         blocks: blocks.id,
+    }
+}
+
+fn card(id: &EntryId) -> StringEnd {
+    StringEnd {
+        kind: EndKind::Entry,
+        id: id.0.clone(),
+    }
+}
+
+fn note_end(id: &fieldguide_core::BoardNoteId) -> StringEnd {
+    StringEnd {
+        kind: EndKind::Note,
+        id: id.0.clone(),
     }
 }
 
@@ -241,7 +287,12 @@ struct BoardSnap {
     stubs_only: bool,
     show_external: bool,
     show_mentions: bool,
+    background: Background,
     nodes: Vec<(String, f64, f64)>,
+    /// Body, x, y, width, color.
+    notes: Vec<(String, f64, f64, f64, String)>,
+    /// From, to, label, color; an entry end is its title and a note end is `note:<body>`.
+    strings: Vec<(String, String, String, String)>,
 }
 
 fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
@@ -324,6 +375,36 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             .map(|n| (v.get_entry(&n.entry_id).unwrap().title, n.x, n.y))
             .collect();
         nodes.sort_by(|a, b| a.0.cmp(&b.0));
+        let view = v.board_view(&b.id).unwrap();
+        let mut notes: Vec<(String, f64, f64, f64, String)> = view
+            .notes
+            .iter()
+            .map(|n| {
+                let n = &n.note;
+                (n.body_md.clone(), n.x, n.y, n.w, n.color.clone())
+            })
+            .collect();
+        notes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let end_name = |end: &StringEnd| match end.kind {
+            EndKind::Entry => v.get_entry(&EntryId(end.id.clone())).unwrap().title,
+            EndKind::Note => {
+                let note = view.notes.iter().find(|n| n.note.id.0 == end.id).unwrap();
+                format!("note:{}", note.note.body_md)
+            }
+        };
+        let mut strings: Vec<(String, String, String, String)> = view
+            .strings
+            .iter()
+            .map(|s| {
+                (
+                    end_name(&s.from),
+                    end_name(&s.to),
+                    s.label.clone(),
+                    s.color.clone(),
+                )
+            })
+            .collect();
+        strings.sort();
         boards.push(BoardSnap {
             name: b.name,
             tag_paths,
@@ -331,7 +412,10 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             stubs_only: b.filters.stubs_only,
             show_external: b.filters.show_external,
             show_mentions: b.filters.show_mentions,
+            background: b.filters.background,
             nodes,
+            notes,
+            strings,
         });
     }
     GuideSnap {
@@ -1312,6 +1396,8 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
         }],
     )
     .unwrap();
+    f.v.create_board_string(&board, &card(&gone), &card(&f.stone), "")
+        .unwrap();
     f.v.trash_entry(&gone).unwrap();
     let archive = export_to(
         &f.v,
@@ -1325,6 +1411,18 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
     let file = &parsed.guides[0].boards[0];
     assert_eq!(file.nodes.len(), 2);
     assert!(file.nodes.iter().all(|n| n.entry_id != gone.0));
+    assert_eq!(file.notes.len(), 1);
+    assert_eq!(
+        file.strings.len(),
+        2,
+        "the string to the trashed entry is left out"
+    );
+    assert!(
+        file.strings
+            .iter()
+            .all(|s| s.from.id != gone.0 && s.to.id != gone.0)
+    );
+    assert_eq!(file.filters.background, Background::Cork);
 
     // Importing twice into the same guide replaces the board instead of adding a copy.
     let (_d, mut target) = empty_vault();
@@ -1345,6 +1443,18 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
         .clone();
     target
         .set_board_position(&imported[0].id, &moved, 500.0, 500.0)
+        .unwrap();
+    let before = snapshot_guide(&target, &local, false).boards;
+    let local_note = target
+        .create_board_note(&imported[0].id, "local only", 0.0, 0.0)
+        .unwrap();
+    target
+        .create_board_string(
+            &imported[0].id,
+            &card(&moved),
+            &note_end(&local_note.id),
+            "",
+        )
         .unwrap();
     let archive_id = parsed.guides[0].guide.id.clone();
     let second = import_all(
@@ -1369,4 +1479,10 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
     let positions: Vec<(f64, f64)> = layout.iter().map(|n| (n.x, n.y)).collect();
     assert!(positions.contains(&(1.0, 2.0)));
     assert!(positions.contains(&(3.5, -4.0)));
+    // Notes and strings are the archive's again: the local ones are gone and nothing doubled.
+    let after = snapshot_guide(&target, &local, false).boards;
+    assert_eq!(after[0].notes, before[0].notes);
+    assert_eq!(after[0].strings, before[0].strings);
+    assert_eq!(after[0].notes.len(), 1);
+    assert_eq!(after[0].strings.len(), 2);
 }

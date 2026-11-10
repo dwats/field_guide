@@ -9,7 +9,10 @@
 
   interface Props {
     label?: string;
-    /** `<button role="menuitem">` rows and `<div class="separator">` lines. */
+    /**
+     * `<button role="menuitem">` rows, `<button role="menuitemradio" aria-checked>` rows for a
+     * choice, and `<div class="separator">` lines.
+     */
     items: Snippet<[() => void]>;
   }
   let { label = "More", items }: Props = $props();
@@ -21,7 +24,9 @@
   $effect(() => {
     if (!open) return;
     const rows = () =>
-      Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+      Array.from(
+        menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"]') ?? [],
+      );
     rows()[0]?.focus();
     const closeOnClick = () => (open = false);
     const onKey = (event: KeyboardEvent) => {
@@ -94,15 +99,15 @@
     background: var(--bg);
     box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
   }
-  .menu :global(button[role="menuitem"]) {
+  .menu :global(button[role^="menuitem"]) {
     text-align: left;
     border: none;
     background: none;
     padding: 6px 10px;
     border-radius: 4px;
   }
-  .menu :global(button[role="menuitem"]:hover),
-  .menu :global(button[role="menuitem"]:focus-visible) {
+  .menu :global(button[role^="menuitem"]:hover),
+  .menu :global(button[role^="menuitem"]:focus-visible) {
     background: var(--chip-bg);
   }
   .menu :global(.separator) {
