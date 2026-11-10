@@ -33,7 +33,7 @@ pub mod wikilink;
 pub use db::SCHEMA_VERSION;
 pub use error::{Error, Result};
 pub use ids::{
-    BoardId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, QualifierId, QualifierLabelId,
-    RelationId, TagId, VerbId,
+    BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, QualifierId,
+    QualifierLabelId, RelationId, TagId, VerbId,
 };
 pub use vault::Vault;

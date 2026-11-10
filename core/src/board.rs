@@ -2,8 +2,9 @@
 //! See `docs/design.md` section 6. `board_node` is membership and position; `filters_json` keeps
 //! the picker's last filters and the display toggles, never a membership rule. Core also answers
 //! what a board shows: its cards with their primary image and every edge between members.
-//! Notes (markdown cards that live on one board) and strings (ties between two items) are the
-//! board's own objects; a string goes with either end through triggers in migration 0005.
+//! Notes (markdown cards that live on one board), images (pictures placed on one board), and
+//! strings (ties between two items) are the board's own objects; a string goes with either end
+//! through triggers in migrations 0005 and 0006.
 
 use std::collections::HashSet;
 
@@ -16,8 +17,8 @@ use crate::media::{self, Media};
 use crate::names::{self, normalize};
 use crate::relation::{self, EntryRef};
 use crate::{
-    BoardId, BoardNoteId, BoardStringId, EntryId, Error, GuideId, RelationId, Result, TagId, Vault,
-    clock, entry, guide,
+    BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, Error, GuideId, MediaId,
+    RelationId, Result, TagId, Vault, clock, entry, guide,
 };
 
 /// What the canvas is drawn on. Saved with the display toggles.
@@ -33,9 +34,14 @@ pub enum Background {
 
 pub const NOTE_COLORS: [&str; 5] = ["yellow", "pink", "blue", "green", "white"];
 pub const STRING_COLORS: [&str; 4] = ["red", "blue", "green", "black"];
-pub const NOTE_DEFAULT_WIDTH: f64 = 220.0;
-/// Narrower than this and a line of text no longer fits.
-pub(crate) const NOTE_MIN_WIDTH: f64 = 120.0;
+/// A new note is a square of this side.
+pub const NOTE_DEFAULT_SIZE: f64 = 200.0;
+/// Smallest width and height of a note: below it a line of text no longer fits.
+pub const NOTE_MIN_SIZE: f64 = 80.0;
+/// Smallest width and height of a board image: below it the picture is a speck.
+pub const IMAGE_MIN_SIZE: f64 = 40.0;
+/// The width the page gives a new image; the height follows the picture's proportions.
+pub const IMAGE_DEFAULT_WIDTH: f64 = 200.0;
 
 /// The picker's last filters and the display toggles. All optional; a board starts with mentions
 /// shown and other guides hidden.
@@ -132,8 +138,7 @@ pub struct BoardEdge {
     pub external: bool,
 }
 
-/// A markdown card that lives on one board. The height follows the content, so only the width is
-/// stored.
+/// A markdown card that lives on one board. Content taller than the note scrolls inside it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardNote {
     pub id: BoardNoteId,
@@ -142,6 +147,7 @@ pub struct BoardNote {
     pub x: f64,
     pub y: f64,
     pub w: f64,
+    pub h: f64,
     /// One of `NOTE_COLORS`.
     pub color: String,
     pub created_at: String,
@@ -160,7 +166,35 @@ pub struct BoardNoteUpdate {
     #[serde(default)]
     pub w: Option<f64>,
     #[serde(default)]
+    pub h: Option<f64>,
+    #[serde(default)]
     pub color: Option<String>,
+}
+
+/// A picture placed on one board. It references stored media, which cleanup then keeps.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardImage {
+    pub id: BoardImageId,
+    pub board_id: BoardId,
+    pub media: Media,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub created_at: String,
+}
+
+/// The fields to change on a board image; `None` keeps the current value.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct BoardImageUpdate {
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub w: Option<f64>,
+    #[serde(default)]
+    pub h: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,6 +202,7 @@ pub struct BoardNoteUpdate {
 pub enum EndKind {
     Entry,
     Note,
+    Image,
 }
 
 impl EndKind {
@@ -175,6 +210,7 @@ impl EndKind {
         match self {
             EndKind::Entry => "entry",
             EndKind::Note => "note",
+            EndKind::Image => "image",
         }
     }
 
@@ -182,16 +218,17 @@ impl EndKind {
         match text {
             "entry" => Some(EndKind::Entry),
             "note" => Some(EndKind::Note),
+            "image" => Some(EndKind::Image),
             _ => None,
         }
     }
 }
 
-/// One end of a string: an entry card on the board or a note of the board.
+/// One end of a string: an entry card on the board, or a note or image of the board.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StringEnd {
     pub kind: EndKind,
-    /// An `EntryId` or a `BoardNoteId`, as a string.
+    /// An `EntryId`, a `BoardNoteId`, or a `BoardImageId`, as a string.
     pub id: String,
 }
 
@@ -233,6 +270,8 @@ pub struct BoardView {
     pub edges: Vec<BoardEdge>,
     /// Ordered by creation.
     pub notes: Vec<BoardNoteView>,
+    /// Ordered by creation.
+    pub images: Vec<BoardImage>,
     /// Ordered by creation. Every string is here, including those whose entry end is not among
     /// `cards` (a trashed member); the page leaves those out.
     pub strings: Vec<BoardString>,
@@ -481,6 +520,7 @@ impl Vault {
                 note,
             });
         }
+        let images = load_images(conn, id)?;
         let strings = load_strings(conn, id)?;
 
         Ok(BoardView {
@@ -488,6 +528,7 @@ impl Vault {
             cards,
             edges,
             notes,
+            images,
             strings,
         })
     }
@@ -568,7 +609,7 @@ impl Vault {
         Ok(())
     }
 
-    /// Adds a note at `(x, y)` with the default width and color.
+    /// Adds a note at `(x, y)` with the default size and color.
     pub fn create_board_note(
         &mut self,
         board_id: &BoardId,
@@ -586,7 +627,8 @@ impl Vault {
             body_md: body_md.to_owned(),
             x,
             y,
-            w: NOTE_DEFAULT_WIDTH,
+            w: NOTE_DEFAULT_SIZE,
+            h: NOTE_DEFAULT_SIZE,
             color: NOTE_COLORS[0].to_owned(),
             created_at: now.clone(),
             updated_at: now,
@@ -611,12 +653,10 @@ impl Vault {
         note.y = update.y.unwrap_or(note.y);
         check_finite(note.x, note.y)?;
         if let Some(w) = update.w {
-            if !w.is_finite() || w < NOTE_MIN_WIDTH {
-                return Err(Error::Invalid(format!(
-                    "a note's width must be a number of at least {NOTE_MIN_WIDTH}"
-                )));
-            }
-            note.w = w;
+            note.w = check_size("note", "width", w, NOTE_MIN_SIZE)?;
+        }
+        if let Some(h) = update.h {
+            note.h = check_size("note", "height", h, NOTE_MIN_SIZE)?;
         }
         if let Some(color) = &update.color {
             note.color = check_color("note", color, &NOTE_COLORS)?;
@@ -652,6 +692,74 @@ impl Vault {
         write_note(&tx, &note)?;
         tx.commit()?;
         Ok(note)
+    }
+
+    /// Places stored media on a board as an image at `(x, y)`, `w` by `h`.
+    pub fn create_board_image(
+        &mut self,
+        board_id: &BoardId,
+        media_id: &MediaId,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    ) -> Result<BoardImage> {
+        check_finite(x, y)?;
+        let w = check_size("board image", "width", w, IMAGE_MIN_SIZE)?;
+        let h = check_size("board image", "height", h, IMAGE_MIN_SIZE)?;
+        let tx = self.savepoint()?;
+        load_board(&tx, board_id)?;
+        let media = media::load_media(&tx, media_id)?;
+        let image = BoardImage {
+            id: BoardImageId::generate(),
+            board_id: board_id.clone(),
+            media,
+            x,
+            y,
+            w,
+            h,
+            created_at: clock::now(),
+        };
+        insert_image(&tx, &image)?;
+        touch_board(&tx, board_id)?;
+        tx.commit()?;
+        Ok(image)
+    }
+
+    pub fn update_board_image(
+        &mut self,
+        id: &BoardImageId,
+        update: &BoardImageUpdate,
+    ) -> Result<BoardImage> {
+        let tx = self.savepoint()?;
+        let mut image = load_image(&tx, id)?;
+        image.x = update.x.unwrap_or(image.x);
+        image.y = update.y.unwrap_or(image.y);
+        check_finite(image.x, image.y)?;
+        if let Some(w) = update.w {
+            image.w = check_size("board image", "width", w, IMAGE_MIN_SIZE)?;
+        }
+        if let Some(h) = update.h {
+            image.h = check_size("board image", "height", h, IMAGE_MIN_SIZE)?;
+        }
+        tx.execute(
+            "UPDATE board_image SET x = ?2, y = ?3, w = ?4, h = ?5 WHERE id = ?1",
+            params![id, image.x, image.y, image.w, image.h],
+        )?;
+        touch_board(&tx, &image.board_id)?;
+        tx.commit()?;
+        Ok(image)
+    }
+
+    /// Takes an image off its board and, through the trigger, every string tied to it. The media
+    /// stays stored; cleanup offers it once nothing else references it.
+    pub fn delete_board_image(&mut self, id: &BoardImageId) -> Result<()> {
+        let tx = self.savepoint()?;
+        let image = load_image(&tx, id)?;
+        tx.execute("DELETE FROM board_image WHERE id = ?1", params![id])?;
+        touch_board(&tx, &image.board_id)?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// Ties two items of one board. Both ends must be on the board and differ; two strings
@@ -723,6 +831,11 @@ impl Vault {
         load_notes(self.conn(), board_id)
     }
 
+    /// A board's images, ordered by creation.
+    pub(crate) fn board_images(&self, board_id: &BoardId) -> Result<Vec<BoardImage>> {
+        load_images(self.conn(), board_id)
+    }
+
     /// A board's strings, ordered by creation.
     pub(crate) fn board_strings(&self, board_id: &BoardId) -> Result<Vec<BoardString>> {
         load_strings(self.conn(), board_id)
@@ -739,6 +852,16 @@ fn check_finite(x: f64, y: f64) -> Result<()> {
     }
 }
 
+fn check_size(kind: &str, axis: &str, value: f64, min: f64) -> Result<f64> {
+    if value.is_finite() && value >= min {
+        Ok(value)
+    } else {
+        Err(Error::Invalid(format!(
+            "a {kind}'s {axis} must be a number of at least {min}"
+        )))
+    }
+}
+
 fn check_color(kind: &str, color: &str, allowed: &[&str]) -> Result<String> {
     if allowed.contains(&color) {
         Ok(color.to_owned())
@@ -750,7 +873,8 @@ fn check_color(kind: &str, color: &str, allowed: &[&str]) -> Result<String> {
     }
 }
 
-/// An end must be on the board now: an entry card (a `board_node` row) or one of its notes.
+/// An end must be on the board now: an entry card (a `board_node` row), or one of its notes or
+/// images.
 fn check_end(conn: &Connection, board_id: &BoardId, end: &StringEnd) -> Result<()> {
     if end_on_board(conn, board_id, end)? {
         Ok(())
@@ -770,6 +894,9 @@ pub(crate) fn end_on_board(conn: &Connection, board_id: &BoardId, end: &StringEn
             "SELECT EXISTS (SELECT 1 FROM board_node WHERE board_id = ?1 AND entry_id = ?2)"
         }
         EndKind::Note => "SELECT EXISTS (SELECT 1 FROM board_note WHERE board_id = ?1 AND id = ?2)",
+        EndKind::Image => {
+            "SELECT EXISTS (SELECT 1 FROM board_image WHERE board_id = ?1 AND id = ?2)"
+        }
     };
     Ok(conn.query_row(sql, params![board_id, end.id], |row| row.get(0))?)
 }
@@ -782,7 +909,7 @@ fn touch_board(conn: &Connection, board_id: &BoardId) -> Result<()> {
     Ok(())
 }
 
-const NOTE_COLUMNS: &str = "id, board_id, body_md, x, y, w, color, created_at, updated_at";
+const NOTE_COLUMNS: &str = "id, board_id, body_md, x, y, w, h, color, created_at, updated_at";
 
 fn note_from_row(row: &Row<'_>) -> rusqlite::Result<BoardNote> {
     Ok(BoardNote {
@@ -792,9 +919,10 @@ fn note_from_row(row: &Row<'_>) -> rusqlite::Result<BoardNote> {
         x: row.get(3)?,
         y: row.get(4)?,
         w: row.get(5)?,
-        color: row.get(6)?,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        h: row.get(6)?,
+        color: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 
@@ -820,7 +948,8 @@ fn load_notes(conn: &Connection, board_id: &BoardId) -> Result<Vec<BoardNote>> {
 pub(crate) fn insert_note(conn: &Connection, note: &BoardNote) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO board_note ({NOTE_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+            "INSERT INTO board_note ({NOTE_COLUMNS})
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
         ),
         params![
             note.id,
@@ -829,6 +958,7 @@ pub(crate) fn insert_note(conn: &Connection, note: &BoardNote) -> Result<()> {
             note.x,
             note.y,
             note.w,
+            note.h,
             note.color,
             note.created_at,
             note.updated_at
@@ -839,14 +969,15 @@ pub(crate) fn insert_note(conn: &Connection, note: &BoardNote) -> Result<()> {
 
 fn write_note(conn: &Connection, note: &BoardNote) -> Result<()> {
     conn.execute(
-        "UPDATE board_note SET body_md = ?2, x = ?3, y = ?4, w = ?5, color = ?6, updated_at = ?7
-         WHERE id = ?1",
+        "UPDATE board_note SET body_md = ?2, x = ?3, y = ?4, w = ?5, h = ?6, color = ?7,
+         updated_at = ?8 WHERE id = ?1",
         params![
             note.id,
             note.body_md,
             note.x,
             note.y,
             note.w,
+            note.h,
             note.color,
             note.updated_at
         ],
@@ -861,6 +992,76 @@ pub(crate) fn note_exists(conn: &Connection, id: &BoardNoteId) -> Result<bool> {
         params![id],
         |row| row.get(0),
     )?)
+}
+
+/// Whether any board holds an image with this id, so import can keep an archive id only when
+/// free.
+pub(crate) fn image_exists(conn: &Connection, id: &BoardImageId) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM board_image WHERE id = ?1)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
+/// The image's own columns follow the media columns, so `media_from_row` reads the front.
+fn image_select() -> String {
+    format!(
+        "SELECT {}, i.id, i.board_id, i.x, i.y, i.w, i.h, i.created_at
+         FROM board_image i JOIN media m ON m.id = i.media_id",
+        media::COLUMNS
+    )
+}
+
+fn image_from_row(row: &Row<'_>) -> rusqlite::Result<BoardImage> {
+    Ok(BoardImage {
+        media: media::media_from_row(row)?,
+        id: row.get(9)?,
+        board_id: row.get(10)?,
+        x: row.get(11)?,
+        y: row.get(12)?,
+        w: row.get(13)?,
+        h: row.get(14)?,
+        created_at: row.get(15)?,
+    })
+}
+
+fn load_image(conn: &Connection, id: &BoardImageId) -> Result<BoardImage> {
+    conn.query_row(
+        &format!("{} WHERE i.id = ?1", image_select()),
+        params![id],
+        image_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| not_found("board image", id))
+}
+
+fn load_images(conn: &Connection, board_id: &BoardId) -> Result<Vec<BoardImage>> {
+    let mut stmt = conn.prepare(&format!(
+        "{} WHERE i.board_id = ?1 ORDER BY i.created_at, i.id",
+        image_select()
+    ))?;
+    let rows = stmt.query_map(params![board_id], image_from_row)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Writes a whole image row, id and timestamp included. Import uses it to keep the archive's.
+pub(crate) fn insert_image(conn: &Connection, image: &BoardImage) -> Result<()> {
+    conn.execute(
+        "INSERT INTO board_image (id, board_id, media_id, x, y, w, h, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            image.id,
+            image.board_id,
+            image.media.id,
+            image.x,
+            image.y,
+            image.w,
+            image.h,
+            image.created_at
+        ],
+    )?;
+    Ok(())
 }
 
 pub(crate) fn string_exists(conn: &Connection, id: &BoardStringId) -> Result<bool> {

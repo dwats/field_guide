@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 
 use fieldguide_core::backup::{self, BACKUPS_TO_KEEP, BackupInfo};
 use fieldguide_core::board::{
-    Board, BoardFilters, BoardNode, BoardNote, BoardNoteUpdate, BoardString, BoardStringUpdate,
-    BoardView, StringEnd,
+    Board, BoardFilters, BoardImage, BoardImageUpdate, BoardNode, BoardNote, BoardNoteUpdate,
+    BoardString, BoardStringUpdate, BoardView, StringEnd,
 };
 use fieldguide_core::config::UiPrefs;
 use fieldguide_core::entry::{Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord};
@@ -28,8 +28,8 @@ use fieldguide_core::vocabulary::{
     Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb, VerbMatch, VocabularyCopy,
 };
 use fieldguide_core::{
-    BoardId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, QualifierId, QualifierLabelId,
-    RelationId, TagId, Vault, VerbId,
+    BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, QualifierId,
+    QualifierLabelId, RelationId, TagId, Vault, VerbId,
 };
 use tauri::State;
 
@@ -560,6 +560,33 @@ pub fn delete_board_note(state: S<'_>, id: BoardNoteId) -> CmdResult<()> {
 #[tauri::command(rename_all = "snake_case")]
 pub fn toggle_note_task(state: S<'_>, id: BoardNoteId, index: usize) -> CmdResult<BoardNote> {
     state.with_vault(|v| v.toggle_note_task(&id, index))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn create_board_image(
+    state: S<'_>,
+    board_id: BoardId,
+    media_id: MediaId,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> CmdResult<BoardImage> {
+    state.with_vault(|v| v.create_board_image(&board_id, &media_id, x, y, w, h))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_board_image(
+    state: S<'_>,
+    id: BoardImageId,
+    update: BoardImageUpdate,
+) -> CmdResult<BoardImage> {
+    state.with_vault(|v| v.update_board_image(&id, &update))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn delete_board_image(state: S<'_>, id: BoardImageId) -> CmdResult<()> {
+    state.with_vault(|v| v.delete_board_image(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]

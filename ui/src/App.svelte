@@ -116,7 +116,7 @@
           const scale = window.devicePixelRatio || 1;
           const at = { x: payload.position.x / scale, y: payload.position.y / scale };
           if (!dispatchDrop(payload.paths, at)) {
-            notify("Drop an image onto an entry page or a guide page.");
+            notify("Drop an image onto an entry page, a guide page, or a board.");
           }
         }
       })

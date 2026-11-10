@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::board::Background;
+use crate::board::{Background, NOTE_DEFAULT_SIZE};
 use crate::guide::CoverCrop;
 
 /// Bumped when an older build could misread a newer archive. Import refuses anything newer.
@@ -154,6 +154,8 @@ pub struct BoardFile {
     pub notes: Vec<BoardNoteFile>,
     #[serde(default)]
     pub strings: Vec<BoardStringFile>,
+    #[serde(default)]
+    pub images: Vec<BoardImageFile>,
 }
 
 /// Board filters with tag ids replaced by paths, so they map onto another vault's tags.
@@ -205,9 +207,30 @@ pub struct BoardNoteFile {
     pub x: f64,
     pub y: f64,
     pub w: f64,
+    /// Archives from before notes had a height parse with the default size.
+    #[serde(default = "note_default_height")]
+    pub h: f64,
     pub color: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn note_default_height() -> f64 {
+    NOTE_DEFAULT_SIZE
+}
+
+/// An image on a board with its own id and timestamp, which import keeps. The media is named by
+/// its archive path, so import finds it by hash.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardImageFile {
+    pub id: String,
+    /// `media/<sha>.<ext>`.
+    pub media: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -221,10 +244,11 @@ pub struct BoardStringFile {
     pub created_at: String,
 }
 
-/// An entry end names the archive's entry id; a note end names a note in the same board file.
+/// An entry end names the archive's entry id; a note or image end names a note or image in the
+/// same board file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StringEndFile {
-    /// `entry` or `note`.
+    /// `entry`, `note`, or `image`.
     pub kind: String,
     pub id: String,
 }

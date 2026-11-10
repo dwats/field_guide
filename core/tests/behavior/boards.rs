@@ -1,10 +1,12 @@
 use fieldguide_core::Error;
 use fieldguide_core::board::{
-    Background, BoardFilters, BoardNode, BoardNoteUpdate, BoardStringUpdate, EdgeKind, EndKind,
-    NOTE_DEFAULT_WIDTH, StringEnd,
+    Background, BoardFilters, BoardImageUpdate, BoardNode, BoardNoteUpdate, BoardStringUpdate,
+    EdgeKind, EndKind, IMAGE_MIN_SIZE, NOTE_DEFAULT_SIZE, NOTE_MIN_SIZE, StringEnd,
 };
+use fieldguide_core::media::MediaDimensions;
 use fieldguide_core::vocabulary::NewVerb;
-use fieldguide_core::{BoardId, BoardNoteId, BoardStringId, EntryId, Vault};
+use fieldguide_core::{BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, MediaId, Vault};
+use tempfile::tempdir;
 
 use crate::common::*;
 
@@ -359,6 +361,13 @@ fn note_end(id: &BoardNoteId) -> StringEnd {
     }
 }
 
+fn image_end(id: &BoardImageId) -> StringEnd {
+    StringEnd {
+        kind: EndKind::Image,
+        id: id.0.clone(),
+    }
+}
+
 fn string_ids(v: &Vault, board: &BoardId) -> Vec<BoardStringId> {
     v.board_view(board)
         .unwrap()
@@ -369,7 +378,7 @@ fn string_ids(v: &Vault, board: &BoardId) -> Vec<BoardStringId> {
 }
 
 #[test]
-fn notes_are_created_edited_and_deleted_with_their_colors_and_widths_checked() {
+fn notes_are_created_edited_and_deleted_with_their_colors_and_sizes_checked() {
     let mut v = vault();
     let g = guide(&mut v, "Minecraft");
     let board = v.create_board(&g, "Puzzle").unwrap().id;
@@ -378,9 +387,11 @@ fn notes_are_created_edited_and_deleted_with_their_colors_and_widths_checked() {
         .create_board_note(&board, "Find the key", 10.0, -20.0)
         .unwrap();
     assert_eq!(
-        (note.x, note.y, note.w, note.color.as_str()),
-        (10.0, -20.0, NOTE_DEFAULT_WIDTH, "yellow")
+        (note.x, note.y, note.w, note.h, note.color.as_str()),
+        (10.0, -20.0, NOTE_DEFAULT_SIZE, NOTE_DEFAULT_SIZE, "yellow"),
+        "a new note is a 200 by 200 square"
     );
+    assert_eq!(NOTE_DEFAULT_SIZE, 200.0);
     assert!(matches!(
         v.create_board_note(&board, "", f64::INFINITY, 0.0),
         Err(Error::Invalid(_))
@@ -417,12 +428,35 @@ fn notes_are_created_edited_and_deleted_with_their_colors_and_widths_checked() {
             &note.id,
             &BoardNoteUpdate {
                 body_md: Some("Found it".to_owned()),
-                w: Some(120.0),
+                w: Some(NOTE_MIN_SIZE),
+                h: Some(450.0),
                 ..BoardNoteUpdate::default()
             },
         )
         .unwrap();
-    assert_eq!((edited.body_md.as_str(), edited.w), ("Found it", 120.0));
+    assert_eq!(
+        (edited.body_md.as_str(), edited.w, edited.h),
+        ("Found it", NOTE_MIN_SIZE, 450.0)
+    );
+    let flat = v
+        .update_board_note(
+            &note.id,
+            &BoardNoteUpdate {
+                h: Some(NOTE_MIN_SIZE),
+                ..BoardNoteUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!((flat.w, flat.h), (NOTE_MIN_SIZE, NOTE_MIN_SIZE));
+    let edited = v
+        .update_board_note(
+            &note.id,
+            &BoardNoteUpdate {
+                h: Some(450.0),
+                ..BoardNoteUpdate::default()
+            },
+        )
+        .unwrap();
 
     for bad in [
         BoardNoteUpdate {
@@ -430,11 +464,19 @@ fn notes_are_created_edited_and_deleted_with_their_colors_and_widths_checked() {
             ..BoardNoteUpdate::default()
         },
         BoardNoteUpdate {
-            w: Some(119.0),
+            w: Some(NOTE_MIN_SIZE - 1.0),
             ..BoardNoteUpdate::default()
         },
         BoardNoteUpdate {
             w: Some(f64::NAN),
+            ..BoardNoteUpdate::default()
+        },
+        BoardNoteUpdate {
+            h: Some(NOTE_MIN_SIZE - 1.0),
+            ..BoardNoteUpdate::default()
+        },
+        BoardNoteUpdate {
+            h: Some(f64::INFINITY),
             ..BoardNoteUpdate::default()
         },
         BoardNoteUpdate {
@@ -699,4 +741,210 @@ fn notes_and_strings_go_with_their_board() {
         Err(Error::NotFound { .. })
     ));
     assert_eq!(v.get_entry(&stone).unwrap().title, "Stone");
+}
+
+#[test]
+fn images_are_placed_moved_resized_and_deleted_with_their_sizes_checked() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let picture = media(&mut v, 7);
+
+    let image = v
+        .create_board_image(&board, &picture, 40.0, -50.0, 200.0, 150.0)
+        .unwrap();
+    assert_eq!(
+        (image.x, image.y, image.w, image.h),
+        (40.0, -50.0, 200.0, 150.0)
+    );
+    assert_eq!(image.media.id, picture);
+    assert_eq!(image.board_id, board);
+
+    for (x, y, w, h) in [
+        (f64::NAN, 0.0, 200.0, 200.0),
+        (0.0, f64::INFINITY, 200.0, 200.0),
+        (0.0, 0.0, IMAGE_MIN_SIZE - 1.0, 200.0),
+        (0.0, 0.0, 200.0, IMAGE_MIN_SIZE - 1.0),
+        (0.0, 0.0, f64::NAN, 200.0),
+    ] {
+        assert!(
+            matches!(
+                v.create_board_image(&board, &picture, x, y, w, h),
+                Err(Error::Invalid(_))
+            ),
+            "({x}, {y}) {w} by {h}"
+        );
+    }
+    assert!(matches!(
+        v.create_board_image(&BoardId::generate(), &picture, 0.0, 0.0, 200.0, 200.0),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        v.create_board_image(&board, &MediaId::generate(), 0.0, 0.0, 200.0, 200.0),
+        Err(Error::NotFound { .. })
+    ));
+
+    let moved = v
+        .update_board_image(
+            &image.id,
+            &BoardImageUpdate {
+                x: Some(5.0),
+                w: Some(IMAGE_MIN_SIZE),
+                ..BoardImageUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (moved.x, moved.y, moved.w, moved.h),
+        (5.0, -50.0, IMAGE_MIN_SIZE, 150.0),
+        "unset fields keep their values"
+    );
+    for bad in [
+        BoardImageUpdate {
+            w: Some(IMAGE_MIN_SIZE - 1.0),
+            ..BoardImageUpdate::default()
+        },
+        BoardImageUpdate {
+            h: Some(f64::NEG_INFINITY),
+            ..BoardImageUpdate::default()
+        },
+        BoardImageUpdate {
+            y: Some(f64::NAN),
+            ..BoardImageUpdate::default()
+        },
+    ] {
+        assert!(
+            matches!(
+                v.update_board_image(&image.id, &bad),
+                Err(Error::Invalid(_))
+            ),
+            "{bad:?}"
+        );
+    }
+
+    // The view carries every image in creation order, each with its media for the page to draw.
+    let second = v
+        .create_board_image(&board, &picture, 300.0, 0.0, 100.0, 100.0)
+        .unwrap();
+    let view = v.board_view(&board).unwrap();
+    assert_eq!(view.images, [moved.clone(), second.clone()]);
+    assert_eq!(view.images[0].media, v.get_media(&picture).unwrap());
+
+    v.delete_board_image(&moved.id).unwrap();
+    assert_eq!(
+        v.board_view(&board).unwrap().images,
+        std::slice::from_ref(&second)
+    );
+    assert!(matches!(
+        v.delete_board_image(&moved.id),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        v.update_board_image(&moved.id, &BoardImageUpdate::default()),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(
+        v.get_media(&picture).is_ok(),
+        "removing an image from a board keeps the stored media"
+    );
+
+    v.delete_board(&board).unwrap();
+    assert!(matches!(
+        v.delete_board_image(&second.id),
+        Err(Error::NotFound { .. })
+    ));
+}
+
+#[test]
+fn strings_tie_an_image_to_a_card_and_a_note_and_go_with_the_image() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let other = v.create_board(&g, "Other").unwrap().id;
+    let stone = entry(&mut v, &g, "Stone", "");
+    v.add_board_nodes(&board, &[node(&stone, 0.0, 0.0)])
+        .unwrap();
+    let note = v.create_board_note(&board, "clue", 0.0, 300.0).unwrap();
+    let picture = media(&mut v, 7);
+    let photo = v
+        .create_board_image(&board, &picture, 300.0, 0.0, 200.0, 150.0)
+        .unwrap();
+    let elsewhere = v
+        .create_board_image(&other, &picture, 0.0, 0.0, 200.0, 150.0)
+        .unwrap();
+
+    let to_card = v
+        .create_board_string(&board, &image_end(&photo.id), &card_end(&stone), "shows")
+        .unwrap();
+    let to_note = v
+        .create_board_string(&board, &note_end(&note.id), &image_end(&photo.id), "")
+        .unwrap();
+    let card_note = v
+        .create_board_string(&board, &card_end(&stone), &note_end(&note.id), "")
+        .unwrap();
+    assert_eq!(to_card.from, image_end(&photo.id));
+    assert_eq!(
+        v.board_view(&board).unwrap().strings,
+        [to_card.clone(), to_note.clone(), card_note.clone()]
+    );
+
+    let unknown_image = StringEnd {
+        kind: EndKind::Image,
+        id: note.id.0.clone(),
+    };
+    for (from, to) in [
+        (image_end(&photo.id), image_end(&photo.id)),
+        (image_end(&elsewhere.id), card_end(&stone)),
+        (unknown_image, card_end(&stone)),
+    ] {
+        assert!(
+            matches!(
+                v.create_board_string(&board, &from, &to, ""),
+                Err(Error::Invalid(_))
+            ),
+            "{from:?} to {to:?}"
+        );
+    }
+
+    v.delete_board_image(&photo.id).unwrap();
+    assert_eq!(
+        string_ids(&v, &board),
+        [card_note.id],
+        "both strings tied to the image went with it"
+    );
+}
+
+#[test]
+fn a_board_image_keeps_its_media_from_cleanup_and_goes_if_the_media_row_goes() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault").join("vault.db");
+    let (board, picture) = {
+        let mut v = Vault::open(&db).unwrap();
+        let g = guide(&mut v, "Minecraft");
+        let board = v.create_board(&g, "Puzzle").unwrap().id;
+        let picture = v
+            .store_media(&[9; 64], "png", "image/png", MediaDimensions::default())
+            .unwrap()
+            .id;
+        v.create_board_image(&board, &picture, 0.0, 0.0, 200.0, 200.0)
+            .unwrap();
+
+        assert!(v.unreferenced_media().unwrap().is_empty());
+        let report = v.purge_media(std::slice::from_ref(&picture)).unwrap();
+        assert_eq!(report.removed, 0, "a board image is a reference");
+        assert!(v.get_media(&picture).is_ok());
+        let path = v.media_file_path(&v.get_media(&picture).unwrap()).unwrap();
+        assert!(path.exists());
+        (board, picture)
+    };
+
+    // No API deletes a referenced media row, so this stands in for one going by other means.
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        conn.execute("DELETE FROM media WHERE id = ?1", [picture.as_str()])
+            .unwrap();
+    }
+    let v = Vault::open(&db).unwrap();
+    assert!(v.board_view(&board).unwrap().images.is_empty());
 }

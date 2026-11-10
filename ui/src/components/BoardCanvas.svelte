@@ -1,43 +1,52 @@
 <script lang="ts">
-  // The board's canvas (design section 6): cards as instant photos and notes as colored slips on
-  // a pan-and-zoom layer, with the edges between cards in an SVG underneath, labeled with the
-  // verb and the qualifiers, and the strings the user tied above the edges. A drag shows at once
-  // and reports the item's new place when the pointer lifts; the parent persists it. The wheel
-  // zooms around the pointer; dragging the background pans. Cards and notes take focus: Enter
-  // opens the entry or edits the note, Delete removes the item, arrows nudge it. The selected
+  // The board's canvas (design section 6): cards as instant photos, board images in polaroid
+  // frames, and notes as colored slips on a pan-and-zoom layer, with the edges between cards in
+  // an SVG underneath, labeled with the verb and the qualifiers, and the strings the user tied
+  // above the edges. A drag or a resize shows at once and reports the item's new place or size
+  // when the pointer lifts; the parent persists it. The wheel zooms around the pointer; dragging
+  // the background pans. Items take focus: Enter opens the entry or edits the note, Delete
+  // removes the item, arrows nudge it, Alt with an arrow resizes a note or an image. The selected
   // item shows a pin: dragging it onto another item ties a string, and clicking it or pressing
   // Enter on it starts tying from the keyboard, where the next item activated is the other end.
-  // With the canvas itself focused, arrows pan and plus and minus zoom.
+  // A selected note shows eight resize handles and a selected image four. With the canvas itself
+  // focused, arrows pan and plus and minus zoom.
   import { tick, untrack } from "svelte";
-  import { SvelteMap } from "svelte/reactivity";
 
-  import type {
-    Background,
-    BoardCard,
-    BoardEdge,
-    BoardNoteView,
-    BoardString,
-    EndKind,
-    StringEnd,
+  import {
+    IMAGE_MIN_SIZE,
+    NOTE_MIN_SIZE,
+    type Background,
+    type BoardCard,
+    type BoardEdge,
+    type BoardImage,
+    type BoardNoteView,
+    type BoardString,
+    type EndKind,
+    type Media,
+    type StringEnd,
   } from "../lib/api";
   import {
     CAPTION_H,
+    CORNERS,
     FRAME,
-    NOTE_MIN_W,
-    NOTE_PLAIN_H,
+    HANDLES,
     cardRect,
     center,
     edgeOffsets,
     edgeSegment,
     endKey,
+    handlePoint,
+    imageRect,
     labelAngle,
     midpoint,
     noteName,
     noteRect,
+    resizeRect,
     stringMidpoint,
     stringPath,
     toWorld,
     zoomAt,
+    type Handle,
     type Point,
     type Rect,
     type Selection,
@@ -45,6 +54,7 @@
     type Viewport,
   } from "../lib/board";
   import { startDrag } from "../lib/drag";
+  import { pointIn } from "../lib/drop";
   import { session } from "../lib/session.svelte";
   import Preview from "./Preview.svelte";
 
@@ -54,10 +64,11 @@
     cards: BoardCard[];
     edges: BoardEdge[];
     notes: BoardNoteView[];
-    /** The strings to draw; both ends must be among `cards` and `notes`. */
+    images: BoardImage[];
+    /** The strings to draw; both ends must be among `cards`, `notes`, and `images`. */
     strings: BoardString[];
     background: Background;
-    imageUrl: (card: BoardCard) => string | null;
+    imageUrl: (media: Media) => string | null;
     selection: Selection;
     /** Tying from the keyboard: the next item activated becomes the string's other end. */
     tying: boolean;
@@ -67,10 +78,10 @@
     onview: (view: Viewport) => void;
     onselect: (selection: Selection) => void;
     onopen: (id: string) => void;
-    /** A drag or a nudge ended: the card's new top-left corner, in world units. */
-    onmove: (id: string, x: number, y: number) => void;
-    onmovenote: (id: string, x: number, y: number) => void;
-    onresizenote: (id: string, w: number) => void;
+    /** A drag or a nudge ended: the item's new top-left corner, in world units. */
+    onmove: (item: StringEnd, x: number, y: number) => void;
+    /** A resize ended: the note's or the image's new rect, in world units. */
+    onresize: (item: StringEnd, rect: Rect) => void;
     onremove: (item: Item) => void;
     oneditnote: (id: string) => void;
     onsavenote: (id: string, body: string) => void;
@@ -83,6 +94,7 @@
     cards,
     edges,
     notes,
+    images,
     strings,
     background,
     imageUrl,
@@ -94,8 +106,7 @@
     onselect,
     onopen,
     onmove,
-    onmovenote,
-    onresizenote,
+    onresize,
     onremove,
     oneditnote,
     onsavenote,
@@ -105,15 +116,33 @@
     onstring,
   }: Props = $props();
 
+  /** How far above a note's top edge the pin sits, in screen pixels, clear of the top handle. */
+  const PIN_LIFT = 14;
+  const CURSORS: Record<Handle, string> = {
+    n: "ns-resize",
+    s: "ns-resize",
+    e: "ew-resize",
+    w: "ew-resize",
+    ne: "nesw-resize",
+    sw: "nesw-resize",
+    nw: "nwse-resize",
+    se: "nwse-resize",
+  };
+  /** The unit step of each arrow key. */
+  const ARROWS: Record<string, [number, number]> = {
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+  };
+
   let root = $state<HTMLElement | null>(null);
   /** The item under the pointer, by `endKey`, and how far it has gone while a drag is on. */
   let drag = $state<{ key: string; dx: number; dy: number } | null>(null);
-  /** A note's width while its handle is dragged. */
-  let resize = $state<{ id: string; w: number } | null>(null);
+  /** A note's or an image's rect while one of its handles is dragged. */
+  let resize = $state<{ key: string; rect: Rect } | null>(null);
   /** The dashed line from the pin to the pointer while a string is dragged out. */
   let pull = $state<{ from: Point; to: Point } | null>(null);
-  /** Each note's rendered height, measured, so strings meet the real rect. */
-  const heights = new SvelteMap<string, number>();
   /** The last item pressed and when, so a second press soon after opens it. */
   let lastPress: { key: string; at: number } | null = null;
   /** Set while a pointer press focuses an item, so the focus handler does not pan under it. */
@@ -124,17 +153,15 @@
   let finished = true;
   const uid = $props.id();
 
-  /** Every item's rect in world units by `endKey`, a dragged one where the pointer has it. */
+  /** Every item's rect in world units by `endKey`, a dragged or resized one where it is now. */
   const rects = $derived.by(() => {
     const out = new Map<string, Rect>();
     for (const card of cards) {
       out.set(endKey({ kind: "entry", id: card.entry.id }), cardRect(card));
     }
-    for (const { note } of notes) {
-      const rect = noteRect(note, heights.get(note.id) ?? NOTE_PLAIN_H);
-      if (resize?.id === note.id) rect.w = resize.w;
-      out.set(endKey({ kind: "note", id: note.id }), rect);
-    }
+    for (const { note } of notes) out.set(endKey({ kind: "note", id: note.id }), noteRect(note));
+    for (const image of images) out.set(endKey({ kind: "image", id: image.id }), imageRect(image));
+    if (resize) out.set(resize.key, resize.rect);
     if (drag) {
       const rect = out.get(drag.key);
       if (rect) out.set(drag.key, { ...rect, x: rect.x + drag.dx, y: rect.y + drag.dy });
@@ -157,6 +184,7 @@
     const out = new Map<string, string>();
     for (const card of cards) out.set(`entry:${card.entry.id}`, card.entry.title);
     for (const { note } of notes) out.set(`note:${note.id}`, `note "${noteName(note.body_md)}"`);
+    for (const image of images) out.set(`image:${image.id}`, "an image");
     return out;
   });
   const twines = $derived.by(() =>
@@ -172,13 +200,30 @@
       return [{ string, d: stringPath(a, b), mid: stringMidpoint(a, b), label }];
     }),
   );
-  /** The selected card or note, which shows the pin at its top center. */
+  /**
+   * The selected item, which shows the pin at its top center; a note's pin sits just above its
+   * top edge so the top handle stays reachable.
+   */
   const pinned = $derived.by(() => {
     if (!selection || selection.kind === "string" || editingNote === selection.id) return null;
     const end: StringEnd = { kind: selection.kind, id: selection.id };
     const rect = rects.get(endKey(end));
     if (!rect) return null;
-    return { end, at: { x: rect.x + rect.w / 2, y: rect.y } };
+    const lift = end.kind === "note" ? PIN_LIFT / view.k : 0;
+    return { end, at: { x: rect.x + rect.w / 2, y: rect.y - lift } };
+  });
+  /**
+   * The resize handles of the selected note (eight, free) or image (four corners, keeping the
+   * proportions unless Shift is held). None while a note is being edited.
+   */
+  const handles = $derived.by(() => {
+    if (!selection || editingNote === selection.id) return null;
+    if (selection.kind !== "note" && selection.kind !== "image") return null;
+    const end: StringEnd = { kind: selection.kind, id: selection.id };
+    const rect = rects.get(endKey(end));
+    if (!rect) return null;
+    if (end.kind === "note") return { end, rect, list: HANDLES, min: NOTE_MIN_SIZE, ratio: false };
+    return { end, rect, list: CORNERS, min: IMAGE_MIN_SIZE, ratio: true };
   });
 
   /** The canvas size in CSS pixels, for fitting and placing. */
@@ -186,12 +231,19 @@
     return { w: root?.clientWidth ?? 0, h: root?.clientHeight ?? 0 };
   }
 
+  /** A window point in world units, or null when it is outside the canvas. */
+  export function worldAt(at: Point): Point | null {
+    if (!root || !pointIn(root, at)) return null;
+    const box = root.getBoundingClientRect();
+    return toWorld(view, { x: at.x - box.left, y: at.y - box.top });
+  }
+
   /** Puts focus on the canvas itself, for example after the focused item was removed. */
   export function focus() {
     root?.focus({ preventScroll: true });
   }
 
-  /** Puts focus on a card or a note, for example after its note was saved. */
+  /** Puts focus on a card, a note, or an image, for example after its note was saved. */
   export function focusItem(item: StringEnd) {
     root
       ?.querySelector<HTMLElement>(
@@ -219,7 +271,7 @@
     reveal(key);
     if (pointerFocus || tying) return;
     const colon = key.indexOf(":");
-    onselect({ kind: key.slice(0, colon) as "entry" | "note", id: key.slice(colon + 1) });
+    onselect({ kind: key.slice(0, colon) as EndKind, id: key.slice(colon + 1) });
   }
 
   /** Pans so an item focused from the keyboard is in view; a pointer press needs no help. */
@@ -242,12 +294,21 @@
     if (dx !== 0 || dy !== 0) onview({ ...view, x: view.x + dx, y: view.y + dy });
   }
 
+  /** Whether an element can still scroll in the wheel's direction. */
+  function scrolls(element: Element, deltaY: number): boolean {
+    if (element.scrollHeight <= element.clientHeight) return false;
+    if (deltaY < 0) return element.scrollTop > 0;
+    return element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+  }
+
   // Zooming must stop the page from scrolling, so the wheel listener is not passive, which an
-  // event attribute would be.
+  // event attribute would be. A note taller than its slip scrolls its own body first.
   $effect(() => {
     const el = root;
     if (!el) return;
     const onWheel = (event: WheelEvent) => {
+      const body = (event.target as Element | null)?.closest?.(".note-body, .note textarea");
+      if (body && scrolls(body, event.deltaY)) return;
       event.preventDefault();
       const box = el.getBoundingClientRect();
       const at = { x: event.clientX - box.left, y: event.clientY - box.top };
@@ -281,10 +342,10 @@
   }
 
   /**
-   * A press on a card or a note: selects it, opens it on a second press soon after, and drags it
-   * otherwise. `x` and `y` are the item's stored corner.
+   * A press on a card, a note, or an image: selects it, opens it on a second press soon after
+   * (an entry opens, a note starts editing), and drags it otherwise.
    */
-  function pressItem(event: PointerEvent, end: StringEnd, x: number, y: number, drags: boolean) {
+  function pressItem(event: PointerEvent, end: StringEnd, drags: boolean) {
     const key = endKey(end);
     if (tying) {
       tieTo(end);
@@ -297,13 +358,14 @@
     pointerFocus = true;
     (event.currentTarget as HTMLElement).focus({ preventScroll: true });
     pointerFocus = false;
-    if (second) {
+    if (second && end.kind !== "image") {
       lastPress = null;
       if (end.kind === "entry") onopen(end.id);
       else oneditnote(end.id);
       return;
     }
-    if (!drags) return;
+    const start = rects.get(key);
+    if (!drags || !start) return;
     let moved = false;
     drag = { key, dx: 0, dy: 0 };
     startDrag(
@@ -317,10 +379,7 @@
         drag = null;
         if (moved && done) {
           lastPress = null;
-          const nx = Math.round(x + done.dx);
-          const ny = Math.round(y + done.dy);
-          if (end.kind === "entry") onmove(end.id, nx, ny);
-          else onmovenote(end.id, nx, ny);
+          onmove(end, Math.round(start.x + done.dx), Math.round(start.y + done.dy));
         }
       },
     );
@@ -329,18 +388,24 @@
   function pressCard(event: PointerEvent, card: BoardCard) {
     if (event.button !== 0) return;
     event.stopPropagation();
-    pressItem(event, { kind: "entry", id: card.entry.id }, card.x, card.y, true);
+    pressItem(event, { kind: "entry", id: card.entry.id }, true);
+  }
+
+  function pressPhoto(event: PointerEvent, image: BoardImage) {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    pressItem(event, { kind: "image", id: image.id }, true);
   }
 
   function pressNote(event: PointerEvent, item: BoardNoteView) {
     if (event.button !== 0) return;
     event.stopPropagation();
     const target = event.target as HTMLElement;
-    // The editor, the resize handle, and a check box handle their own presses.
-    if (editingNote === item.note.id || target.closest("input.task, .resize")) return;
+    // The editor and a check box handle their own presses.
+    if (editingNote === item.note.id || target.closest("input.task")) return;
     // A press on a link selects the note without a drag, so the click that follows reaches it.
     const drags = !target.closest("a");
-    pressItem(event, { kind: "note", id: item.note.id }, item.note.x, item.note.y, drags);
+    pressItem(event, { kind: "note", id: item.note.id }, drags);
   }
 
   /** A click on a check box in a note flips that task and does nothing else. */
@@ -353,21 +418,33 @@
     ontoggletask(id, Number(box.dataset.task));
   }
 
-  function pressResize(event: PointerEvent, item: BoardNoteView) {
+  /**
+   * Drags a resize handle. A note's corners resize freely and keep the proportions with Shift;
+   * an image's corners keep them unless Shift is held.
+   */
+  function pressHandle(event: PointerEvent, target: NonNullable<typeof handles>, handle: Handle) {
     if (event.button !== 0) return;
     event.stopPropagation();
-    const id = item.note.id;
-    const start = item.note.w;
-    resize = { id, w: start };
+    const key = endKey(target.end);
+    const start = { ...target.rect };
+    resize = { key, rect: start };
     startDrag(
       event,
-      (dx) => (resize = { id, w: Math.max(NOTE_MIN_W, Math.round(start + dx / view.k)) }),
+      (dx, dy, move) => {
+        const keep = target.ratio ? !move.shiftKey : move.shiftKey;
+        const rect = resizeRect(start, handle, dx / view.k, dy / view.k, keep, target.min);
+        resize = { key, rect };
+      },
       () => {
         const done = resize;
         resize = null;
-        if (done && done.w !== start) onresizenote(id, done.w);
+        if (done && !sameRect(done.rect, start)) onresize(target.end, done.rect);
       },
     );
+  }
+
+  function sameRect(a: Rect, b: Rect): boolean {
+    return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
   }
 
   function pressString(event: PointerEvent, string: BoardString) {
@@ -441,75 +518,49 @@
     root?.focus({ preventScroll: true });
   }
 
-  function cardKeys(event: KeyboardEvent, card: BoardCard) {
-    const id = card.entry.id;
-    const step = event.shiftKey ? 50 : 10;
-    switch (event.key) {
-      case "Enter":
-      case " ":
-        if (tying) tieTo({ kind: "entry", id });
-        else onopen(id);
-        break;
-      case "Delete":
-      case "Backspace":
-        onremove({ kind: "entry", id });
-        break;
-      case "Escape":
-        escape(event);
-        return;
-      case "ArrowLeft":
-        onmove(id, card.x - step, card.y);
-        break;
-      case "ArrowRight":
-        onmove(id, card.x + step, card.y);
-        break;
-      case "ArrowUp":
-        onmove(id, card.x, card.y - step);
-        break;
-      case "ArrowDown":
-        onmove(id, card.x, card.y + step);
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
-  }
-
-  /** Keys on a focused note; Alt with Left or Right narrows or widens it. */
-  function noteKeys(event: KeyboardEvent, item: BoardNoteView) {
-    // Keys typed in the editor or on a check box or link inside the note are theirs.
+  /**
+   * Keys on a focused card, note, or image. Enter opens the entry or edits the note, arrows
+   * nudge, and Alt with an arrow resizes a note or an image by 20 px from its bottom-right
+   * corner: Left and Right the width, Up and Down the height. An image keeps its proportions
+   * unless Shift is held too.
+   */
+  function itemKeys(event: KeyboardEvent, end: StringEnd) {
+    // Keys typed in the editor or on a check box or link inside a note are theirs.
     if (event.target !== event.currentTarget) return;
-    const { id, x, y, w } = item.note;
-    const step = event.shiftKey ? 50 : 10;
+    const rect = rects.get(endKey(end));
+    if (!rect) return;
+    const arrow = ARROWS[event.key];
     switch (event.key) {
       case "Enter":
       case " ":
-        if (tying) tieTo({ kind: "note", id });
-        else oneditnote(id);
+        if (tying) tieTo(end);
+        else if (end.kind === "entry") onopen(end.id);
+        else if (end.kind === "note") oneditnote(end.id);
         break;
       case "Delete":
       case "Backspace":
-        onremove({ kind: "note", id });
+        onremove(end);
         break;
       case "Escape":
         escape(event);
         return;
-      case "ArrowLeft":
-        if (event.altKey) onresizenote(id, Math.max(NOTE_MIN_W, w - 20));
-        else onmovenote(id, x - step, y);
-        break;
-      case "ArrowRight":
-        if (event.altKey) onresizenote(id, w + 20);
-        else onmovenote(id, x + step, y);
-        break;
-      case "ArrowUp":
-        onmovenote(id, x, y - step);
-        break;
-      case "ArrowDown":
-        onmovenote(id, x, y + step);
-        break;
-      default:
-        return;
+      default: {
+        if (!arrow) return;
+        if (event.altKey) {
+          // On a card, Alt with Left or Right stays the shell's history keys.
+          if (end.kind === "entry") return;
+          const image = end.kind === "image";
+          const keep = image && !event.shiftKey;
+          const min = image ? IMAGE_MIN_SIZE : NOTE_MIN_SIZE;
+          const next = resizeRect(rect, "se", arrow[0] * 20, arrow[1] * 20, keep, min);
+          if (!sameRect(next, rect)) onresize(end, next);
+          // The shell would also go back or forward in history on Alt with Left or Right.
+          event.stopPropagation();
+        } else {
+          const step = event.shiftKey ? 50 : 10;
+          onmove(end, rect.x + arrow[0] * step, rect.y + arrow[1] * step);
+        }
+      }
     }
     event.preventDefault();
   }
@@ -545,8 +596,8 @@
   }
 
   /**
-   * Saves or drops the draft once. From the keyboard or the Save button, focus goes back to the
-   * note; on a blur it stays where the user put it.
+   * Saves or drops the draft once. From the keyboard, focus goes back to the note; on a blur it
+   * stays where the user put it.
    */
   async function finishEdit(save: boolean, refocus = true) {
     const id = editingNote;
@@ -599,6 +650,7 @@
     return selection?.kind === kind && selection.id === id;
   }
 </script>
+
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
@@ -710,7 +762,7 @@
     {#each cards as card (card.entry.id)}
       {@const key = `entry:${card.entry.id}`}
       {@const rect = rects.get(key)!}
-      {@const url = imageUrl(card)}
+      {@const url = card.image ? imageUrl(card.image) : null}
       {@const selected = isSelected("entry", card.entry.id)}
       <div
         class="card"
@@ -729,7 +781,7 @@
         style:width="{rect.w}px"
         style:height="{rect.h}px"
         onpointerdown={(event) => pressCard(event, card)}
-        onkeydown={(event) => cardKeys(event, card)}
+        onkeydown={(event) => itemKeys(event, { kind: "entry", id: card.entry.id })}
         onfocus={() => focused(key)}
       >
         {#if url}
@@ -739,6 +791,32 @@
           <span class="title">{card.entry.title}</span>
           {#if card.entry.is_stub}<span class="chip">stub</span>{/if}
         </div>
+      </div>
+    {/each}
+    {#each images as image (image.id)}
+      {@const key = `image:${image.id}`}
+      {@const rect = rects.get(key)!}
+      {@const url = imageUrl(image.media)}
+      {@const selected = isSelected("image", image.id)}
+      <div
+        class="photo"
+        class:selected
+        class:dragging={drag?.key === key}
+        data-item-kind="image"
+        data-item-id={image.id}
+        role="button"
+        tabindex="0"
+        aria-pressed={selected}
+        aria-label="Image"
+        style:left="{rect.x}px"
+        style:top="{rect.y}px"
+        style:width="{rect.w}px"
+        style:height="{rect.h}px"
+        onpointerdown={(event) => pressPhoto(event, image)}
+        onkeydown={(event) => itemKeys(event, { kind: "image", id: image.id })}
+        onfocus={() => focused(key)}
+      >
+        {#if url}<img src={url} alt="" draggable="false" />{/if}
       </div>
     {/each}
     {#each notes as item (item.note.id)}
@@ -761,10 +839,10 @@
         style:left="{rect.x}px"
         style:top="{rect.y}px"
         style:width="{rect.w}px"
-        bind:clientHeight={null, (h) => heights.set(id, h ?? NOTE_PLAIN_H)}
+        style:height="{rect.h}px"
         onpointerdown={(event) => pressNote(event, item)}
         onclick={(event) => clickNote(event, id)}
-        onkeydown={(event) => noteKeys(event, item)}
+        onkeydown={(event) => itemKeys(event, { kind: "note", id })}
         onfocus={() => focused(key)}
       >
         {#if editing}
@@ -772,43 +850,41 @@
             bind:this={editor}
             bind:value={draft}
             aria-label="Note text in Markdown"
-            rows={Math.max(3, draft.split("\n").length + 1)}
             onkeydown={editorKeys}
             onblur={() => void finishEdit(true, false)}
           ></textarea>
-          <div class="row edit-actions">
-            <span class="muted hint-text">Ctrl+Enter saves, Escape cancels</span>
-            <span class="spacer"></span>
-            <!-- The field keeps focus through the press, so its blur does not save first. -->
-            <button
-              class="primary"
-              onmousedown={(event) => event.preventDefault()}
-              onclick={() => void finishEdit(true)}
-            >
-              Save
-            </button>
-          </div>
-        {:else if item.note.body_md.trim() === ""}
-          <p class="placeholder muted">Empty note. Press Enter to write.</p>
         {:else}
-          <Preview
-            html={item.html}
-            mediaDir={session.startup?.media_dir ?? null}
-            onnavigate={onopen}
-            oncreate={() => {}}
-          />
-        {/if}
-        {#if !editing}
-          <div
-            class="resize"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize the note"
-            onpointerdown={(event) => pressResize(event, item)}
-          ></div>
+          <div class="note-body">
+            {#if item.note.body_md.trim() === ""}
+              <p class="placeholder muted">Empty note. Press Enter to write.</p>
+            {:else}
+              <Preview
+                html={item.html}
+                mediaDir={session.startup?.media_dir ?? null}
+                onnavigate={onopen}
+                oncreate={() => {}}
+              />
+            {/if}
+          </div>
         {/if}
       </div>
     {/each}
+    {#if handles}
+      {@const target = handles}
+      {#each target.list as handle (handle)}
+        {@const at = handlePoint(target.rect, handle)}
+        <!-- Pointer only; Alt with the arrow keys resizes from the keyboard. -->
+        <div
+          class="handle"
+          aria-hidden="true"
+          style:left="{at.x}px"
+          style:top="{at.y}px"
+          style:cursor={CURSORS[handle]}
+          style:transform="translate(-50%, -50%) scale({1 / view.k})"
+          onpointerdown={(event) => pressHandle(event, target, handle)}
+        ></div>
+      {/each}
+    {/if}
     {#if pinned}
       <div
         class="pin"
@@ -828,7 +904,8 @@
   </div>
   {#if tying}
     <p class="tying-hint" role="status">
-      Choose the other end: click a card or a note, or press Enter on one. Escape cancels.
+      Choose the other end: click a card, a note, or an image, or press Enter on one. Escape
+      cancels.
     </p>
   {/if}
 </div>
@@ -992,7 +1069,8 @@
     pointer-events: none;
   }
   .card,
-  .note {
+  .note,
+  .photo {
     position: absolute;
     box-sizing: border-box;
     color: var(--fg);
@@ -1009,13 +1087,15 @@
     user-select: none;
   }
   .card.dragging,
-  .note.dragging {
+  .note.dragging,
+  .photo.dragging {
     cursor: grabbing;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     z-index: 1;
   }
   .card.selected,
-  .note.selected {
+  .note.selected,
+  .photo.selected {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
@@ -1047,8 +1127,25 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  /* A polaroid: white in both schemes, a deeper band at the bottom. */
+  .photo {
+    padding: 8px 8px 28px;
+    border-radius: 2px;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    user-select: none;
+  }
+  .photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #eeeeee;
+    pointer-events: none;
+  }
+  /* The note keeps its stored size; a longer body scrolls inside it. */
   .note {
-    padding: 10px 12px;
+    overflow: hidden;
     border-radius: 2px;
     background: var(--note-yellow);
     font-size: 13px;
@@ -1071,6 +1168,12 @@
   .note.editing {
     cursor: default;
     z-index: 2;
+  }
+  .note-body {
+    box-sizing: border-box;
+    height: 100%;
+    padding: 10px 12px;
+    overflow: auto;
   }
   .note :global(.preview) {
     max-width: none;
@@ -1097,29 +1200,33 @@
     margin: 0;
     font-style: italic;
   }
+  /* The field fills the slip inside a thin margin, so the color still frames it. */
   .note textarea {
-    display: block;
+    position: absolute;
+    inset: 4px;
     box-sizing: border-box;
-    width: 100%;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    background: transparent;
+    color: inherit;
     resize: none;
     font: inherit;
     font-family: ui-monospace, monospace;
     font-size: 12px;
   }
-  .edit-actions {
-    margin-top: 6px;
-    flex-wrap: nowrap;
-  }
-  .hint-text {
-    font-size: 11px;
-  }
-  .resize {
+  /* The same size on screen at any zoom, like the pin. */
+  .handle {
     position: absolute;
-    top: 0;
-    right: -4px;
-    width: 8px;
-    height: 100%;
-    cursor: ew-resize;
+    box-sizing: border-box;
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--accent);
+    background: var(--bg);
+    z-index: 3;
   }
   .pin {
     position: absolute;

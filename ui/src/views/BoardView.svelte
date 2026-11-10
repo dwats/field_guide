@@ -1,8 +1,9 @@
 <script lang="ts">
   // One board (design section 6): the header with the layer toggles, zoom, and New note, the
-  // canvas, and the picker panel. Membership, positions, edges, notes, and strings come from
-  // core's board view; this page keeps a working copy of the card and note positions so a drag
-  // shows at once and is written when it ends.
+  // canvas, and the picker panel. Membership, positions, edges, notes, images, and strings come
+  // from core's board view; this page keeps a working copy of the positions and sizes so a drag
+  // or a resize shows at once and is written when it ends. An image dropped or pasted on the
+  // page is stored as media and placed on the board.
   import { Check, Maximize, Plus } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
@@ -19,30 +20,41 @@
     type BoardCard,
     type BoardEdge,
     type BoardFilters,
+    type BoardImage,
+    type BoardImageUpdate,
     type BoardNode,
     type BoardNoteUpdate,
     type BoardNoteView,
     type BoardString,
     type BoardStringUpdate,
     type Guide,
+    type Media,
     type StringEnd,
+    IMAGE_DEFAULT_WIDTH,
+    NOTE_DEFAULT_SIZE,
   } from "../lib/api";
   import {
-    NOTE_PLAIN_H,
     cardRect,
     cardShown,
     edgeShown,
     endKey,
     fitView,
+    imageRect,
+    imageSize,
     noteName,
     noteRect,
     placeNear,
     stringShown,
     toWorld,
     zoomAt,
+    type Point,
+    type Rect,
     type Selection,
     type Viewport,
   } from "../lib/board";
+  import { onDrop, onPaste, type DropPoint } from "../lib/drop";
+  import { ingestFile, ingestPath } from "../lib/ingest";
+  import { isImagePath } from "../lib/media";
   import { mediaSrc } from "../lib/mediaUrl";
   import { navigate, replace } from "../lib/router";
   import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
@@ -52,8 +64,8 @@
   }
   let { boardId }: Props = $props();
 
-  /** Core gives a new note this width; the page centers the note on that. */
-  const NEW_NOTE_W = 220;
+  /** How far apart several images dropped at once land, so each stays in reach. */
+  const CASCADE = 24;
   const BACKGROUNDS: { value: Background; label: string }[] = [
     { value: "dots", label: "Dots" },
     { value: "grid", label: "Grid" },
@@ -67,6 +79,7 @@
   let edges = $state<BoardEdge[]>([]);
   let notes = $state<BoardNoteView[]>([]);
   let strings = $state<BoardString[]>([]);
+  let images = $state<BoardImage[]>([]);
   let error = $state("");
   let selection = $state<Selection>(null);
   /** The next item activated on the canvas becomes the other end of a string from the selection. */
@@ -81,8 +94,10 @@
   let version = $state(0);
   /** Positions waiting to be written, coalesced so a held arrow key does not write per repeat. */
   let pending = new Map<string, BoardNode>();
-  /** Note positions and widths waiting to be written, coalesced the same way. */
+  /** Note positions and sizes waiting to be written, coalesced the same way. */
   let pendingNotes = new Map<string, BoardNoteUpdate>();
+  /** Image positions and sizes waiting to be written, coalesced the same way. */
+  let pendingImages = new Map<string, BoardImageUpdate>();
   let pendingBoard: string | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
   /** The board the view was fitted for, once its first load landed. */
@@ -97,7 +112,10 @@
   const shownIds = $derived(new Set(shownCards.map((c) => c.entry.id)));
   const shownEdges = $derived(filters ? edges.filter((e) => edgeShown(e, filters, shownIds)) : []);
   const noteIds = $derived(new Set(notes.map((n) => n.note.id)));
-  const shownStrings = $derived(strings.filter((s) => stringShown(s, shownIds, noteIds)));
+  const imageIds = $derived(new Set(images.map((i) => i.id)));
+  const shownStrings = $derived(
+    strings.filter((s) => stringShown(s, shownIds, noteIds, imageIds)),
+  );
   const selected = $derived.by(() => {
     const item = selection;
     return item?.kind === "entry" ? (cards.find((c) => c.entry.id === item.id) ?? null) : null;
@@ -105,6 +123,10 @@
   const selectedNote = $derived.by(() => {
     const item = selection;
     return item?.kind === "note" ? (notes.find((n) => n.note.id === item.id)?.note ?? null) : null;
+  });
+  const selectedImage = $derived.by(() => {
+    const item = selection;
+    return item?.kind === "image" ? (images.find((i) => i.id === item.id) ?? null) : null;
   });
   const selectedString = $derived.by(() => {
     const item = selection;
@@ -124,6 +146,19 @@
     void session.revision;
     untrack(() => void load());
   });
+
+  // Dropped image files land where they were dropped; a paste lands in the middle of the window.
+  $effect(() =>
+    onDrop((paths, at) => {
+      const found = paths.filter(isImagePath);
+      const skipped = paths.length - found.length;
+      if (skipped > 0) {
+        notify(`Skipped ${skipped} dropped ${skipped === 1 ? "file that is not an image" : "files that are not images"}.`);
+      }
+      return addImages(found.map((path) => ({ path })), at);
+    }),
+  );
+  $effect(() => onPaste((files) => addImages(files, null)));
 
   // Leaving the page writes what is still waiting.
   $effect(() => () => {
@@ -149,6 +184,7 @@
       edges = data.edges;
       notes = data.notes;
       strings = data.strings;
+      images = data.images;
       // Nudges not yet written are newer than what the database holds.
       for (const node of pending.values()) {
         const card = cards.find((c) => c.entry.id === node.entry_id);
@@ -160,6 +196,10 @@
       for (const [id, update] of pendingNotes) {
         const found = notes.find((n) => n.note.id === id);
         if (found) Object.assign(found.note, update);
+      }
+      for (const [id, update] of pendingImages) {
+        const found = images.find((i) => i.id === id);
+        if (found) Object.assign(found, update);
       }
       // A selection whose item is gone goes with it.
       if (selection && !exists(selection)) select(null);
@@ -181,32 +221,34 @@
   function exists(item: NonNullable<Selection>): boolean {
     if (item.kind === "entry") return cards.some((c) => c.entry.id === item.id);
     if (item.kind === "note") return notes.some((n) => n.note.id === item.id);
+    if (item.kind === "image") return images.some((i) => i.id === item.id);
     return strings.some((s) => s.id === item.id);
   }
 
-  /** A string end's name for the panel: the entry's title or the note's first line. */
+  /** A string end's name for the panel: the entry's title, the note's first line, or "an image". */
   function endName(end: StringEnd): string {
     if (end.kind === "entry") {
       return cards.find((c) => c.entry.id === end.id)?.entry.title ?? "a card";
     }
+    if (end.kind === "image") return "an image";
     const note = notes.find((n) => n.note.id === end.id)?.note;
     return note ? `note "${noteName(note.body_md)}"` : "a note";
   }
 
-  /** Selects an item; tying stops when there is no card or note to tie from. */
+  /** Selects an item; tying stops when there is no card, note, or image to tie from. */
   function select(next: Selection) {
     selection = next;
     if (!next || next.kind === "string") tying = false;
   }
 
-  function imageUrl(card: BoardCard): string | null {
-    return card.image ? mediaSrc(card.image) : null;
-  }
-
   function fit() {
     const size = canvas?.size();
     if (!size || size.w === 0) return;
-    const rects = [...shownCards.map(cardRect), ...notes.map((n) => noteRect(n.note, NOTE_PLAIN_H))];
+    const rects = [
+      ...shownCards.map(cardRect),
+      ...notes.map((n) => noteRect(n.note)),
+      ...images.map(imageRect),
+    ];
     view = fitView(rects, size);
   }
 
@@ -345,17 +387,50 @@
     pendingNotes.set(id, { ...pendingNotes.get(id), ...update });
   }
 
+  /** Moves or resizes an image at once; the write follows as a card's does. */
+  function changeImage(id: string, update: BoardImageUpdate) {
+    const found = images.find((i) => i.id === id);
+    if (!found || !board) return;
+    Object.assign(found, update);
+    schedule(board.id);
+    pendingImages.set(id, { ...pendingImages.get(id), ...update });
+  }
+
+  function moveItem(item: StringEnd, x: number, y: number) {
+    if (item.kind === "entry") moveCard(item.id, x, y);
+    else if (item.kind === "note") changeNote(item.id, { x, y });
+    else changeImage(item.id, { x, y });
+  }
+
+  /** A resize writes the new size, and the corner too when a top or left handle moved it. */
+  function resizeItem(item: StringEnd, rect: Rect) {
+    if (item.kind === "entry") return;
+    const current =
+      item.kind === "note"
+        ? notes.find((n) => n.note.id === item.id)?.note
+        : images.find((i) => i.id === item.id);
+    if (!current) return;
+    const update: BoardImageUpdate = { w: rect.w, h: rect.h };
+    if (rect.x !== current.x) update.x = rect.x;
+    if (rect.y !== current.y) update.y = rect.y;
+    if (item.kind === "note") changeNote(item.id, update);
+    else changeImage(item.id, update);
+  }
+
   async function flushPositions() {
     const target = pendingBoard;
     const nodes = [...pending.values()];
     const noteUpdates = [...pendingNotes];
+    const imageUpdates = [...pendingImages];
     pending = new Map();
     pendingNotes = new Map();
+    pendingImages = new Map();
     pendingBoard = null;
     if (!target) return;
     try {
       if (nodes.length > 0) await api.setBoardPositions(target, nodes);
       for (const [id, update] of noteUpdates) await api.updateBoardNote(id, update);
+      for (const [id, update] of imageUpdates) await api.updateBoardImage(id, update);
     } catch (e) {
       notify(`The positions could not be saved: ${errorMessage(e)}`, { kind: "error" });
     }
@@ -365,8 +440,8 @@
   async function createNote() {
     if (!board) return;
     const at = middle();
-    const x = Math.round(at.x - NEW_NOTE_W / 2);
-    const y = Math.round(at.y - NOTE_PLAIN_H / 2);
+    const x = Math.round(at.x - NOTE_DEFAULT_SIZE / 2);
+    const y = Math.round(at.y - NOTE_DEFAULT_SIZE / 2);
     try {
       const note = await api.createBoardNote(board.id, "", x, y);
       await load();
@@ -413,7 +488,7 @@
     const found = notes.find((n) => n.note.id === id);
     if (!board || !found) return;
     const target = board.id;
-    const { body_md, x, y, w, color } = found.note;
+    const { body_md, x, y, w, h, color } = found.note;
     const lost = stringsAt({ kind: "note", id });
     pendingNotes.delete(id);
     await flushPositions();
@@ -428,10 +503,72 @@
           label: "Undo",
           run: async () => {
             const made = await api.createBoardNote(target, body_md, x, y);
-            if (made.w !== w || made.color !== color) {
-              await api.updateBoardNote(made.id, { w, color });
+            if (made.w !== w || made.h !== h || made.color !== color) {
+              await api.updateBoardNote(made.id, { w, h, color });
             }
             await retie(target, lost, new Map([[`note:${id}`, made.id]]));
+            await reloadAfterUndo(target);
+          },
+        },
+      });
+    } catch (e) {
+      notify(errorMessage(e), { kind: "error" });
+    }
+  }
+
+  /**
+   * Stores dropped or pasted images and places each on the board, centered on the drop point in
+   * world units (the middle of the window for a paste or a drop outside the canvas), several in
+   * a cascade. Images already stored are placed even when a later one fails; the failure is
+   * reported after. The last one placed is selected.
+   */
+  async function addImages(sources: Array<{ path: string } | File>, at: DropPoint | null) {
+    if (!board || sources.length === 0) return;
+    const target = board.id;
+    const origin: Point = (at && canvas?.worldAt(at)) || middle();
+    let last: BoardImage | null = null;
+    let failure = "";
+    for (const [i, source] of sources.entries()) {
+      try {
+        const media: Media =
+          "path" in source ? await ingestPath(source.path) : await ingestFile(source);
+        const { w, h } = imageSize(media, IMAGE_DEFAULT_WIDTH);
+        const x = Math.round(origin.x - w / 2 + i * CASCADE);
+        const y = Math.round(origin.y - h / 2 + i * CASCADE);
+        last = await api.createBoardImage(target, media.id, x, y, w, h);
+      } catch (e) {
+        failure = errorMessage(e);
+        break;
+      }
+    }
+    if (failure) notify(`The image could not be added: ${failure}`, { kind: "error" });
+    if (!last || !alive || board?.id !== target) return;
+    await load();
+    select({ kind: "image", id: last.id });
+    await tick();
+    canvas?.focusItem({ kind: "image", id: last.id });
+  }
+
+  /** Deletes a board image and its strings; Undo places the same media again with them. */
+  async function removeImage(id: string) {
+    const found = images.find((i) => i.id === id);
+    if (!board || !found) return;
+    const target = board.id;
+    const { media, x, y, w, h } = found;
+    const lost = stringsAt({ kind: "image", id });
+    pendingImages.delete(id);
+    await flushPositions();
+    try {
+      await api.deleteBoardImage(id);
+      if (selection?.kind === "image" && selection.id === id) select(null);
+      await load();
+      canvas?.focus();
+      notify("Deleted the image.", {
+        action: {
+          label: "Undo",
+          run: async () => {
+            const made = await api.createBoardImage(target, media.id, x, y, w, h);
+            await retie(target, lost, new Map([[`image:${id}`, made.id]]));
             await reloadAfterUndo(target);
           },
         },
@@ -490,10 +627,11 @@
   function removeItem(item: NonNullable<Selection>) {
     if (item.kind === "entry") void removeCard(item.id);
     else if (item.kind === "note") void removeNote(item.id);
+    else if (item.kind === "image") void removeImage(item.id);
     else void removeString(item.id);
   }
 
-  /** Starts or stops tying from the selected card or note; the canvas takes focus to choose. */
+  /** Starts or stops tying from the selected card, note, or image; the canvas takes focus to choose. */
   function toggleTying() {
     tying = !tying && selection !== null && selection.kind !== "string";
     if (tying) canvas?.focus();
@@ -542,7 +680,7 @@
       <div class="row header">
         <h1>{board.name}</h1>
         <span class="muted count">
-          {cards.length} {cards.length === 1 ? "card" : "cards"}{#if notes.length > 0}, {notes.length} {notes.length === 1 ? "note" : "notes"}{/if}{#if hiddenCards > 0}, {hiddenCards} from other guides hidden{/if}
+          {cards.length} {cards.length === 1 ? "card" : "cards"}{#if notes.length > 0}, {notes.length} {notes.length === 1 ? "note" : "notes"}{/if}{#if images.length > 0}, {images.length} {images.length === 1 ? "image" : "images"}{/if}{#if hiddenCards > 0}, {hiddenCards} from other guides hidden{/if}
         </span>
         <span class="spacer"></span>
         <div class="toggles" role="group" aria-label="Layers">
@@ -633,9 +771,10 @@
           cards={shownCards}
           edges={shownEdges}
           {notes}
+          {images}
           strings={shownStrings}
           background={filters.background}
-          {imageUrl}
+          imageUrl={mediaSrc}
           {selection}
           {tying}
           {editingNote}
@@ -643,9 +782,8 @@
           onview={(v) => (view = v)}
           onselect={select}
           onopen={openEntry}
-          onmove={moveCard}
-          onmovenote={(id, x, y) => changeNote(id, { x, y })}
-          onresizenote={(id, w) => changeNote(id, { w })}
+          onmove={moveItem}
+          onresize={resizeItem}
           onremove={removeItem}
           oneditnote={(id) => (editingNote = id)}
           onsavenote={(id, body) => void saveNote(id, body)}
@@ -654,10 +792,10 @@
           ontying={(on) => (tying = on && selection !== null && selection.kind !== "string")}
           onstring={(from, to) => void tieString(from, to)}
         />
-        {#if cards.length === 0 && notes.length === 0}
+        {#if cards.length === 0 && notes.length === 0 && images.length === 0}
           <p class="empty muted">
-            This board is empty. Add entries from the panel on the right, or a note with the plus
-            button.
+            This board is empty. Add entries from the panel, make a note with the plus, or drop an
+            image here.
           </p>
         {/if}
       </div>
@@ -679,6 +817,8 @@
       {selected}
       onopen={openEntry}
       {selectedNote}
+      {selectedImage}
+      onremoveimage={(id) => void removeImage(id)}
       {selectedString}
       {stringEnds}
       {tying}

@@ -1,8 +1,8 @@
 <script lang="ts">
   // The board's right panel (design section 6): the picker, with the guide's search line, tag
   // chips, and Stubs only, listing the entries to add one at a time or all at once; above it,
-  // the selected card with its relations, the selected note with its color, or the selected
-  // string with its label and color. The picker's fields are saved with the board and come back
+  // the selected card with its relations, the selected note with its color, the selected image,
+  // or the selected string with its label and color. The picker's fields are saved with the board and come back
   // when it opens. It folds to a rail like the entry panel.
   import { Check, PanelRightClose, PanelRightOpen, Plus, X } from "@lucide/svelte";
   import { untrack } from "svelte";
@@ -14,6 +14,7 @@
     STRING_COLORS,
     type BoardCard,
     type BoardFilters,
+    type BoardImage,
     type BoardNote,
     type BoardString,
     type EntrySummary,
@@ -40,6 +41,8 @@
     selected: BoardCard | null;
     onopen: (id: string) => void;
     selectedNote: BoardNote | null;
+    selectedImage: BoardImage | null;
+    onremoveimage: (id: string) => void;
     selectedString: BoardString | null;
     /** The names of the selected string's two ends. */
     stringEnds: [string, string] | null;
@@ -68,6 +71,8 @@
     selected,
     onopen,
     selectedNote,
+    selectedImage,
+    onremoveimage,
     selectedString,
     stringEnds,
     tying,
@@ -246,6 +251,16 @@
           <button onclick={() => oneditnote(note.id)}>Edit note</button>
           <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
           <button onclick={() => onremovenote(note.id)}>Delete note</button>
+        </div>
+      </section>
+    {/if}
+    {#if selectedImage}
+      {@const image = selectedImage}
+      <section class="selected" aria-label="Selected image">
+        <h2 class="region-head">Selected image</h2>
+        <div class="row actions">
+          <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
+          <button onclick={() => onremoveimage(image.id)}>Delete image</button>
         </div>
       </section>
     {/if}

@@ -29,6 +29,7 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
     let cover = stored(&mut v, 3, 30);
     let orphan_small = stored(&mut v, 4, 40);
     let orphan_big = stored(&mut v, 5, 400);
+    let on_board = stored(&mut v, 6, 60);
 
     let sha = v.get_media(&inline).unwrap().sha256;
     let stone = v
@@ -44,8 +45,11 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
     v.attach_media(&gone, &in_gallery, None).unwrap();
     v.trash_entry(&gone).unwrap();
     v.set_guide_cover(&g, Some(&cover), None).unwrap();
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    v.create_board_image(&board, &on_board, 0.0, 0.0, 200.0, 200.0)
+        .unwrap();
 
-    // A trashed entry's gallery and an inline reference both count as references.
+    // A trashed entry's gallery, an inline reference, and a board image all count as references.
     let unreferenced = v.unreferenced_media().unwrap();
     let ids: Vec<MediaId> = unreferenced.iter().map(|m| m.id.clone()).collect();
     assert_eq!(
@@ -55,7 +59,7 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
     );
 
     let summary = v.media_summary(None).unwrap();
-    assert_eq!((summary.files, summary.bytes), (5, 500));
+    assert_eq!((summary.files, summary.bytes), (6, 560));
     assert_eq!(
         (summary.unreferenced_files, summary.unreferenced_bytes),
         (2, 440)
@@ -70,8 +74,8 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
         "a zero threshold flags any unused byte"
     );
 
-    // Asking to purge referenced files (a body reference, a cover, a trashed entry's gallery) is
-    // refused quietly; the orphan goes, file and row.
+    // Asking to purge referenced files (a body reference, a cover, a trashed entry's gallery, a
+    // board image) is refused quietly; the orphan goes, file and row.
     let orphan_path = v
         .media_file_path(&v.get_media(&orphan_small).unwrap())
         .unwrap();
@@ -82,6 +86,7 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
             inline.clone(),
             cover.clone(),
             in_gallery.clone(),
+            on_board.clone(),
         ])
         .unwrap();
     assert_eq!((report.removed, report.bytes), (1, 40));
@@ -91,6 +96,9 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
     assert!(v.get_media(&inline).is_ok());
     assert!(v.get_media(&cover).is_ok());
     assert!(v.get_media(&in_gallery).is_ok());
+    let board_path = v.media_file_path(&v.get_media(&on_board).unwrap()).unwrap();
+    assert!(board_path.exists(), "the board image's file stays");
+    assert_eq!(v.board_view(&board).unwrap().images.len(), 1);
     assert_eq!(v.unreferenced_media().unwrap().len(), 1);
 
     // A file already gone from disk is no obstacle.

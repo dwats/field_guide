@@ -3,8 +3,8 @@
 //! are stored (`docs/design.md` section 3): PNG, JPEG, BMP, TIFF, and still GIFs become lossless
 //! WebP, so the hash covers the stored bytes and the same pixels from two formats deduplicate;
 //! animated GIFs, SVG, and WebP are kept as they are. Nothing is deleted on its own: "Clean up
-//! unused media" lists the files no entry body, gallery, or guide cover references and removes
-//! the ones the user confirms.
+//! unused media" lists the files no entry body, gallery, guide cover, or board image references
+//! and removes the ones the user confirms.
 
 use std::collections::HashSet;
 use std::fs;
@@ -466,7 +466,7 @@ impl Vault {
     }
 
     /// Files nothing references: no gallery row of any entry, trashed ones included, no
-    /// `media/<sha>` in any body, and no guide cover. Largest first, so the list leads with what
+    /// `media/<sha>` in any body, no guide cover, and no board image. Largest first, so the list leads with what
     /// a cleanup gains most from.
     pub fn unreferenced_media(&self) -> Result<Vec<Media>> {
         let conn = self.conn();
@@ -477,6 +477,10 @@ impl Vault {
         }
         let mut stmt =
             conn.prepare("SELECT cover_media_id FROM guide WHERE cover_media_id IS NOT NULL")?;
+        for row in stmt.query_map([], |row| row.get::<_, MediaId>(0))? {
+            referenced.insert(row?);
+        }
+        let mut stmt = conn.prepare("SELECT DISTINCT media_id FROM board_image")?;
         for row in stmt.query_map([], |row| row.get::<_, MediaId>(0))? {
             referenced.insert(row?);
         }
@@ -601,7 +605,7 @@ pub(crate) fn media_from_row(row: &Row<'_>) -> rusqlite::Result<Media> {
     })
 }
 
-fn load_media(conn: &Connection, id: &MediaId) -> Result<Media> {
+pub(crate) fn load_media(conn: &Connection, id: &MediaId) -> Result<Media> {
     conn.query_row(
         &format!("SELECT {COLUMNS} FROM media m WHERE m.id = ?1"),
         params![id],

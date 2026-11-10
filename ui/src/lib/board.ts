@@ -1,9 +1,17 @@
 // Geometry and rules for the board page (design section 6): card sizes from image proportions,
 // where an edge meets a card, parallel edges fanning out, the pan-and-zoom viewport, where new
-// cards land, which cards and edges the toggles show, the picker's saved filters, and the notes
-// and strings tied between items. Pure, so it is tested without a DOM.
+// cards land, which cards and edges the toggles show, the picker's saved filters, the notes and
+// images and how they resize, and the strings tied between items. Pure, so it is tested without
+// a DOM.
 
-import type { BoardCard, BoardEdge, BoardFilters, BoardNote, BoardString, StringEnd } from "./api";
+import type {
+  BoardCard,
+  BoardEdge,
+  BoardFilters,
+  BoardString,
+  Media,
+  StringEnd,
+} from "./api";
 import { formatFilter, type ParsedFilter } from "./filter";
 import { findByPath, type TagOption } from "./tags";
 
@@ -285,16 +293,82 @@ export function sameFilters(a: BoardFilters, b: BoardFilters): boolean {
   );
 }
 
-/** What the board has selected: a card (by entry id), a note, or a string. */
-export type Selection = { kind: "entry" | "note" | "string"; id: string } | null;
+/** What the board has selected: a card (by entry id), a note, an image, or a string. */
+export type Selection = { kind: "entry" | "note" | "image" | "string"; id: string } | null;
 
-/** The narrowest a note gets; core refuses less. */
-export const NOTE_MIN_W = 120;
-/** A note's height before the page has measured it. */
-export const NOTE_PLAIN_H = 48;
+/** A note's or a board image's rect: both store their size. */
+export function itemRect(item: Rect): Rect {
+  return { x: item.x, y: item.y, w: item.w, h: item.h };
+}
 
-export function noteRect(note: Pick<BoardNote, "x" | "y" | "w">, height: number): Rect {
-  return { x: note.x, y: note.y, w: note.w, h: height };
+export const noteRect = itemRect;
+export const imageRect = itemRect;
+
+/** The polaroid frame around a board image: the sides and the top, and the deeper bottom band. */
+export const PHOTO_FRAME = 8;
+export const PHOTO_BOTTOM = 28;
+
+/**
+ * A new board image's size: `width` wide, and tall enough that the picture inside the frame
+ * keeps the media's proportions. Square when the media has no dimensions.
+ */
+export function imageSize(media: Pick<Media, "width" | "height">, width: number): Size {
+  if (!media.width || !media.height) return { w: width, h: width };
+  const inner = width - 2 * PHOTO_FRAME;
+  const h = PHOTO_FRAME + Math.round((inner * media.height) / media.width) + PHOTO_BOTTOM;
+  return { w: width, h };
+}
+
+/** A resize handle: a compass point. Corners move two sides, edges one. */
+export type Handle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+export const CORNERS: Handle[] = ["nw", "ne", "se", "sw"];
+export const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+/** Where a handle sits on a rect. */
+export function handlePoint(rect: Rect, handle: Handle): Point {
+  const across = handle.includes("w") ? 0 : handle.includes("e") ? 1 : 0.5;
+  const down = handle.includes("n") ? 0 : handle.includes("s") ? 1 : 0.5;
+  return { x: rect.x + rect.w * across, y: rect.y + rect.h * down };
+}
+
+/**
+ * A rect resized by dragging `handle` by (dx, dy) world units. The side opposite the handle
+ * stays put, so a north or west handle moves `y` or `x`. An edge handle changes one axis. With
+ * `keepRatio`, a corner scales both axes by whichever of them changed more. Neither side goes
+ * below `min`. Sizes and positions are whole units.
+ */
+export function resizeRect(
+  rect: Rect,
+  handle: Handle,
+  dx: number,
+  dy: number,
+  keepRatio: boolean,
+  min: number,
+): Rect {
+  const east = handle.includes("e");
+  const west = handle.includes("w");
+  const north = handle.includes("n");
+  const south = handle.includes("s");
+  let w = east ? rect.w + dx : west ? rect.w - dx : rect.w;
+  let h = south ? rect.h + dy : north ? rect.h - dy : rect.h;
+  if (keepRatio && (east || west) && (north || south) && rect.w > 0 && rect.h > 0) {
+    const sw = w / rect.w;
+    const sh = h / rect.h;
+    let scale = Math.abs(sw - 1) >= Math.abs(sh - 1) ? sw : sh;
+    scale = Math.max(scale, min / rect.w, min / rect.h);
+    w = Math.max(min, Math.round(rect.w * scale));
+    h = Math.max(min, Math.round(rect.h * scale));
+  } else {
+    w = Math.max(min, Math.round(w));
+    h = Math.max(min, Math.round(h));
+  }
+  return {
+    x: west ? rect.x + rect.w - w : rect.x,
+    y: north ? rect.y + rect.h - h : rect.y,
+    w,
+    h,
+  };
 }
 
 /** A note's name for screen readers and titles: its first line without markdown marks. */
@@ -310,22 +384,27 @@ export function noteName(body: string): string {
   return "Empty note";
 }
 
-/** The key an item's rect is filed under: `entry:<id>` or `note:<id>`. */
+/** The key an item's rect is filed under: `entry:<id>`, `note:<id>`, or `image:<id>`. */
 export function endKey(end: StringEnd): string {
   return `${end.kind}:${end.id}`;
 }
 
 /**
  * A string shows when both its ends are drawn: an entry end must be among the shown cards, a
- * note end among the notes.
+ * note end among the notes, an image end among the images.
  */
 export function stringShown(
   string: BoardString,
   shownCards: Set<string>,
   notes: Set<string>,
+  images: Set<string> = new Set(),
 ): boolean {
   const shown = (end: StringEnd) =>
-    end.kind === "entry" ? shownCards.has(end.id) : notes.has(end.id);
+    end.kind === "entry"
+      ? shownCards.has(end.id)
+      : end.kind === "note"
+        ? notes.has(end.id)
+        : images.has(end.id);
   return shown(string.from) && shown(string.to);
 }
 

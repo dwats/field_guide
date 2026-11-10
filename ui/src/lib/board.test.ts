@@ -20,6 +20,9 @@ import {
   sameFilters,
   noteName,
   noteRect,
+  handlePoint,
+  imageSize,
+  resizeRect,
   searchLine,
   stringMidpoint,
   stringPath,
@@ -279,7 +282,73 @@ describe("strings", () => {
     expect(noteName("x".repeat(50))).toBe(`${"x".repeat(39)}...`);
   });
 
-  it("measures a note by its width and its rendered height", () => {
-    expect(noteRect({ x: 5, y: 6, w: 220 }, 90)).toEqual({ x: 5, y: 6, w: 220, h: 90 });
+  it("measures a note by its stored width and height", () => {
+    expect(noteRect({ x: 5, y: 6, w: 220, h: 90 })).toEqual({ x: 5, y: 6, w: 220, h: 90 });
+  });
+
+  it("may end on a board image", () => {
+    const tie: BoardString = {
+      id: "s",
+      board_id: "b",
+      from: { kind: "image", id: "i" },
+      to: { kind: "entry", id: "a" },
+      label: "",
+      color: "red",
+      created_at: "",
+    };
+    expect(stringShown(tie, new Set(["a"]), new Set(), new Set(["i"]))).toBe(true);
+    expect(stringShown(tie, new Set(["a"]), new Set(), new Set())).toBe(false);
+  });
+});
+
+describe("resizing notes and images", () => {
+  const rect = { x: 100, y: 50, w: 200, h: 100 };
+
+  it("moves the far sides from a south-east corner", () => {
+    expect(resizeRect(rect, "se", 30, 20, false, 80)).toEqual({ x: 100, y: 50, w: 230, h: 120 });
+  });
+
+  it("keeps the opposite corner in place from a north-west corner, moving x and y", () => {
+    const out = resizeRect(rect, "nw", 40, -30, false, 80);
+    expect(out).toEqual({ x: 140, y: 20, w: 160, h: 130 });
+    expect(out.x + out.w).toBe(rect.x + rect.w);
+    expect(out.y + out.h).toBe(rect.y + rect.h);
+  });
+
+  it("changes one axis from an edge, even with the ratio kept", () => {
+    expect(resizeRect(rect, "e", 50, 70, false, 80)).toEqual({ x: 100, y: 50, w: 250, h: 100 });
+    expect(resizeRect(rect, "s", 50, 70, true, 80)).toEqual({ x: 100, y: 50, w: 200, h: 170 });
+    expect(resizeRect(rect, "w", -20, 0, false, 80)).toEqual({ x: 80, y: 50, w: 220, h: 100 });
+    expect(resizeRect(rect, "n", 0, 10, false, 80)).toEqual({ x: 100, y: 60, w: 200, h: 90 });
+  });
+
+  it("keeps the proportions from a corner by the axis that changed more", () => {
+    // Width doubles, height barely moves: the width wins.
+    expect(resizeRect(rect, "se", 200, 5, true, 40)).toEqual({ x: 100, y: 50, w: 400, h: 200 });
+    // Shrinking by height alone still shrinks both.
+    expect(resizeRect(rect, "se", 0, -50, true, 40)).toEqual({ x: 100, y: 50, w: 100, h: 50 });
+    // From the north-west the bottom-right corner stays.
+    expect(resizeRect(rect, "nw", -100, 0, true, 40)).toEqual({ x: 0, y: 0, w: 300, h: 150 });
+  });
+
+  it("stops at the minimum on both axes", () => {
+    expect(resizeRect(rect, "se", -500, -500, false, 80)).toEqual({ x: 100, y: 50, w: 80, h: 80 });
+    const nw = resizeRect(rect, "nw", 500, 500, false, 80);
+    expect(nw).toEqual({ x: 220, y: 70, w: 80, h: 80 });
+    // With the ratio kept, the shorter side meets the minimum and the other follows.
+    expect(resizeRect(rect, "se", -500, -500, true, 40)).toEqual({ x: 100, y: 50, w: 80, h: 40 });
+  });
+
+  it("puts handles on the corners and the middle of each edge", () => {
+    expect(handlePoint(rect, "nw")).toEqual({ x: 100, y: 50 });
+    expect(handlePoint(rect, "se")).toEqual({ x: 300, y: 150 });
+    expect(handlePoint(rect, "n")).toEqual({ x: 200, y: 50 });
+    expect(handlePoint(rect, "w")).toEqual({ x: 100, y: 100 });
+  });
+
+  it("sizes a new image so the picture inside the frame keeps the media's proportions", () => {
+    // 184 px of picture across, so a 3:2 image is 123 tall, plus 8 above and 28 below.
+    expect(imageSize({ width: 300, height: 200 }, 200)).toEqual({ w: 200, h: 159 });
+    expect(imageSize({ width: null, height: null }, 200)).toEqual({ w: 200, h: 200 });
   });
 });

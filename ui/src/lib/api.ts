@@ -281,7 +281,7 @@ export interface BoardEdge {
   external: boolean;
 }
 
-/** A free-standing markdown note on a board; the height follows the content. */
+/** A free-standing markdown note on a board; content taller than `h` scrolls inside it. */
 export interface BoardNote {
   id: Id;
   board_id: Id;
@@ -289,6 +289,7 @@ export interface BoardNote {
   x: number;
   y: number;
   w: number;
+  h: number;
   color: string;
   created_at: string;
   updated_at: string;
@@ -300,12 +301,13 @@ export interface BoardNoteUpdate {
   x?: number;
   y?: number;
   w?: number;
+  h?: number;
   color?: string;
 }
 
-export type EndKind = "entry" | "note";
+export type EndKind = "entry" | "note" | "image";
 
-/** One end of a string: an entry card (its entry id) or a note (its note id). */
+/** One end of a string: an entry card (its entry id), a note, or a board image (their ids). */
 export interface StringEnd {
   kind: EndKind;
   id: Id;
@@ -336,6 +338,30 @@ export interface BoardNoteView {
 
 export const NOTE_COLORS = ["yellow", "pink", "blue", "green", "white"] as const;
 export const STRING_COLORS = ["red", "blue", "green", "black"] as const;
+export const NOTE_DEFAULT_SIZE = 200;
+export const NOTE_MIN_SIZE = 80;
+export const IMAGE_MIN_SIZE = 40;
+export const IMAGE_DEFAULT_WIDTH = 200;
+
+/** A picture placed on a board by itself, drawn in a polaroid frame. */
+export interface BoardImage {
+  id: Id;
+  board_id: Id;
+  media: Media;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  created_at: string;
+}
+
+/** Only the fields that are set change. */
+export interface BoardImageUpdate {
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+}
 
 export interface BoardView {
   board: Board;
@@ -343,6 +369,7 @@ export interface BoardView {
   edges: BoardEdge[];
   notes: BoardNoteView[];
   strings: BoardString[];
+  images: BoardImage[];
 }
 
 // ---- relations and vocabulary (used from phase 5 on) ----
@@ -567,7 +594,7 @@ export const api = {
   setBoardPositions: (id: Id, nodes: BoardNode[]) =>
     invoke<void>("set_board_positions", { id, nodes }),
   removeBoardNode: (id: Id, entry_id: Id) => invoke<void>("remove_board_node", { id, entry_id }),
-  /** A new note, 220 wide and yellow, with its top-left corner at (x, y). */
+  /** A new note, 200 by 200 and yellow, with its top-left corner at (x, y). */
   createBoardNote: (board_id: Id, body_md: string, x: number, y: number) =>
     invoke<BoardNote>("create_board_note", { board_id, body_md, x, y }),
   updateBoardNote: (id: Id, update: BoardNoteUpdate) =>
@@ -581,6 +608,13 @@ export const api = {
   updateBoardString: (id: Id, update: BoardStringUpdate) =>
     invoke<BoardString>("update_board_string", { id, update }),
   deleteBoardString: (id: Id) => invoke<void>("delete_board_string", { id }),
+  /** Places stored media on a board with its top-left corner at (x, y). */
+  createBoardImage: (board_id: Id, media_id: Id, x: number, y: number, w: number, h: number) =>
+    invoke<BoardImage>("create_board_image", { board_id, media_id, x, y, w, h }),
+  updateBoardImage: (id: Id, update: BoardImageUpdate) =>
+    invoke<BoardImage>("update_board_image", { id, update }),
+  /** Deletes the board image and every string tied to it; the media stays. */
+  deleteBoardImage: (id: Id) => invoke<void>("delete_board_image", { id }),
 
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>

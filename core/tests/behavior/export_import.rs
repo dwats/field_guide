@@ -27,8 +27,8 @@ const PNG: &[u8] = b"\x89PNG stand-in bytes for a screenshot";
 /// Two guides exercising every exported entity: colored nested tags, global tags, a cover, entries
 /// with aliases and inline plus gallery media, slug collisions, a trashed entry with an edge,
 /// vocabulary with inverses and defaults, ordered qualifiers, a symmetric edge, a cross-guide
-/// edge, and a board with filters, positions, a cork background, a note with a task list, and
-/// strings from a card to the note and between two cards.
+/// edge, and a board with filters, positions, a cork background, a resized note with a task list,
+/// an image, and strings from a card to the note, between two cards, and from the image to a card.
 struct Fixture {
     dir: TempDir,
     v: Vault,
@@ -201,6 +201,7 @@ fn fixture() -> Fixture {
         &note.id,
         &fieldguide_core::board::BoardNoteUpdate {
             w: Some(260.0),
+            h: Some(180.0),
             color: Some("green".to_owned()),
             ..Default::default()
         },
@@ -218,6 +219,12 @@ fn fixture() -> Fixture {
     )
     .unwrap();
     v.create_board_string(&board, &card(&cobble), &card(&stone), "")
+        .unwrap();
+    // The stored file, so the archive has bytes to carry for the image.
+    let photo = v
+        .create_board_image(&board, &png.id, 40.0, 50.0, 200.0, 150.0)
+        .unwrap();
+    v.create_board_string(&board, &image_end(&photo.id), &card(&cobble), "looks like")
         .unwrap();
 
     Fixture {
@@ -242,6 +249,13 @@ fn card(id: &EntryId) -> StringEnd {
 fn note_end(id: &fieldguide_core::BoardNoteId) -> StringEnd {
     StringEnd {
         kind: EndKind::Note,
+        id: id.0.clone(),
+    }
+}
+
+fn image_end(id: &fieldguide_core::BoardImageId) -> StringEnd {
+    StringEnd {
+        kind: EndKind::Image,
         id: id.0.clone(),
     }
 }
@@ -289,9 +303,12 @@ struct BoardSnap {
     show_mentions: bool,
     background: Background,
     nodes: Vec<(String, f64, f64)>,
-    /// Body, x, y, width, color.
-    notes: Vec<(String, f64, f64, f64, String)>,
-    /// From, to, label, color; an entry end is its title and a note end is `note:<body>`.
+    /// Body, x, y, width, height, color.
+    notes: Vec<(String, f64, f64, f64, f64, String)>,
+    /// Media hash, x, y, width, height.
+    images: Vec<(String, f64, f64, f64, f64)>,
+    /// From, to, label, color; an entry end is its title, a note end is `note:<body>`, and an
+    /// image end is `image:<sha>`.
     strings: Vec<(String, String, String, String)>,
 }
 
@@ -376,20 +393,30 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             .collect();
         nodes.sort_by(|a, b| a.0.cmp(&b.0));
         let view = v.board_view(&b.id).unwrap();
-        let mut notes: Vec<(String, f64, f64, f64, String)> = view
+        let mut notes: Vec<(String, f64, f64, f64, f64, String)> = view
             .notes
             .iter()
             .map(|n| {
                 let n = &n.note;
-                (n.body_md.clone(), n.x, n.y, n.w, n.color.clone())
+                (n.body_md.clone(), n.x, n.y, n.w, n.h, n.color.clone())
             })
             .collect();
         notes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut images: Vec<(String, f64, f64, f64, f64)> = view
+            .images
+            .iter()
+            .map(|i| (i.media.sha256.clone(), i.x, i.y, i.w, i.h))
+            .collect();
+        images.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let end_name = |end: &StringEnd| match end.kind {
             EndKind::Entry => v.get_entry(&EntryId(end.id.clone())).unwrap().title,
             EndKind::Note => {
                 let note = view.notes.iter().find(|n| n.note.id.0 == end.id).unwrap();
                 format!("note:{}", note.note.body_md)
+            }
+            EndKind::Image => {
+                let image = view.images.iter().find(|i| i.id.0 == end.id).unwrap();
+                format!("image:{}", image.media.sha256)
             }
         };
         let mut strings: Vec<(String, String, String, String)> = view
@@ -415,6 +442,7 @@ fn snapshot_guide(v: &Vault, guide_id: &GuideId, external: bool) -> GuideSnap {
             background: b.filters.background,
             nodes,
             notes,
+            images,
             strings,
         });
     }
@@ -1412,9 +1440,10 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
     assert_eq!(file.nodes.len(), 2);
     assert!(file.nodes.iter().all(|n| n.entry_id != gone.0));
     assert_eq!(file.notes.len(), 1);
+    assert_eq!(file.images.len(), 1);
     assert_eq!(
         file.strings.len(),
-        2,
+        3,
         "the string to the trashed entry is left out"
     );
     assert!(
@@ -1456,6 +1485,21 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
             "",
         )
         .unwrap();
+    let local_media = target.board_view(&imported[0].id).unwrap().images[0]
+        .media
+        .id
+        .clone();
+    let local_image = target
+        .create_board_image(&imported[0].id, &local_media, 0.0, 0.0, 90.0, 90.0)
+        .unwrap();
+    target
+        .create_board_string(
+            &imported[0].id,
+            &image_end(&local_image.id),
+            &card(&moved),
+            "",
+        )
+        .unwrap();
     let archive_id = parsed.guides[0].guide.id.clone();
     let second = import_all(
         &mut target,
@@ -1479,10 +1523,89 @@ fn a_board_exports_without_its_trashed_members_and_a_second_import_replaces_it()
     let positions: Vec<(f64, f64)> = layout.iter().map(|n| (n.x, n.y)).collect();
     assert!(positions.contains(&(1.0, 2.0)));
     assert!(positions.contains(&(3.5, -4.0)));
-    // Notes and strings are the archive's again: the local ones are gone and nothing doubled.
+    // Notes, images, and strings are the archive's again: the local ones are gone and nothing
+    // doubled.
     let after = snapshot_guide(&target, &local, false).boards;
     assert_eq!(after[0].notes, before[0].notes);
+    assert_eq!(after[0].images, before[0].images);
     assert_eq!(after[0].strings, before[0].strings);
     assert_eq!(after[0].notes.len(), 1);
-    assert_eq!(after[0].strings.len(), 2);
+    assert_eq!(after[0].images.len(), 1);
+    assert_eq!(after[0].strings.len(), 3);
+}
+
+#[test]
+fn a_board_image_carries_its_media_file_even_when_no_entry_uses_it() {
+    let dir = tempdir().unwrap();
+    let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
+    let g = guide(&mut v, "Minecraft");
+    let stone = entry(&mut v, &g, "Stone", "No pictures here.");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    v.add_board_nodes(
+        &board,
+        &[BoardNode {
+            entry_id: stone.clone(),
+            x: 0.0,
+            y: 0.0,
+        }],
+    )
+    .unwrap();
+    let photo = v
+        .store_media(PNG, "png", "image/png", MediaDimensions::default())
+        .unwrap();
+    let image = v
+        .create_board_image(&board, &photo.id, 40.0, 50.0, 200.0, 150.0)
+        .unwrap();
+    v.create_board_string(&board, &image_end(&image.id), &card(&stone), "")
+        .unwrap();
+    let archive = export_to(
+        &v,
+        &ExportScope::Guide { id: g.clone() },
+        dir.path(),
+        "guide.zip",
+    );
+
+    let media_path = format!("media/{}.png", photo.sha256);
+    assert_eq!(
+        entries(&archive).get(&media_path).map(Vec::as_slice),
+        Some(PNG),
+        "the archive carries the board image's file"
+    );
+    let parsed = import::read_archive(&archive).unwrap();
+    assert_eq!(parsed.guides[0].boards[0].images[0].media, media_path);
+
+    let (_d, mut target) = empty_vault();
+    let report = import_all(&mut target, &archive, &[], &ImportOptions::default());
+    assert_eq!(report.media_added, 1);
+    let local = target.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    assert_eq!(
+        snapshot_guide(&target, &local, false),
+        snapshot_guide(&v, &g, false)
+    );
+    assert_eq!(media_files(&target), media_files(&v));
+
+    // An archive whose image file did not travel drops the image and the string tied to it.
+    let stripped = dir.path().join("stripped.zip");
+    rewrite_entry(
+        &archive,
+        &stripped,
+        "guides/minecraft/boards/puzzle.json",
+        |bytes| {
+            String::from_utf8(bytes.to_vec())
+                .unwrap()
+                .replace(&photo.sha256, &"0".repeat(64))
+                .into_bytes()
+        },
+    );
+    let (_d2, mut bare) = empty_vault();
+    import_all(&mut bare, &stripped, &[], &ImportOptions::default());
+    let local = bare.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    let boards = snapshot_guide(&bare, &local, false).boards;
+    assert!(boards[0].images.is_empty());
+    assert!(boards[0].strings.is_empty());
+    assert_eq!(boards[0].nodes.len(), 1);
 }

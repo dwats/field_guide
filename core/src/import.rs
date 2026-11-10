@@ -16,8 +16,9 @@ use crate::archive::{
     VerbFile,
 };
 use crate::board::{
-    self, BoardFilters, BoardNode, BoardNote, BoardString, EndKind, NOTE_COLORS,
-    NOTE_DEFAULT_WIDTH, NOTE_MIN_WIDTH, STRING_COLORS, StringEnd,
+    self, BoardFilters, BoardImage, BoardNode, BoardNote, BoardString, EndKind,
+    IMAGE_DEFAULT_WIDTH, IMAGE_MIN_SIZE, NOTE_COLORS, NOTE_DEFAULT_SIZE, NOTE_MIN_SIZE,
+    STRING_COLORS, StringEnd,
 };
 use crate::entry;
 use crate::frontmatter;
@@ -28,8 +29,8 @@ use crate::relation::{self, LabelSpec, NewQualifier, QualifierValue};
 use crate::similarity::{self, Similarity};
 use crate::vocabulary::{Direction, NewQualifierLabel, NewVerb, Verb};
 use crate::{
-    BoardNoteId, BoardStringId, EntryId, Error, GuideId, QualifierLabelId, RelationId, Result,
-    TagId, Vault, VerbId, clock, fsutil, wikilink,
+    BoardImageId, BoardNoteId, BoardStringId, EntryId, Error, GuideId, QualifierLabelId,
+    RelationId, Result, TagId, Vault, VerbId, clock, fsutil, wikilink,
 };
 
 /// A parsed archive, held in memory until it is applied.
@@ -1246,7 +1247,7 @@ impl Vault {
     ) -> Result<()> {
         for file in &ag.boards {
             // A board is identified by its name within the guide: importing again replaces the
-            // saved filters, positions, notes, and strings instead of adding a copy.
+            // saved filters, positions, notes, images, and strings instead of adding a copy.
             let existing = self
                 .list_boards(&context.guide_id)?
                 .into_iter()
@@ -1258,6 +1259,10 @@ impl Vault {
                     }
                     self.conn().execute(
                         "DELETE FROM board_note WHERE board_id = ?1",
+                        rusqlite::params![board.id],
+                    )?;
+                    self.conn().execute(
+                        "DELETE FROM board_image WHERE board_id = ?1",
                         rusqlite::params![board.id],
                     )?;
                     self.conn().execute(
@@ -1321,10 +1326,12 @@ impl Vault {
                 } else {
                     NOTE_COLORS[0].to_owned()
                 };
-                let w = if note.w.is_finite() && note.w >= NOTE_MIN_WIDTH {
-                    note.w
-                } else {
-                    NOTE_DEFAULT_WIDTH
+                let size = |n: f64| {
+                    if n.is_finite() && n >= NOTE_MIN_SIZE {
+                        n
+                    } else {
+                        NOTE_DEFAULT_SIZE
+                    }
                 };
                 let finite = |n: f64| if n.is_finite() { n } else { 0.0 };
                 board::insert_note(
@@ -1335,13 +1342,55 @@ impl Vault {
                         body_md: note.body_md.clone(),
                         x: finite(note.x),
                         y: finite(note.y),
-                        w,
+                        w: size(note.w),
+                        h: size(note.h),
                         color,
                         created_at: note.created_at.clone(),
                         updated_at: note.updated_at.clone(),
                     },
                 )?;
                 note_ids.insert(note.id.as_str(), id);
+            }
+
+            // Images follow the notes' id rule. The media row was added from the archive's
+            // files before any guide; an image whose file did not travel has nothing to show.
+            let mut image_ids: HashMap<&str, BoardImageId> = HashMap::new();
+            for image in &file.images {
+                let Some(media) = sha_from_entry(&image.media)
+                    .map(|sha256| self.find_media_by_hash(&sha256))
+                    .transpose()?
+                    .flatten()
+                else {
+                    continue;
+                };
+                let wanted = BoardImageId(image.id.clone());
+                let id = if board::image_exists(self.conn(), &wanted)? {
+                    BoardImageId::generate()
+                } else {
+                    wanted
+                };
+                let size = |n: f64| {
+                    if n.is_finite() && n >= IMAGE_MIN_SIZE {
+                        n
+                    } else {
+                        IMAGE_DEFAULT_WIDTH
+                    }
+                };
+                let finite = |n: f64| if n.is_finite() { n } else { 0.0 };
+                board::insert_image(
+                    self.conn(),
+                    &BoardImage {
+                        id: id.clone(),
+                        board_id: board.id.clone(),
+                        media,
+                        x: finite(image.x),
+                        y: finite(image.y),
+                        w: size(image.w),
+                        h: size(image.h),
+                        created_at: image.created_at.clone(),
+                    },
+                )?;
+                image_ids.insert(image.id.as_str(), id);
             }
 
             for string in &file.strings {
@@ -1353,6 +1402,7 @@ impl Vault {
                             .map(|id| id.0.clone())
                             .unwrap_or_else(|| file_end.id.clone()),
                         EndKind::Note => note_ids.get(file_end.id.as_str())?.0.clone(),
+                        EndKind::Image => image_ids.get(file_end.id.as_str())?.0.clone(),
                     };
                     Some(StringEnd { kind, id })
                 };

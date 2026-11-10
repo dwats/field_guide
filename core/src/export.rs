@@ -15,9 +15,9 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use crate::archive::{
-    self, BoardFile, BoardFiltersFile, BoardNodeFile, BoardNoteFile, BoardStringFile, Endpoint,
-    GuideFile, Manifest, QualifierLabelFile, QualifierLine, RelationLine, ScopeRecord,
-    StringEndFile, TagTree, VerbFile, VerbRef,
+    self, BoardFile, BoardFiltersFile, BoardImageFile, BoardNodeFile, BoardNoteFile,
+    BoardStringFile, Endpoint, GuideFile, Manifest, QualifierLabelFile, QualifierLine,
+    RelationLine, ScopeRecord, StringEndFile, TagTree, VerbFile, VerbRef,
 };
 use crate::board::{EndKind, StringEnd};
 use crate::frontmatter::{self, FrontMatter};
@@ -374,6 +374,11 @@ impl Vault {
                                 .unwrap_or(false)
                         })
                         .collect::<Vec<_>>();
+                    // A board image carries its file even when no entry uses it.
+                    let images = self.board_images(&board.id)?;
+                    for image in &images {
+                        media_wanted.insert(image.media.sha256.clone(), image.media.ext.clone());
+                    }
                     let file = BoardFile {
                         id: board.id.0.clone(),
                         name: board.name.clone(),
@@ -407,6 +412,7 @@ impl Vault {
                                 x: n.x,
                                 y: n.y,
                                 w: n.w,
+                                h: n.h,
                                 color: n.color,
                                 created_at: n.created_at,
                                 updated_at: n.updated_at,
@@ -418,7 +424,7 @@ impl Vault {
                             .into_iter()
                             .filter(|s| {
                                 [&s.from, &s.to].iter().all(|end| {
-                                    end.kind == EndKind::Note
+                                    end.kind != EndKind::Entry
                                         || nodes.iter().any(|n| n.entry_id.0 == end.id)
                                 })
                             })
@@ -429,6 +435,18 @@ impl Vault {
                                 label: s.label,
                                 color: s.color,
                                 created_at: s.created_at,
+                            })
+                            .collect(),
+                        images: images
+                            .into_iter()
+                            .map(|i| BoardImageFile {
+                                id: i.id.0,
+                                media: archive::media_entry(&i.media.sha256, &i.media.ext),
+                                x: i.x,
+                                y: i.y,
+                                w: i.w,
+                                h: i.h,
+                                created_at: i.created_at,
                             })
                             .collect(),
                     };

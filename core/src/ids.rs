@@ -99,3 +99,7 @@ id_type!(
     /// Identifies a string: a tie between two items on one board.
     BoardStringId
 );
+id_type!(
+    /// Identifies an image placed on one board.
+    BoardImageId
+);
