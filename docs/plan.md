@@ -102,9 +102,9 @@ Done when: a board with a few hundred cards stays responsive while dragging; reo
 
 ## Phase 7b: Board notes and strings
 
-Decided 2026-11-09 after the first boards walkthrough: free-standing markdown notes with working check boxes, strings between any two items with a label and a color, and a per-board background (`docs/design.md` section 6). Schema version 5 adds `board_note` and `board_string`; the board file in an archive carries both.
+Decided 2026-11-09 after the first boards walkthrough: free-standing markdown notes with working check boxes, strings between any two items with a label and a color, and a per-board background (`docs/design.md` section 6). Schema version 5 adds `board_note` and `board_string`; the board file in an archive carries both. Second round the same day: notes sized and edited after Lucidchart, and images dropped onto the board in a polaroid frame (`board_image`, schema version 6).
 
-Done when: a note's check box flips the marker in its markdown and survives a reload; a string between a card and a note follows both when they move and goes when either is removed; export and import carry notes, strings, and the background without loss.
+Done when: a note's check box flips the marker in its markdown and survives a reload; a string between a card and a note follows both when they move and goes when either is removed; a dropped image sits where it was dropped after a reload and cleanup never lists its file; export and import carry notes, images, strings, and the background without loss.
 
 ## Phase 8: Media
 
