@@ -599,6 +599,9 @@
       const made = await api.createBoardString(board.id, from, to, "");
       await load();
       select({ kind: "string", id: made.id });
+      // Focus goes where the selection went, so the keyboard acts on what the panel shows.
+      await tick();
+      canvas?.focusString(made.id);
     } catch (e) {
       notify(errorMessage(e), { kind: "error" });
     }
@@ -752,6 +755,7 @@
             {#each BACKGROUNDS as option (option.value)}
               <button
                 role="menuitemradio"
+                aria-label="Background: {option.label}"
                 aria-checked={filters.background === option.value}
                 onclick={() => {
                   close();

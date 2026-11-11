@@ -243,6 +243,16 @@
     root?.focus({ preventScroll: true });
   }
 
+  /**
+   * Puts focus on a string, so focus and the selection agree after one is tied: Delete then
+   * removes the string the panel shows, not the item that was focused before.
+   */
+  export function focusString(id: string) {
+    root
+      ?.querySelector<SVGGElement>(`[data-string-id="${CSS.escape(id)}"]`)
+      ?.focus({ preventScroll: true });
+  }
+
   /** Puts focus on a card, a note, or an image, for example after its note was saved. */
   export function focusItem(item: StringEnd) {
     root
@@ -736,6 +746,7 @@
         <g
           class="string string-{twine.string.color}"
           class:selected
+          data-string-id={twine.string.id}
           role="button"
           tabindex="0"
           aria-pressed={selected}
