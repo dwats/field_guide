@@ -16,6 +16,7 @@ import {
   intersects,
   labelAngle,
   pickerFilters,
+  placeFree,
   placeNear,
   sameFilters,
   noteName,
@@ -165,6 +166,18 @@ describe("placing new cards", () => {
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) expect(intersects(rects[i], rects[j])).toBe(false);
     }
+  });
+});
+
+describe("placing one new item", () => {
+  it("centers it on the point, or takes the nearest free cell", () => {
+    const size = { w: 200, h: 200 };
+    expect(placeFree({ x: 500, y: 400 }, size, [])).toEqual({ x: 400, y: 300 });
+    const taken = [{ x: 400, y: 300, w: 200, h: 200 }];
+    const spot = placeFree({ x: 500, y: 400 }, size, taken);
+    expect(spot).not.toEqual({ x: 400, y: 300 });
+    expect(intersects({ ...spot, ...size }, taken[0])).toBe(false);
+    expect(Math.abs(spot.x - 400) + Math.abs(spot.y - 300)).toBe(224);
   });
 });
 

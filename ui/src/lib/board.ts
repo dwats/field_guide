@@ -228,6 +228,23 @@ export function placeNear(at: Point, count: number, taken: Rect[]): Point[] {
   return out;
 }
 
+/**
+ * Where one new item of `size` lands: centered on `at` when nothing is there, else on the nearest
+ * free cell of a grid of its own size around that point, so a note made with the plus and an
+ * image pasted right after do not cover each other. Returns the top-left corner.
+ */
+export function placeFree(at: Point, size: Size, taken: Rect[]): Point {
+  const origin = { x: at.x - size.w / 2, y: at.y - size.h / 2 };
+  const cell = { w: size.w + 24, h: size.h + 24 };
+  for (let ring = 0; ring < 60; ring++) {
+    for (const [cx, cy] of ringCells(ring)) {
+      const candidate = { x: origin.x + cx * cell.w, y: origin.y + cy * cell.h, ...size };
+      if (!taken.some((r) => intersects(r, candidate))) return { x: candidate.x, y: candidate.y };
+    }
+  }
+  return origin;
+}
+
 /** The cells at Chebyshev distance `ring` from the origin cell, nearest first. */
 function ringCells(ring: number): [number, number][] {
   const cells: [number, number][] = [];

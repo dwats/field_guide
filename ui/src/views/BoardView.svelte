@@ -43,6 +43,7 @@
     imageSize,
     noteName,
     noteRect,
+    placeFree,
     placeNear,
     stringShown,
     toWorld,
@@ -241,15 +242,19 @@
     if (!next || next.kind === "string") tying = false;
   }
 
-  function fit() {
-    const size = canvas?.size();
-    if (!size || size.w === 0) return;
-    const rects = [
+  /** Every item's rect in world units, for fitting and for finding free space. */
+  function allRects(): Rect[] {
+    return [
       ...shownCards.map(cardRect),
       ...notes.map((n) => noteRect(n.note)),
       ...images.map(imageRect),
     ];
-    view = fitView(rects, size);
+  }
+
+  function fit() {
+    const size = canvas?.size();
+    if (!size || size.w === 0) return;
+    view = fitView(allRects(), size);
   }
 
   function actualSize() {
@@ -439,9 +444,10 @@
   /** A new, empty note in the middle of the window, open for writing. */
   async function createNote() {
     if (!board) return;
-    const at = middle();
-    const x = Math.round(at.x - NOTE_DEFAULT_SIZE / 2);
-    const y = Math.round(at.y - NOTE_DEFAULT_SIZE / 2);
+    // Around the middle of the window, on free space, so two notes in a row do not overlap.
+    const spot = placeFree(middle(), { w: NOTE_DEFAULT_SIZE, h: NOTE_DEFAULT_SIZE }, allRects());
+    const x = Math.round(spot.x);
+    const y = Math.round(spot.y);
     try {
       const note = await api.createBoardNote(board.id, "", x, y);
       await load();
@@ -525,7 +531,10 @@
   async function addImages(sources: Array<{ path: string } | File>, at: DropPoint | null) {
     if (!board || sources.length === 0) return;
     const target = board.id;
-    const origin: Point = (at && canvas?.worldAt(at)) || middle();
+    // A drop lands where it was dropped, several in a cascade; a paste takes free space around
+    // the middle of the window, so it does not cover the note or image that was there first.
+    const dropped: Point | null = at ? (canvas?.worldAt(at) ?? null) : null;
+    const occupied = allRects();
     let last: BoardImage | null = null;
     let failure = "";
     for (const [i, source] of sources.entries()) {
@@ -533,9 +542,13 @@
         const media: Media =
           "path" in source ? await ingestPath(source.path) : await ingestFile(source);
         const { w, h } = imageSize(media, IMAGE_DEFAULT_WIDTH);
-        const x = Math.round(origin.x - w / 2 + i * CASCADE);
-        const y = Math.round(origin.y - h / 2 + i * CASCADE);
+        const spot = dropped
+          ? { x: dropped.x - w / 2 + i * CASCADE, y: dropped.y - h / 2 + i * CASCADE }
+          : placeFree(middle(), { w, h }, occupied);
+        const x = Math.round(spot.x);
+        const y = Math.round(spot.y);
         last = await api.createBoardImage(target, media.id, x, y, w, h);
+        occupied.push({ x, y, w, h });
       } catch (e) {
         failure = errorMessage(e);
         break;
@@ -879,7 +892,7 @@
   .header h1 {
     flex: 0 1 auto;
     margin: 0;
-    min-width: 0;
+    min-width: 4em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -889,8 +902,12 @@
     flex: none;
     white-space: nowrap;
   }
+  /* The counts give way before the name does. */
   .count {
-    flex: none;
+    flex: 0 2 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: var(--small);
     white-space: nowrap;
   }
