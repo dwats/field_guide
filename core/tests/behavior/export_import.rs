@@ -1609,3 +1609,76 @@ fn a_board_image_carries_its_media_file_even_when_no_entry_uses_it() {
     assert!(boards[0].strings.is_empty());
     assert_eq!(boards[0].nodes.len(), 1);
 }
+
+#[test]
+fn an_image_used_only_in_a_board_note_travels_with_the_guide() {
+    let dir = tempdir().unwrap();
+    let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
+    let g = guide(&mut v, "Puzzles");
+    let picture = v
+        .store_media(PNG, "png", "image/png", MediaDimensions::default())
+        .unwrap();
+    let board = v.create_board(&g, "Clues").unwrap().id;
+    let body = format!("The map: ![map](media/{}.png)", picture.sha256);
+    v.create_board_note(&board, &body, 0.0, 0.0).unwrap();
+    assert!(
+        v.unreferenced_media().unwrap().is_empty(),
+        "cleanup lists nothing before export"
+    );
+
+    let archive = export_to(&v, &ExportScope::Guide { id: g }, dir.path(), "g.zip");
+    let media_entry = format!("media/{}.png", picture.sha256);
+    assert!(entries(&archive).contains_key(&media_entry));
+
+    let (_target_dir, mut target) = empty_vault();
+    let report = import_all(&mut target, &archive, &[], &ImportOptions::default());
+    assert_eq!(report.media_added, 1);
+    let imported = target
+        .find_media_by_hash(&picture.sha256)
+        .unwrap()
+        .expect("the note's image was imported");
+    let path = target.media_file_path(&imported).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), PNG);
+    assert!(target.unreferenced_media().unwrap().is_empty());
+
+    let guide_id = target.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    let board_id = target.list_boards(&guide_id).unwrap()[0].id.clone();
+    let notes = target.board_view(&board_id).unwrap().notes;
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].note.body_md, body);
+    assert!(
+        notes[0]
+            .html
+            .contains(&format!("<img src=\"{media_entry}\"")),
+        "the note renders its image: {}",
+        notes[0].html
+    );
+}
+
+#[test]
+fn importing_a_board_keeps_the_position_of_an_entry_the_vault_holds_in_the_trash() {
+    let dir = tempdir().unwrap();
+    let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
+    let g = guide(&mut v, "Minecraft");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let board = v.create_board(&g, "Overview").unwrap().id;
+    v.set_board_position(&board, &stone, 30.0, 40.0).unwrap();
+    let archive = export_to(&v, &ExportScope::Guide { id: g }, dir.path(), "g.zip");
+
+    let (_target_dir, mut target) = empty_vault();
+    import_all(&mut target, &archive, &[], &ImportOptions::default());
+    target.trash_entry(&stone).unwrap();
+    // Importing again replaces the board; the trashed member's node comes back, hidden.
+    import_all(&mut target, &archive, &[], &ImportOptions::default());
+    let guide_id = target.list_guides(&Default::default()).unwrap()[0]
+        .id
+        .clone();
+    let board_id = target.list_boards(&guide_id).unwrap()[0].id.clone();
+    assert!(target.board_view(&board_id).unwrap().cards.is_empty());
+    target.restore_entry(&stone).unwrap();
+    let layout = target.board_layout(&board_id).unwrap();
+    assert_eq!(layout.len(), 1);
+    assert_eq!((layout[0].x, layout[0].y), (30.0, 40.0));
+}

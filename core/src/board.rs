@@ -534,14 +534,15 @@ impl Vault {
     }
 
     /// Puts entries on a board at the given positions. An entry already on the board keeps its
-    /// place. Returns how many were added.
+    /// place. An entry that is missing or in the trash refuses the whole call. Returns how many
+    /// were added.
     pub fn add_board_nodes(&mut self, id: &BoardId, nodes: &[BoardNode]) -> Result<usize> {
         let tx = self.savepoint()?;
         load_board(&tx, id)?;
         let mut added = 0;
         for node in nodes {
             check_position(node)?;
-            entry::load_summary(&tx, &node.entry_id)?;
+            check_joinable(&tx, &node.entry_id)?;
             added += tx.execute(
                 "INSERT INTO board_node (board_id, entry_id, x, y) VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT (board_id, entry_id) DO NOTHING",
@@ -576,13 +577,46 @@ impl Vault {
         )
     }
 
-    /// Saves several positions at once, adding entries that are not on the board yet.
+    /// Saves several positions at once, adding entries that are not on the board yet. Adding
+    /// follows `add_board_nodes`: a missing or trashed entry refuses the call. A member already
+    /// on the board may be moved while it is in the trash.
     pub fn set_board_positions(&mut self, id: &BoardId, nodes: &[BoardNode]) -> Result<()> {
+        self.write_positions(id, nodes, false)
+    }
+
+    /// `set_board_positions` for import, which also admits entries in the trash: an archive's
+    /// node for an entry the vault holds in the trash is a position kept for restore, like a
+    /// member trashed after it was placed (design section 6).
+    pub(crate) fn import_board_positions(
+        &mut self,
+        id: &BoardId,
+        nodes: &[BoardNode],
+    ) -> Result<()> {
+        self.write_positions(id, nodes, true)
+    }
+
+    fn write_positions(
+        &mut self,
+        id: &BoardId,
+        nodes: &[BoardNode],
+        admit_trashed: bool,
+    ) -> Result<()> {
         let tx = self.savepoint()?;
         load_board(&tx, id)?;
         for node in nodes {
             check_position(node)?;
-            entry::load_summary(&tx, &node.entry_id)?;
+            // A member trashed after it was placed keeps its position for restore (design
+            // section 6), so only an entry that is not on the board yet has to be live.
+            let member: bool = tx.query_row(
+                "SELECT EXISTS (SELECT 1 FROM board_node WHERE board_id = ?1 AND entry_id = ?2)",
+                params![id, node.entry_id],
+                |row| row.get(0),
+            )?;
+            if admit_trashed || member {
+                entry::load_summary(&tx, &node.entry_id)?;
+            } else {
+                check_joinable(&tx, &node.entry_id)?;
+            }
             tx.execute(
                 "INSERT INTO board_node (board_id, entry_id, x, y) VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT (board_id, entry_id) DO UPDATE SET x = excluded.x, y = excluded.y",
@@ -1143,6 +1177,19 @@ pub(crate) fn insert_string(conn: &Connection, string: &BoardString) -> Result<(
 
 fn check_position(node: &BoardNode) -> Result<()> {
     check_finite(node.x, node.y)
+}
+
+/// An entry may join a board only while it exists and is out of the trash, as an entry may only
+/// then be the end of a new relation (design section 4).
+fn check_joinable(conn: &Connection, entry_id: &EntryId) -> Result<()> {
+    let entry = entry::load_summary(conn, entry_id)?;
+    if entry.deleted_at.is_some() {
+        return Err(Error::Invalid(format!(
+            "\"{}\" is in the trash; restore it first",
+            entry.title
+        )));
+    }
+    Ok(())
 }
 
 const COLUMNS: &str = "id, guide_id, name, filters_json, created_at, updated_at";

@@ -1306,7 +1306,7 @@ impl Vault {
                 }
             }
             if !nodes.is_empty() {
-                self.set_board_positions(&board.id, &nodes)?;
+                self.import_board_positions(&board.id, &nodes)?;
             }
 
             // Notes keep their archive ids unless another board already holds one, as happens

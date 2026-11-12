@@ -112,3 +112,35 @@ fn cleanup_lists_only_what_nothing_references_and_removes_only_that() {
     assert!(v.unreferenced_media().unwrap().is_empty());
     let _ = stone;
 }
+
+#[test]
+fn an_image_used_only_in_a_board_note_is_a_reference() {
+    let dir = tempdir().unwrap();
+    let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
+    let g = guide(&mut v, "G");
+    let in_note = stored(&mut v, 7, 70);
+    let orphan = stored(&mut v, 8, 80);
+    let sha = v.get_media(&in_note).unwrap().sha256;
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    v.create_board_note(&board, &format!("Clue: ![map](media/{sha}.png)"), 0.0, 0.0)
+        .unwrap();
+
+    let ids: Vec<MediaId> = v
+        .unreferenced_media()
+        .unwrap()
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(ids, std::slice::from_ref(&orphan));
+    let summary = v.media_summary(None).unwrap();
+    assert_eq!(
+        (summary.unreferenced_files, summary.unreferenced_bytes),
+        (1, 80)
+    );
+
+    let note_path = v.media_file_path(&v.get_media(&in_note).unwrap()).unwrap();
+    let report = v.purge_media(&[in_note.clone(), orphan]).unwrap();
+    assert_eq!((report.removed, report.bytes), (1, 80));
+    assert!(note_path.exists(), "the note's image stays");
+    assert!(v.get_media(&in_note).is_ok());
+}

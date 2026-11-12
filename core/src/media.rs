@@ -3,8 +3,8 @@
 //! are stored (`docs/design.md` section 3): PNG, JPEG, BMP, TIFF, and still GIFs become lossless
 //! WebP, so the hash covers the stored bytes and the same pixels from two formats deduplicate;
 //! animated GIFs, SVG, and WebP are kept as they are. Nothing is deleted on its own: "Clean up
-//! unused media" lists the files no entry body, gallery, guide cover, or board image references
-//! and removes the ones the user confirms.
+//! unused media" lists the files no entry body, board note body, gallery, guide cover, or board
+//! image references and removes the ones the user confirms.
 
 use std::collections::HashSet;
 use std::fs;
@@ -466,8 +466,8 @@ impl Vault {
     }
 
     /// Files nothing references: no gallery row of any entry, trashed ones included, no
-    /// `media/<sha>` in any body, no guide cover, and no board image. Largest first, so the list leads with what
-    /// a cleanup gains most from.
+    /// `media/<sha>` in any entry body or board note body, no guide cover, and no board image.
+    /// Largest first, so the list leads with what a cleanup gains most from.
     pub fn unreferenced_media(&self) -> Result<Vec<Media>> {
         let conn = self.conn();
         let mut referenced: HashSet<MediaId> = HashSet::new();
@@ -485,7 +485,10 @@ impl Vault {
             referenced.insert(row?);
         }
         let mut hashes: HashSet<String> = HashSet::new();
-        let mut stmt = conn.prepare("SELECT body_md FROM entry")?;
+        // Entry bodies, trashed ones included, and board note bodies are both markdown that can
+        // show a stored file.
+        let mut stmt =
+            conn.prepare("SELECT body_md FROM entry UNION ALL SELECT body_md FROM board_note")?;
         for row in stmt.query_map([], |row| row.get::<_, String>(0))? {
             hashes.extend(inline_media_hashes(&row?));
         }

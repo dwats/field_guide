@@ -379,6 +379,15 @@ impl Vault {
                     for image in &images {
                         media_wanted.insert(image.media.sha256.clone(), image.media.ext.clone());
                     }
+                    let notes = self.board_notes(&board.id)?;
+                    // A note's body shows stored files the way an entry body does.
+                    for note in &notes {
+                        for sha in inline_media_hashes(&note.body_md) {
+                            if let Some(media) = self.find_media_by_hash(&sha)? {
+                                media_wanted.insert(media.sha256, media.ext);
+                            }
+                        }
+                    }
                     let file = BoardFile {
                         id: board.id.0.clone(),
                         name: board.name.clone(),
@@ -403,8 +412,7 @@ impl Vault {
                                 y: n.y,
                             })
                             .collect(),
-                        notes: self
-                            .board_notes(&board.id)?
+                        notes: notes
                             .into_iter()
                             .map(|n| BoardNoteFile {
                                 id: n.id.0,

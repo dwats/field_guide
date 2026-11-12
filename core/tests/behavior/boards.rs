@@ -948,3 +948,48 @@ fn a_board_image_keeps_its_media_from_cleanup_and_goes_if_the_media_row_goes() {
     let v = Vault::open(&db).unwrap();
     assert!(v.board_view(&board).unwrap().images.is_empty());
 }
+
+#[test]
+fn a_trashed_entry_cannot_join_a_board_but_a_placed_one_keeps_its_position() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Overview").unwrap().id;
+    let stone = entry(&mut v, &g, "Stone", "");
+    let placed = entry(&mut v, &g, "Pickaxe", "");
+    let trashed = entry(&mut v, &g, "Gravel", "");
+    v.set_board_position(&board, &placed, 0.0, 0.0).unwrap();
+    v.trash_entry(&trashed).unwrap();
+
+    // Adding a trashed entry is refused like a missing one, and the whole call writes nothing.
+    assert!(matches!(
+        v.add_board_nodes(&board, &[node(&stone, 1.0, 1.0), node(&trashed, 2.0, 2.0)]),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        v.set_board_position(&board, &trashed, 3.0, 3.0),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(
+        v.board_layout(&board).unwrap().len(),
+        1,
+        "nothing was added"
+    );
+
+    // A member trashed after it was placed keeps its position, and a write to it is allowed.
+    v.trash_entry(&placed).unwrap();
+    v.set_board_position(&board, &placed, 40.0, 50.0).unwrap();
+    assert!(v.board_view(&board).unwrap().cards.is_empty());
+    v.restore_entry(&placed).unwrap();
+    let layout = v.board_layout(&board).unwrap();
+    assert_eq!(layout.len(), 1);
+    assert_eq!((layout[0].x, layout[0].y), (40.0, 50.0));
+    assert_eq!(v.board_view(&board).unwrap().cards.len(), 1);
+
+    // Restored, the refused entry can join.
+    v.restore_entry(&trashed).unwrap();
+    assert_eq!(
+        v.add_board_nodes(&board, &[node(&stone, 1.0, 1.0), node(&trashed, 2.0, 2.0)])
+            .unwrap(),
+        2
+    );
+}
