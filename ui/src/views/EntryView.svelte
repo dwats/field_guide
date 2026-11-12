@@ -683,19 +683,19 @@
     white-space: nowrap;
   }
   .meta {
-    margin-bottom: 6px;
+    margin-bottom: var(--space-2);
   }
   .aliases {
-    margin: 0 0 6px;
-    font-size: 0.95em;
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-md);
   }
   /* The slot exists in both modes so the More button never moves. */
   .save-slot {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     min-width: 11em;
-    font-size: 0.9em;
+    font-size: var(--text-sm);
   }
   .split {
     display: grid;

@@ -486,14 +486,14 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
   }
   .tree:focus-visible {
     outline-offset: 4px;
   }
   .tree .tree-line {
     cursor: grab;
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     touch-action: none;
     user-select: none;
   }
@@ -510,7 +510,7 @@
     padding: var(--space-3);
     text-align: center;
     border: 1px dashed var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--muted);
   }
   .root-drop.over {
@@ -522,18 +522,18 @@
     gap: var(--space-3);
     padding: var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--surface);
   }
   .detail .path {
-    font-size: 1.05rem;
+    font-size: var(--text-md);
   }
   .field {
     display: grid;
     gap: 2px;
   }
   .field label {
-    font-size: var(--small);
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .field input,

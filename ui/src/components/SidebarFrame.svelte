@@ -80,13 +80,13 @@
   }
   .sidebar.collapsed {
     align-items: center;
-    padding-top: 6px;
+    padding-top: var(--space-2);
   }
   .head {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: var(--space-2) 6px var(--space-1) var(--space-3);
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-2) var(--space-1) var(--space-3);
   }
   .head-content {
     flex: 1;

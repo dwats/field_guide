@@ -384,7 +384,7 @@
 <style>
   .header {
     align-items: flex-start;
-    margin-bottom: 4px;
+    margin-bottom: var(--space-1);
   }
   .cover {
     flex: none;
@@ -393,7 +393,7 @@
     padding: 0;
     overflow: hidden;
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--surface);
   }
   .titles {
@@ -405,11 +405,11 @@
   /* Fixed height: the line is present whether or not a filter is in effect. */
   .summary {
     min-height: 2em;
-    margin: 8px 0 4px;
+    margin: var(--space-2) 0 var(--space-1);
   }
   .edit {
     display: grid;
-    gap: 10px;
+    gap: var(--space-2);
   }
   .field {
     display: grid;

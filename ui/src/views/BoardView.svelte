@@ -912,12 +912,12 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: var(--small);
+    font-size: var(--text-sm);
     white-space: nowrap;
   }
   .toggles {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .toggle[aria-pressed="true"] {
     background: var(--chip-bg);
@@ -930,7 +930,7 @@
   .check {
     display: inline-flex;
     width: 14px;
-    margin-right: 6px;
+    margin-right: var(--space-1);
     vertical-align: -2px;
   }
   .stage {

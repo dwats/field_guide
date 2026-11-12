@@ -157,7 +157,7 @@
     min-height: 0;
     display: grid;
     place-items: center;
-    padding: 48px 72px 16px;
+    padding: var(--space-7) 72px var(--space-4);
   }
   .stage img {
     max-width: 100%;
@@ -170,10 +170,10 @@
     right: 12px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
   }
   .counter {
-    font-size: var(--small);
+    font-size: var(--text-sm);
     color: #ccc;
   }
   .close {
@@ -186,7 +186,7 @@
     width: 44px;
     height: 64px;
     border: none;
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     background: rgb(255 255 255 / 0.12);
     color: #eee;
     display: inline-flex;
@@ -218,11 +218,11 @@
     font-weight: 600;
   }
   .details {
-    font-size: var(--small);
+    font-size: var(--text-sm);
   }
   .file {
-    font-family: ui-monospace, Consolas, monospace;
-    font-size: 0.9em;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
   }
   .actions {
     display: flex;

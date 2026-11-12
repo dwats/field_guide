@@ -93,9 +93,9 @@
     min-width: 14em;
     display: flex;
     flex-direction: column;
-    padding: 4px;
+    padding: var(--space-1);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--raised);
     box-shadow: var(--e2);
   }
@@ -103,8 +103,8 @@
     text-align: left;
     border: none;
     background: none;
-    padding: 6px 10px;
-    border-radius: 4px;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
   }
   .menu :global(button[role^="menuitem"]:hover),
   .menu :global(button[role^="menuitem"]:focus-visible) {
@@ -112,7 +112,7 @@
   }
   .menu :global(.separator) {
     height: 1px;
-    margin: 4px 0;
+    margin: var(--space-1) 0;
     background: var(--border);
   }
 </style>

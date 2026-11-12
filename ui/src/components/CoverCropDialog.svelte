@@ -138,7 +138,7 @@
     padding: 0;
     min-height: 0;
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--surface);
     cursor: grab;
     touch-action: none;
@@ -157,7 +157,7 @@
     align-items: center;
     gap: var(--space-2);
     width: 100%;
-    font-size: var(--small);
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .zoom input {

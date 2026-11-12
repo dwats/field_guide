@@ -158,7 +158,7 @@
   .new {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
   table {
     max-width: 60em;

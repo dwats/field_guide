@@ -61,7 +61,7 @@
     padding: 0;
     overflow: hidden;
     border: 1px solid var(--control-border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     background: var(--surface);
   }
   .thumb.primary {
@@ -78,16 +78,16 @@
     position: absolute;
     left: 6px;
     bottom: 6px;
-    padding: 1px 6px;
-    border-radius: 999px;
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-pill);
     background: var(--accent);
     color: var(--bg);
-    font-size: var(--small);
+    font-size: var(--text-sm);
     font-weight: 600;
   }
   .caption {
-    margin-top: 4px;
-    font-size: var(--small);
+    margin-top: var(--space-1);
+    font-size: var(--text-sm);
     color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;

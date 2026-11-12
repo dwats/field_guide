@@ -183,10 +183,10 @@
 
 <style>
   .header {
-    margin-bottom: 4px;
+    margin-bottom: var(--space-1);
   }
   .select-list {
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .select-list:focus-visible {
     outline-offset: 4px;
@@ -198,11 +198,11 @@
     background: var(--chip-bg);
   }
   .actions {
-    margin-top: 8px;
-    padding-top: 8px;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
   }
   .hint {
-    font-size: 0.9em;
+    font-size: var(--text-sm);
   }
 </style>

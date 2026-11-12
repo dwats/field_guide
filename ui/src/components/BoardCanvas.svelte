@@ -1087,7 +1087,7 @@
     flex-direction: column;
     padding: 8px;
     border: 1px solid var(--paper-edge);
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     background: var(--paper);
     user-select: none;
   }
@@ -1135,7 +1135,7 @@
   /* A polaroid: white in light, off-white in dark, a deeper band at the bottom. */
   .photo {
     padding: 8px 8px 28px;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: var(--photo-paper);
     box-shadow: 0 1px 4px light-dark(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.6));
     user-select: none;
@@ -1155,7 +1155,7 @@
     --muted: light-dark(#5c5f63, #c2c2c2);
     --accent: light-dark(#0b57d0, #a8c7fa);
     overflow: hidden;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: var(--note-yellow);
     font-size: 13px;
     line-height: 1.4;
@@ -1219,12 +1219,12 @@
     margin: 0;
     padding: 6px 8px;
     border: 1px solid var(--accent);
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: transparent;
     color: inherit;
     resize: none;
     font: inherit;
-    font-family: ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
   /* The same size on screen at any zoom, like the pin. */
@@ -1259,12 +1259,12 @@
     bottom: var(--space-3);
     transform: translateX(-50%);
     margin: 0;
-    padding: 4px 10px;
+    padding: var(--space-1) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--raised);
     box-shadow: var(--e2);
-    font-size: var(--small);
+    font-size: var(--text-sm);
     pointer-events: none;
   }
 </style>

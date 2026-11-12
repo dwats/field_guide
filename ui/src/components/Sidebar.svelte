@@ -378,8 +378,8 @@
 
 <style>
   .stubs {
-    padding: 0 var(--space-3) 6px;
-    font-size: var(--small);
+    padding: 0 var(--space-3) var(--space-2);
+    font-size: var(--text-sm);
   }
   .regions {
     flex: 1;
@@ -412,10 +412,10 @@
   }
   .foot {
     display: flex;
-    gap: 12px;
-    padding: 6px var(--space-3);
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--border);
-    font-size: var(--small);
+    font-size: var(--text-sm);
   }
   .foot a[aria-current="page"] {
     font-weight: 600;

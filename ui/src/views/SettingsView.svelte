@@ -452,14 +452,14 @@
 
 <style>
   section {
-    margin-bottom: 28px;
+    margin-bottom: var(--space-5);
   }
   .group {
     margin-top: var(--space-4);
   }
   .group h3 {
     margin-bottom: var(--space-2);
-    font-size: 1rem;
+    font-size: var(--text-md);
   }
   .cards {
     display: grid;
@@ -474,7 +474,7 @@
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    padding: 8px 6px;
+    padding: var(--space-2) var(--space-2);
   }
   .mini-half {
     display: flex;
@@ -485,11 +485,11 @@
   /* The two halves join into one window: each shows its own side of it. */
   .mini-half.left .mini-window {
     border-right: none;
-    border-radius: 3px 0 0 3px;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   }
   .mini-half.right .mini-window {
     border-left: none;
-    border-radius: 0 3px 3px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
   .mini-half.right .mini-side {
     display: none;
@@ -500,7 +500,7 @@
     min-width: 0;
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg);
   }
   .mini-side {
@@ -513,8 +513,8 @@
     display: flex;
     flex: 1;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 8px;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-2);
   }
   .mini-line {
     display: block;
@@ -528,9 +528,9 @@
   .mini-photo {
     position: relative;
     flex: 1;
-    margin: 8px;
+    margin: var(--space-2);
     overflow: hidden;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: var(--tag-blue);
   }
   .mini-photo.dimmed {
@@ -562,6 +562,6 @@
     color: var(--muted);
   }
   code {
-    font-size: 0.9em;
+    font-size: var(--text-sm);
   }
 </style>

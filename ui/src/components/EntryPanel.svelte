@@ -247,7 +247,7 @@
   }
   .rail-button {
     align-self: center;
-    margin-top: 6px;
+    margin-top: var(--space-2);
   }
   .chev {
     display: inline-flex;
@@ -256,7 +256,7 @@
   .head {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     padding: var(--space-2) var(--space-2) 0 var(--space-3);
   }
   .tabs {
@@ -269,7 +269,7 @@
     border-bottom: 2px solid transparent;
     border-radius: 0;
     background: none;
-    padding: 4px 8px;
+    padding: var(--space-1) var(--space-2);
     color: var(--muted);
   }
   .tabs button[aria-selected="true"] {
@@ -300,7 +300,7 @@
     display: block;
     width: 100%;
     text-align: left;
-    padding: 3px 6px;
+    padding: 3px var(--space-2);
     color: inherit;
   }
   .jump:hover {
@@ -319,16 +319,16 @@
   .fold-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-1);
     width: 100%;
     text-align: left;
-    padding: 4px 6px;
+    padding: var(--space-1) var(--space-2);
     border: none;
     background: none;
     font-weight: 600;
   }
   .fold ul {
-    padding: 2px 0 0 24px;
+    padding: 2px 0 0 var(--space-5);
   }
   .fold li {
     padding: 2px 0;

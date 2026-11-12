@@ -87,7 +87,7 @@
     z-index: 21;
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--raised);
     box-shadow: var(--e3);
     color: var(--fg);
@@ -101,11 +101,11 @@
   }
   .body {
     display: grid;
-    gap: 10px;
-    padding: 16px 18px;
+    gap: var(--space-2);
+    padding: var(--space-4) 18px;
   }
   .actions {
     justify-content: flex-end;
-    margin-top: 6px;
+    margin-top: var(--space-2);
   }
 </style>

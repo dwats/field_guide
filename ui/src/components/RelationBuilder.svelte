@@ -485,24 +485,24 @@
 
 <style>
   .builder {
-    margin: 10px 0;
+    margin: var(--space-3) 0;
   }
   .label {
-    font-size: 0.8em;
+    font-size: var(--text-sm);
     /* Small caps, not text-transform: Chromium folds text-transform into the accessible name. */
     font-variant-caps: all-small-caps;
     letter-spacing: 0.04em;
     color: var(--muted);
-    margin-bottom: 4px;
+    margin-bottom: var(--space-1);
   }
   .line {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    padding: 4px 6px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     border: 1px solid var(--field-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg);
   }
   .line.focused {
@@ -513,7 +513,7 @@
     min-width: 14em;
     border: none;
     background: transparent;
-    padding: 4px;
+    padding: var(--space-1);
   }
   .line input:focus {
     outline: none;
@@ -524,9 +524,9 @@
   }
   .hint {
     display: flex;
-    gap: 6px;
-    margin: 4px 0 0;
-    font-size: 0.8em;
+    gap: var(--space-1);
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-sm);
   }
   .hint .current {
     color: var(--fg);
@@ -538,6 +538,6 @@
   }
   .prompt {
     display: grid;
-    gap: 10px;
+    gap: var(--space-2);
   }
 </style>

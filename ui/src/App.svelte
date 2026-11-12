@@ -395,22 +395,22 @@
   .topbar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 0 12px;
+    gap: var(--space-3);
+    padding: 0 var(--space-3);
     height: 40px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
   }
   .topbar nav {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: center;
   }
   .search,
   .settings {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .crumbs {
     flex: 1;
@@ -431,18 +431,18 @@
   }
   .search kbd {
     font: inherit;
-    font-size: var(--small);
-    margin-left: 4px;
-    padding: 0 5px;
+    font-size: var(--text-sm);
+    margin-left: var(--space-1);
+    padding: 0 var(--space-1);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--muted);
   }
   .notice {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--border);
     background: var(--surface);
   }
@@ -456,7 +456,7 @@
     flex: 1;
   }
   .notice .count {
-    font-size: 0.9em;
+    font-size: var(--text-sm);
   }
   /* Every view has the sidebar column; its contents change with the level. */
   .columns {
@@ -485,7 +485,7 @@
     display: grid;
     place-content: center;
     text-align: center;
-    padding: 24px;
+    padding: var(--space-5);
   }
   .fatal {
     max-width: 48em;
@@ -493,8 +493,8 @@
   }
   .fatal .path {
     display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
     background: var(--surface);
     word-break: break-all;
   }

@@ -39,7 +39,7 @@
     padding: var(--space-3);
     text-align: left;
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg);
   }
   .card.selected {
@@ -51,7 +51,7 @@
     display: inline-flex;
     width: 120px;
     height: 72px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--muted);
   }
@@ -68,6 +68,6 @@
     font-weight: 600;
   }
   .description {
-    font-size: var(--small);
+    font-size: var(--text-sm);
   }
 </style>

@@ -88,7 +88,7 @@
 <style>
   .fields {
     display: grid;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .fields label {
     display: grid;

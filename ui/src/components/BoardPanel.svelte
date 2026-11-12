@@ -376,7 +376,7 @@
   }
   .rail-button {
     align-self: center;
-    margin-top: 6px;
+    margin-top: var(--space-2);
   }
   .head {
     display: flex;
@@ -406,7 +406,7 @@
     white-space: nowrap;
   }
   .swatches {
-    gap: 6px;
+    gap: var(--space-2);
   }
   .swatch {
     width: 24px;
@@ -444,15 +444,15 @@
   }
   .fields {
     display: grid;
-    gap: 4px;
-    padding: 4px var(--space-3) 0;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3) 0;
   }
   .stubs {
-    font-size: var(--small);
+    font-size: var(--text-sm);
   }
   .summary {
-    padding: 4px var(--space-3);
-    font-size: var(--small);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
     flex-wrap: nowrap;
   }
   .results {

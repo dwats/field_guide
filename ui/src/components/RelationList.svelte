@@ -292,7 +292,7 @@
   }
   h3 {
     margin: var(--space-3) 0 2px;
-    font-size: 0.9rem;
+    font-size: var(--text-sm);
     letter-spacing: 0.02em;
   }
   ul {
@@ -301,7 +301,7 @@
     padding: 0;
   }
   .list {
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .list:focus-visible {
     outline-offset: 4px;
@@ -309,9 +309,9 @@
   .line {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    padding: 3px 6px;
-    border-radius: 4px;
+    gap: var(--space-2);
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-sm);
     cursor: default;
   }
   .line.selected {
@@ -323,16 +323,16 @@
     border-top: 1px solid var(--border);
   }
   .hint {
-    margin: 4px 0 0;
-    font-size: var(--small);
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-sm);
   }
   .external {
     margin-top: var(--space-3);
-    font-size: var(--small);
+    font-size: var(--text-sm);
   }
   .rows {
     display: grid;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .value {
     flex: 1;

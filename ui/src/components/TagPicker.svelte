@@ -189,8 +189,8 @@
     border-style: dashed;
     background: transparent;
     color: var(--muted);
-    border-radius: 999px;
-    padding: 1px 10px;
-    font-size: 0.9em;
+    border-radius: var(--radius-pill);
+    padding: 1px var(--space-3);
+    font-size: var(--text-sm);
   }
 </style>

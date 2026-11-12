@@ -43,10 +43,10 @@
 <style>
   .suggestions {
     margin: 2px 0 0;
-    padding: 4px 0;
+    padding: var(--space-1) 0;
     list-style: none;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--raised);
     box-shadow: var(--e2);
     max-height: 260px;
@@ -54,10 +54,10 @@
   }
   .suggestions button {
     display: flex;
-    gap: 10px;
+    gap: var(--space-2);
     width: 100%;
     text-align: left;
-    padding: 4px 10px;
+    padding: var(--space-1) var(--space-3);
     border: none;
     border-radius: 0;
     background: none;

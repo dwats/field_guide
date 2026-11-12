@@ -198,7 +198,7 @@
     aspect-ratio: 2 / 3;
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--surface);
   }
   .poster-card:hover .poster {
@@ -211,7 +211,7 @@
   }
   .poster-title {
     display: block;
-    margin-top: 6px;
+    margin-top: var(--space-2);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
