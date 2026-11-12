@@ -11,6 +11,10 @@ import {
   scopeLabel,
   subtreeCount,
   summaryLine,
+  isListPage,
+  rovingStop,
+  visibleTreeKeys,
+  widenRow,
 } from "./sidebar";
 
 function node(id: string, path: string, children: TagNode[] = []): TagNode {
@@ -103,5 +107,49 @@ describe("summaryLine", () => {
     expect(summaryLine("Blocks/Natural", { text: "stone", tags: ["Ore"] }, true, 1)).toBe(
       'Blocks/Natural · "stone" · #Ore · stubs only · 1 entry',
     );
+  });
+});
+
+describe("widenRow", () => {
+  it("counts the matches outside a tag scope while the search has text", () => {
+    expect(widenRow({ kind: "tag", id: "ore" }, "iron", 1, 5)).toEqual({ more: 4, label: "4 more in All entries" });
+    expect(widenRow({ kind: "tag", id: "ore" }, "iron", 2, 2)).toEqual({ more: 0, label: "No more in All entries" });
+  });
+
+  it("is absent without text, outside a tag scope, or before the count arrives", () => {
+    expect(widenRow({ kind: "tag", id: "ore" }, "  ", 1, 5)).toBeNull();
+    expect(widenRow({ kind: "all" }, "iron", 1, 5)).toBeNull();
+    expect(widenRow({ kind: "untagged" }, "iron", 1, 5)).toBeNull();
+    expect(widenRow({ kind: "tag", id: "ore" }, "iron", 1, null)).toBeNull();
+  });
+});
+
+describe("visibleTreeKeys", () => {
+  it("lists the shown rows with fixed nodes first and last, boards only when open", () => {
+    const open = new Set(["blocks"]);
+    expect(visibleTreeKeys(tree, (id) => open.has(id), null)).toEqual([
+      "all", "blocks", "natural", "ore", "mobs", "untagged", "boards", "trash",
+    ]);
+    expect(visibleTreeKeys([], () => false, ["b1", "b2"])).toEqual([
+      "all", "untagged", "boards", "board:b1", "board:b2", "trash",
+    ]);
+  });
+});
+
+describe("rovingStop", () => {
+  const keys = ["all", "blocks", "untagged", "trash"];
+  it("prefers the last focused row, then the selected row, then the first", () => {
+    expect(rovingStop(keys, "untagged", "blocks")).toBe("untagged");
+    expect(rovingStop(keys, "gone", "blocks")).toBe("blocks");
+    expect(rovingStop(keys, null, "hidden")).toBe("all");
+    expect(rovingStop([], null, null)).toBeNull();
+  });
+});
+
+describe("isListPage", () => {
+  it("treats the guide and entry pages as the list and every other page as not", () => {
+    expect(isListPage("guide")).toBe(true);
+    expect(isListPage("entry")).toBe(true);
+    for (const view of ["trash", "tags", "boards", "board", "settings"]) expect(isListPage(view)).toBe(false);
   });
 });

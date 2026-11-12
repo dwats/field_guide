@@ -6,10 +6,13 @@
   // when the pointer lifts; the parent persists it. The wheel zooms around the pointer; dragging
   // the background pans. Items take focus: Enter opens the entry or edits the note, Delete
   // removes the item, arrows nudge it, Alt with an arrow resizes a note or an image. The selected
-  // item shows a pin: dragging it onto another item ties a string, and clicking it or pressing
-  // Enter on it starts tying from the keyboard, where the next item activated is the other end.
-  // A selected note shows eight resize handles and a selected image four. With the canvas itself
-  // focused, arrows pan and plus and minus zoom.
+  // item shows a push pin across its top edge: dragging it onto another item ties a string, and
+  // clicking it or pressing Enter on it starts tying from the keyboard, where the next item
+  // activated is the other end. A selected note shows eight resize handles and a selected image
+  // four. With the canvas itself focused, arrows pan and plus and minus zoom. Line and string
+  // labels are HTML pills, horizontal at the middle of the line, above the lines and under the
+  // cards (UI review 2).
+  import { Spline } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
   import {
@@ -27,21 +30,29 @@
   } from "../lib/api";
   import {
     CAPTION_H,
+    CAPTION_LINE,
+    CAPTION_SIZE,
     CORNERS,
     FRAME,
     HANDLES,
+    LABEL,
+    PHOTO_BOTTOM,
+    PHOTO_FRAME,
+    PLAIN_TITLE_H,
     cardRect,
     center,
+    detailFits,
     edgeOffsets,
     edgeSegment,
     endKey,
     handlePoint,
     imageRect,
-    labelAngle,
     midpoint,
+    pillWidth,
     noteName,
     noteRect,
     resizeRect,
+    stringExits,
     stringMidpoint,
     stringPath,
     toWorld,
@@ -117,8 +128,15 @@
     onstring,
   }: Props = $props();
 
-  /** How far above a note's top edge the pin sits, in screen pixels, clear of the top handle. */
-  const PIN_LIFT = 14;
+  /**
+   * The pin sits across the selected item's top edge, its center this far below it in screen
+   * pixels. On a note it sits this far left of the middle, clear of the top handle.
+   */
+  const PIN_DROP = 2;
+  const PIN_ASIDE = 18;
+  /** The width of a selected string's end dots and their ring, in screen pixels. */
+  const END_DOT = 8;
+  const END_RING = 2;
   const CURSORS: Record<Handle, string> = {
     n: "ns-resize",
     s: "ns-resize",
@@ -177,7 +195,11 @@
       if (!from || !to) return [];
       const segment = edgeSegment(from, to, offsets.get(edge.id) ?? 0);
       if (!segment) return [];
-      return [{ edge, segment, mid: midpoint(segment), angle: labelAngle(segment) }];
+      // The qualifier line goes when the pill with it would cover more line than is visible.
+      const verb = textWidth(edge.label, LABEL.verbSize, 600, 0.03);
+      const detail = edge.detail ? textWidth(edge.detail, LABEL.detailSize, 400) : 0;
+      const showDetail = edge.detail !== "" && detailFits(segment, pillWidth([verb, detail]));
+      return [{ edge, segment, mid: midpoint(segment), showDetail }];
     }),
   );
   /** Item names for the strings' labels. */
@@ -198,20 +220,34 @@
       const name = (end: StringEnd) => names.get(endKey(end)) ?? "an item";
       const ends = `String from ${name(string.from)} to ${name(string.to)}`;
       const label = string.label ? `${ends}: ${string.label}` : ends;
-      return [{ string, d: stringPath(a, b), mid: stringMidpoint(a, b), label }];
+      return [
+        {
+          string,
+          d: stringPath(a, b),
+          mid: stringMidpoint(a, b),
+          label,
+          exits: stringExits(from, to),
+        },
+      ];
     }),
   );
+  /** The selected string's ends, where its curve comes out from under its two items. */
+  const stringMarks = $derived.by(() => {
+    const item = selection;
+    if (item?.kind !== "string") return null;
+    return twines.find((t) => t.string.id === item.id)?.exits ?? null;
+  });
   /**
-   * The selected item, which shows the pin at its top center; a note's pin sits just above its
-   * top edge so the top handle stays reachable.
+   * The selected item, which shows the pin across the middle of its top edge; a note's pin sits
+   * left of the middle so the top handle stays reachable.
    */
   const pinned = $derived.by(() => {
     if (!selection || selection.kind === "string" || editingNote === selection.id) return null;
     const end: StringEnd = { kind: selection.kind, id: selection.id };
     const rect = rects.get(endKey(end));
     if (!rect) return null;
-    const lift = end.kind === "note" ? PIN_LIFT / view.k : 0;
-    return { end, at: { x: rect.x + rect.w / 2, y: rect.y - lift } };
+    const aside = end.kind === "note" ? PIN_ASIDE / view.k : 0;
+    return { end, at: { x: rect.x + rect.w / 2 - aside, y: rect.y + PIN_DROP / view.k } };
   });
   /**
    * The resize handles of the selected note (eight, free) or image (four corners, keeping the
@@ -226,6 +262,24 @@
     if (end.kind === "note") return { end, rect, list: HANDLES, min: NOTE_MIN_SIZE, ratio: false };
     return { end, rect, list: CORNERS, min: IMAGE_MIN_SIZE, ratio: true };
   });
+
+  let measurer: CanvasRenderingContext2D | null | undefined;
+  let measureFont = "";
+
+  /**
+   * A label's width in pixels at the given size and weight, `spacing` being letter spacing in
+   * em. Measured with the page's sans face; a rough estimate where no 2D context is to be had.
+   */
+  function textWidth(text: string, size: number, weight: number, spacing = 0): number {
+    if (measurer === undefined) {
+      measurer = document.createElement("canvas").getContext("2d");
+      measureFont = getComputedStyle(document.documentElement).getPropertyValue("--font-sans").trim();
+    }
+    const tracking = spacing * size * text.length;
+    if (!measurer) return text.length * size * 0.6 + tracking;
+    measurer.font = `${weight} ${size}px ${measureFont || "sans-serif"}`;
+    return measurer.measureText(text).width + tracking;
+  }
 
   /** The canvas size in CSS pixels, for fitting and placing. */
   export function size(): Size {
@@ -679,6 +733,11 @@
   style:--pan-x="{view.x}px"
   style:--pan-y="{view.y}px"
   style:--cell="{24 * view.k}px"
+  style:--caption-size="{CAPTION_SIZE}px"
+  style:--caption-line={CAPTION_LINE}
+  style:--verb-size="{LABEL.verbSize}px"
+  style:--detail-size="{LABEL.detailSize}px"
+  style:--pill-pad="{LABEL.padY}px {LABEL.padX}px"
   onpointerdown={pressBackground}
   onkeydown={rootKeys}
 >
@@ -719,30 +778,6 @@
             y2={line.segment.b.y}
             marker-end={line.edge.symmetric ? undefined : `url(#${uid}-${line.edge.kind})`}
           />
-          {#if line.edge.label}
-            <text
-              class="label"
-              x={line.mid.x}
-              y={line.mid.y}
-              dy="-5"
-              text-anchor="middle"
-              transform="rotate({line.angle} {line.mid.x} {line.mid.y})"
-            >
-              {line.edge.label}
-            </text>
-            {#if line.edge.detail}
-              <text
-                class="detail"
-                x={line.mid.x}
-                y={line.mid.y}
-                dy="12"
-                text-anchor="middle"
-                transform="rotate({line.angle} {line.mid.x} {line.mid.y})"
-              >
-                {line.edge.detail}
-              </text>
-            {/if}
-          {/if}
         </g>
       {/each}
     </svg>
@@ -762,20 +797,43 @@
           onfocus={() => !tying && onselect({ kind: "string", id: twine.string.id })}
         >
           <title>{twine.label}</title>
-          {#if selected}<path class="outline" d={twine.d} />{/if}
+          <path class="shadow" d={twine.d} transform="translate(0 1.5)" />
+          <path class="halo" d={twine.d} />
           <path class="twine" d={twine.d} />
           <path class="hit" d={twine.d} />
-          {#if twine.string.label}
-            <text class="label" x={twine.mid.x} y={twine.mid.y} dy="-6" text-anchor="middle">
-              {twine.string.label}
-            </text>
-          {/if}
         </g>
       {/each}
       {#if pull}
         <line class="pull" x1={pull.from.x} y1={pull.from.y} x2={pull.to.x} y2={pull.to.y} />
       {/if}
     </svg>
+    <!-- The labels repeat what the panel and the strings' names say, so they are not read out. -->
+    <div class="labels" aria-hidden="true">
+      {#each lines as line (line.edge.id)}
+        {#if line.edge.label}
+          <div
+            class="pill"
+            class:external={line.edge.external}
+            style:left="{line.mid.x}px"
+            style:top="{line.mid.y}px"
+          >
+            <span class="verb">{line.edge.label}</span>
+            {#if line.showDetail}<span class="detail">{line.edge.detail}</span>{/if}
+          </div>
+        {/if}
+      {/each}
+      {#each twines as twine (twine.string.id)}
+        {#if twine.string.label}
+          <div
+            class="pill string-pill string-{twine.string.color}"
+            style:left="{twine.mid.x}px"
+            style:top="{twine.mid.y}px"
+          >
+            <span class="verb">{twine.string.label}</span>
+          </div>
+        {/if}
+      {/each}
+    </div>
     {#each cards as card (card.entry.id)}
       {@const key = `entry:${card.entry.id}`}
       {@const rect = rects.get(key)!}
@@ -783,6 +841,8 @@
       {@const selected = isSelected("entry", card.entry.id)}
       <div
         class="card"
+        class:pictured={card.image !== null}
+        class:plain={card.image === null}
         class:selected
         class:external={card.external}
         class:dragging={drag?.key === key}
@@ -801,12 +861,15 @@
         onkeydown={(event) => itemKeys(event, { kind: "entry", id: card.entry.id })}
         onfocus={() => focused(key)}
       >
-        {#if url}
-          <img class="user-image" src={url} alt="" style:height="{rect.h - FRAME - CAPTION_H}px" draggable="false" />
+        {#if card.image}
+          <!-- The picture fills the card less its 1 px border, the frame, and the caption band. -->
+          <div class="picture" style:height="{rect.h - 2 - FRAME - CAPTION_H}px">
+            {#if url}<img class="user-image" src={url} alt="" draggable="false" />{/if}
+          </div>
         {/if}
-        <div class="caption">
+        <div class="caption" style:height="{card.image ? CAPTION_H : PLAIN_TITLE_H}px">
           <span class="title">{card.entry.title}</span>
-          {#if card.entry.is_stub}<span class="chip">stub</span>{/if}
+          {#if card.entry.is_stub}<span class="chip status">stub</span>{/if}
         </div>
       </div>
     {/each}
@@ -829,6 +892,7 @@
         style:top="{rect.y}px"
         style:width="{rect.w}px"
         style:height="{rect.h}px"
+        style:padding="{PHOTO_FRAME}px {PHOTO_FRAME}px {PHOTO_BOTTOM}px"
         onpointerdown={(event) => pressPhoto(event, image)}
         onkeydown={(event) => itemKeys(event, { kind: "image", id: image.id })}
         onfocus={() => focused(key)}
@@ -902,6 +966,20 @@
         ></div>
       {/each}
     {/if}
+    {#if stringMarks}
+      <!-- The selected string's ends, above the items they come out from under. -->
+      <svg class="layer marks" aria-hidden="true">
+        {#each [stringMarks.a, stringMarks.b] as at, i (i)}
+          <circle
+            class="end"
+            cx={at.x}
+            cy={at.y}
+            r={(END_DOT / 2 + END_RING / 2) / view.k}
+            stroke-width={END_RING / view.k}
+          />
+        {/each}
+      </svg>
+    {/if}
     {#if pinned}
       <div
         class="pin"
@@ -921,8 +999,11 @@
   </div>
   {#if tying}
     <p class="tying-hint" role="status">
-      Choose the other end: click a card, a note, or an image, or press Enter on one. Escape
-      cancels.
+      <Spline size={16} aria-hidden="true" />
+      <span>
+        Choose the other end: click a card, a note, or an image, or press Enter on one. Escape
+        cancels.
+      </span>
     </p>
   {/if}
 </div>
@@ -935,6 +1016,8 @@
     /* clip, not hidden: a hidden overflow is still a scroll container, and focusing a card half
        off the edge would scroll it and put every pointer position off by that amount. */
     overflow: clip;
+    /* The cork's grain sits under the world layer and over the background color. */
+    isolation: isolate;
     background-color: var(--bg);
     background-position: var(--pan-x) var(--pan-y);
     cursor: grab;
@@ -954,18 +1037,29 @@
       linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
     background-size: var(--cell) var(--cell);
   }
+  /* Cork: the cork color with an irregular grain and sparse light flecks, drawn from noise so no
+     tile repeats visibly within 180 world units. The noise is the mask; the tokens are the color. */
   .bg-cork {
     background-color: var(--cork);
-    background-image:
-      radial-gradient(circle at 30% 40%, var(--cork-dark) 0.8px, transparent 1.6px),
-      radial-gradient(circle at 70% 75%, var(--cork-light) 1px, transparent 2px),
-      radial-gradient(circle at 55% 15%, var(--cork-dark) 1.2px, transparent 2.4px),
-      radial-gradient(ellipse at 20% 80%, var(--cork-light) 1.5px, transparent 3px);
-    background-size:
-      calc(var(--cell) * 0.5) calc(var(--cell) * 0.5),
-      calc(var(--cell) * 0.75) calc(var(--cell) * 0.75),
-      calc(var(--cell) * 1.25) calc(var(--cell) * 1.25),
-      calc(var(--cell) * 2) calc(var(--cell) * 2);
+  }
+  .bg-cork::before,
+  .bg-cork::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    mask-position: var(--pan-x) var(--pan-y);
+    mask-size: calc(var(--cell) * 7.5) calc(var(--cell) * 7.5);
+    mask-repeat: repeat;
+  }
+  .bg-cork::before {
+    background: var(--cork-dark);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2 0 0 0 -0.55'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+  .bg-cork::after {
+    background: var(--cork-light);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.35' numOctaves='1' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 14 0 0 0 -9.4'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23f)'/%3E%3C/svg%3E");
   }
   .bg-blank {
     background-image: none;
@@ -991,9 +1085,10 @@
     height: 1px;
     overflow: visible;
   }
+  /* Relation lines in a neutral ink, apart from the strings' colors (UI review 14). */
   .edge line {
-    stroke: var(--twine);
-    stroke-width: 2;
+    stroke: var(--edge);
+    stroke-width: 1.75;
   }
   .edge.mention line {
     stroke: var(--muted);
@@ -1004,34 +1099,55 @@
     stroke: var(--accent);
   }
   .arrow.relation path {
-    fill: var(--twine);
+    fill: var(--edge);
   }
   .arrow.mention path {
     fill: var(--muted);
   }
-  .edge text,
-  .string text {
-    font-family: system-ui, sans-serif;
-    fill: var(--fg);
-    paint-order: stroke;
-    stroke: var(--bg);
-    stroke-width: 3px;
-    stroke-linejoin: round;
-    user-select: none;
+  /* Labels: horizontal pills at the middle of the line, the verb over its qualifiers. */
+  .labels {
+    position: absolute;
+    left: 0;
+    top: 0;
     pointer-events: none;
+    user-select: none;
   }
-  .edge .label,
-  .string .label {
-    font-size: 11px;
+  .pill {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--pill-pad);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  .pill.external {
+    border-color: var(--accent);
+  }
+  .pill .verb {
+    font-size: var(--verb-size);
     font-weight: 600;
     letter-spacing: 0.03em;
   }
-  .edge .detail {
-    font-size: 10px;
-    fill: var(--muted);
+  .pill .detail {
+    font-size: var(--detail-size);
+    color: var(--muted);
+  }
+  /* A string's label carries the string's color on its left edge. */
+  .string-pill {
+    border-left: 2px solid var(--string);
+  }
+  .string,
+  .string-pill {
+    --string: var(--string-red);
   }
   .string {
-    --string: var(--string-red);
     cursor: pointer;
   }
   .string-blue {
@@ -1046,32 +1162,43 @@
   .string path {
     fill: none;
     stroke-linecap: round;
+    pointer-events: none;
+  }
+  /* A string is 3 px of twine with a soft shadow under it, which lifts it off every background. */
+  .string .shadow {
+    stroke: light-dark(rgb(0 0 0 / 0.22), rgb(0 0 0 / 0.45));
+    stroke-width: 3;
   }
   .string .twine {
     stroke: var(--string);
-    stroke-width: 2.5;
-    pointer-events: none;
+    stroke-width: 3;
   }
   .string .hit {
     stroke: transparent;
     stroke-width: 14;
     pointer-events: stroke;
   }
-  .string .outline {
-    stroke: var(--accent);
-    stroke-width: 8;
-    pointer-events: none;
+  /* Selected or focused: a thin halo in the page color keeps the twine's own color readable;
+     the end dots sit in the marks layer above the items. */
+  .string .halo {
+    visibility: hidden;
+    stroke: var(--bg);
+    stroke-width: 7;
   }
-  .string.selected .twine {
-    stroke-width: 4;
+  .string.selected .halo,
+  .string:focus-visible .halo {
+    visibility: visible;
   }
   .string:focus {
     outline: none;
   }
-  .string:focus-visible .outline,
-  .string:focus-visible .hit {
-    stroke: var(--accent);
-    stroke-opacity: 0.5;
+  .marks {
+    pointer-events: none;
+    z-index: 3;
+  }
+  .marks .end {
+    fill: var(--accent);
+    stroke: var(--bg);
   }
   .pull {
     stroke: var(--accent);
@@ -1091,11 +1218,40 @@
   .card {
     display: flex;
     flex-direction: column;
-    padding: 8px;
-    border: 1px solid var(--paper-edge);
+    border: 1px solid transparent;
     border-radius: var(--radius-xs);
-    background: var(--paper);
     user-select: none;
+  }
+  /* A plain card is an index card: paper, the title above one red rule, blank paper below. */
+  .card.plain {
+    border-color: var(--paper-edge);
+    background: var(--paper);
+  }
+  .card.plain .caption {
+    box-sizing: border-box;
+    flex: none;
+    align-items: flex-end;
+    /* PLAIN_TITLE_H in board.ts: 10 above, two lines, 5 below, and the 1 px rule. */
+    padding: 10px 12px 5px;
+    border-bottom: 1px solid color-mix(in srgb, var(--string-red) 40%, transparent);
+  }
+  /* A card with a picture and a board image share one frame: photo paper, the same edge and
+     shadow. The caption is dark ink in both schemes, since the paper is light in both. */
+  .card.pictured,
+  .photo {
+    border-radius: var(--radius-xs);
+    background: var(--photo-paper);
+    box-shadow: 0 1px 4px light-dark(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.6));
+  }
+  .card.pictured {
+    padding: 8px 8px 0;
+  }
+  .card.pictured .caption {
+    box-sizing: border-box;
+    flex: none;
+    padding: 6px 4px 11px;
+    color-scheme: light;
+    color: var(--fg);
   }
   .card.dragging,
   .note.dragging,
@@ -1110,24 +1266,37 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
-  .card.external {
+  /* Dashed means indirect: a card from another guide. */
+  .card.external,
+  .card.pictured.external {
     border-style: dashed;
+    border-color: var(--muted);
   }
-  .card img {
+  .picture {
+    flex: none;
+    background: var(--photo-empty);
+  }
+  .picture img,
+  .photo img {
     display: block;
     width: 100%;
+    height: 100%;
     object-fit: cover;
-    background: var(--surface);
+    background: var(--photo-empty);
     pointer-events: none;
   }
   .caption {
-    flex: 1;
     display: flex;
     align-items: center;
     gap: 6px;
     min-height: 0;
-    font-size: 13px;
-    line-height: 1.25;
+    font-size: var(--caption-size);
+    font-weight: 600;
+    line-height: var(--caption-line);
+  }
+  .caption .chip {
+    flex: none;
+    font-weight: 400;
   }
   .title {
     flex: 1;
@@ -1138,21 +1307,8 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  /* A polaroid: white in light, off-white in dark, a deeper band at the bottom. */
   .photo {
-    padding: 8px 8px 28px;
-    border-radius: var(--radius-xs);
-    background: var(--photo-paper);
-    box-shadow: 0 1px 4px light-dark(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.6));
     user-select: none;
-  }
-  .photo img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    background: var(--photo-empty);
-    pointer-events: none;
   }
   /* The note keeps its stored size; a longer body scrolls inside it. */
   .note {
@@ -1243,34 +1399,62 @@
     background: var(--bg);
     z-index: 3;
   }
+  /* A push pin across the item's top edge: a red head with a highlight, a thin ring, and a
+     shadow, so it reads as pinning the item and not as a rotate handle (UI review 23). */
   .pin {
     position: absolute;
     box-sizing: border-box;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    border: 2px solid var(--bg);
-    background: var(--accent);
-    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.7));
+    background:
+      radial-gradient(
+        circle at 35% 35%,
+        light-dark(rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.6)) 0 2px,
+        transparent 3px
+      ),
+      var(--string-red);
+    box-shadow:
+      0 0 0 1px light-dark(rgb(0 0 0 / 0.25), rgb(0 0 0 / 0.5)),
+      0 2px 2px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.6));
     cursor: crosshair;
     z-index: 3;
+  }
+  /* A larger target than the head. */
+  .pin::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
   }
   .pin.on {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
+  /* Tying is a mode, so it shows as one: a banner across the top of the canvas, clear of the
+     zoom controls at the bottom right. */
   .tying-hint {
     position: absolute;
     left: 50%;
-    bottom: var(--space-3);
+    top: var(--space-3);
     transform: translateX(-50%);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: max-content;
+    max-width: min(40rem, calc(100% - 2 * var(--space-3)));
     margin: 0;
     padding: var(--space-1) var(--space-3);
-    border: 1px solid var(--border);
+    border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
-    background: var(--raised);
-    box-shadow: var(--e2);
+    background: var(--accent-soft);
+    color: var(--fg);
     font-size: var(--text-sm);
     pointer-events: none;
+  }
+  .tying-hint :global(svg) {
+    flex: none;
+    color: var(--accent);
   }
 </style>

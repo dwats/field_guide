@@ -1,10 +1,21 @@
 <script lang="ts">
   // The shell (design section 5): one top bar with history buttons, breadcrumbs, Search, and
-  // Settings; the notice slot; then the columns. The sidebar column exists on every view, with
-  // contents for the level; each column scrolls on its own. Native file drops and image pastes
-  // are caught here once and handed to the page.
-  import { ArrowLeft, ArrowRight, Search, Settings } from "@lucide/svelte";
-  import { onMount } from "svelte";
+  // Settings, laid on the same columns as the page below it; then the columns. The sidebar column
+  // exists on every view, with contents for the level; each column scrolls on its own. The notice
+  // floats over the bottom edge of the content column and moves nothing. After a route change the
+  // page heading takes focus. Native file drops and image pastes are caught here once and handed
+  // to the page.
+  import {
+    ArrowLeft,
+    ArrowRight,
+    CircleAlert,
+    Info,
+    Search,
+    Settings,
+    TriangleAlert,
+    X,
+  } from "@lucide/svelte";
+  import { onMount, tick } from "svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
   import GuidesSidebar from "./components/GuidesSidebar.svelte";
@@ -20,6 +31,7 @@
   import { fatalText } from "./lib/fatal";
   import { actionFor, isEditable, keysFor, type Action } from "./lib/keys";
   import { formatBytes } from "./lib/media";
+  import { HEADING_WAIT_MS, nextFocus, type FocusAt } from "./lib/navFocus";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
   import { DEFAULT_PREFS, dismiss, notify, savePrefs, session } from "./lib/session.svelte";
   import { themeAttribute } from "./lib/theme";
@@ -37,6 +49,11 @@
   let paletteOpen = $state(false);
   let newEntryOpen = $state(false);
   let newGuideOpen = $state(false);
+  let mainEl = $state<HTMLElement | null>(null);
+  /** Room the notice leaves at the right of the content column: the right panel or the scrollbar. */
+  let noticeRight = $state(0);
+  /** Only the newest route change may move focus. */
+  let navToken = 0;
 
   /** The notice slot shows one notice at a time; the rest wait behind it. */
   const current = $derived(session.notices[0]);
@@ -115,6 +132,7 @@
   onMount(() => {
     const onHash = () => {
       route = parseRoute(window.location.hash);
+      focusAfterNavigation();
     };
     window.addEventListener("hashchange", onHash);
     window.addEventListener("keydown", onKey);
@@ -165,11 +183,16 @@
     const editorsOwn = (!event.ctrlKey && !event.metaKey) || action === "back" || action === "forward";
     if (editorsOwn && isEditable(event.target)) return;
     event.preventDefault();
+    // On a board, Mod+F is the board's picker search; without one it stays the sidebar's.
+    if (action === "focus-search" && route.view === "board" && perform("board-find")) return;
     act(action);
   }
 
-  /** Shell-level actions run here; the rest go to whichever view registered them. */
-  function act(action: Action) {
+  /**
+   * Shell-level actions run here; the rest go to whichever view registered them. A palette
+   * command that nothing on the page answers says so, instead of doing nothing.
+   */
+  function act(action: Action, fromPalette = false) {
     switch (action) {
       case "palette":
         paletteOpen = true;
@@ -214,9 +237,85 @@
         if (session.current.guide) navigate({ view: "boards", guideId: session.current.guide.id });
         return;
       default:
-        perform(action);
+        if (!perform(action) && fromPalette) notify("That command is not available on this page.");
     }
   }
+
+  /**
+   * After a route change, focus goes to the page heading, or to `main` until the heading renders,
+   * unless something else takes focus first (lib/navFocus.ts).
+   */
+  function focusAfterNavigation() {
+    const before = document.activeElement;
+    const token = ++navToken;
+    const start = performance.now();
+    let ours: Element | null = null;
+    const step = () => {
+      const main = mainEl;
+      if (token !== navToken || !main) return;
+      const active = document.activeElement;
+      const at: FocusAt =
+        !active || active === document.body || !active.isConnected
+          ? "body"
+          : active === ours
+            ? "ours"
+            : active === before
+              ? "before"
+              : "other";
+      const heading = main.querySelector<HTMLElement>("h1");
+      const expired = performance.now() - start > HEADING_WAIT_MS;
+      const next = nextFocus(at, heading !== null, expired);
+      if (next === "stop") return;
+      const target = next === "heading" && heading ? heading : main;
+      if (target !== active) {
+        if (target === heading && !heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }
+      ours = target;
+      if (!expired) requestAnimationFrame(step);
+    };
+    void tick().then(step);
+  }
+
+  /** The notice spans the content column but stops short of the right panel and the scrollbar. */
+  function measureNotice() {
+    const main = mainEl;
+    if (!main) return;
+    const panel = main.querySelector<HTMLElement>("aside.panel");
+    noticeRight = panel
+      ? Math.max(0, main.getBoundingClientRect().right - panel.getBoundingClientRect().left)
+      : main.offsetWidth - main.clientWidth;
+  }
+
+  // While a notice shows, its right edge follows the panel as the panel opens, folds, or resizes.
+  $effect(() => {
+    const main = mainEl;
+    if (!current || !main) return;
+    let panel: Element | null = null;
+    let frame = 0;
+    const sizes = new ResizeObserver(() => measureNotice());
+    const watch = () => {
+      frame = 0;
+      const next = main.querySelector("aside.panel");
+      if (next !== panel) {
+        if (panel) sizes.unobserve(panel);
+        if (next) sizes.observe(next);
+        panel = next;
+      }
+      measureNotice();
+    };
+    const changes = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(watch);
+    });
+    sizes.observe(main);
+    changes.observe(main, { childList: true, subtree: true });
+    watch();
+    return () => {
+      sizes.disconnect();
+      changes.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  });
 
   async function boot() {
     try {
@@ -315,48 +414,44 @@
     {#if fatal.next}<p>{fatal.next}</p>{/if}
   </main>
 {:else}
-  <header class="topbar">
+  <header class="topbar" style:--sidebar-col={sidebarWidth}>
     <nav class="history" aria-label="History">
-      <button class="link icon-button" onclick={() => history.back()} aria-label="Back" title="Back (Alt+Left)">
+      <button class="chrome icon-button" onclick={() => history.back()} aria-label="Back" title="Back (Alt+Left)">
         <ArrowLeft size={18} />
       </button>
-      <button class="link icon-button" onclick={() => history.forward()} aria-label="Forward" title="Forward (Alt+Right)">
+      <button class="chrome icon-button" onclick={() => history.forward()} aria-label="Forward" title="Forward (Alt+Right)">
         <ArrowRight size={18} />
       </button>
     </nav>
-    <nav class="crumbs" aria-label="Breadcrumbs">
-      {#each crumbs as crumb, i (i)}
-        {#if i > 0}<span class="sep muted" aria-hidden="true">/</span>{/if}
-        {#if crumb.href && i < crumbs.length - 1}
-          <a href={crumb.href}>{crumb.text}</a>
-        {:else}
-          <span class="here" aria-current="page">{crumb.text}</span>
-        {/if}
-      {/each}
-    </nav>
-    <nav class="tools" aria-label="Tools">
-      <button class="link search" onclick={() => (paletteOpen = true)}>
-        <Search size={16} /> Search <kbd>{keysFor("palette")}</kbd>
-      </button>
-      <a href={routeHash({ view: "settings" })} class="settings" class:active={route.view === "settings"}>
-        <Settings size={16} /> Settings
-      </a>
-    </nav>
-  </header>
-  {#if current}
-    <div class="notice {current.kind}" role="status">
-      <span class="text">{current.text}</span>
-      {#if current.action}
-        <button onclick={() => runAction(current.id, current.action!.run)}>{current.action.label}</button>
-      {/if}
-      {#if session.notices.length > 1}
-        <span class="muted count">1 of {session.notices.length}</span>
-        <button onclick={() => dismiss(current.id)}>Next</button>
-      {:else}
-        <button onclick={() => dismiss(current.id)}>Dismiss</button>
-      {/if}
+    <div class="bar">
+      <nav class="crumbs" aria-label="Breadcrumbs">
+        {#each crumbs as crumb, i (i)}
+          {#if i > 0}<span class="sep muted" aria-hidden="true">/</span>{/if}
+          {#if crumb.href && i < crumbs.length - 1}
+            <a href={crumb.href}>{crumb.text}</a>
+          {:else}
+            <span class="here" aria-current="page">{crumb.text}</span>
+          {/if}
+        {/each}
+      </nav>
+      <nav class="tools" aria-label="Tools">
+        <button class="search" onclick={() => (paletteOpen = true)}>
+          <Search size={16} />
+          <span class="search-label">Search</span>
+          <kbd>{keysFor("palette")}</kbd>
+        </button>
+        <a
+          href={routeHash({ view: "settings" })}
+          class="chrome icon-button settings"
+          aria-label="Settings"
+          title={`Settings (${keysFor("settings")})`}
+          aria-current={route.view === "settings" ? "page" : undefined}
+        >
+          <Settings size={18} />
+        </a>
+      </nav>
     </div>
-  {/if}
+  </header>
   <div class="columns" style:--sidebar-col={sidebarWidth}>
     {#if inGuide}
       <Sidebar {route} />
@@ -365,27 +460,60 @@
     {:else}
       <GuidesSidebar />
     {/if}
-    <main tabindex="-1" class:split>
-      {#if route.view === "guides"}
-        <GuidesView />
-      {:else if route.view === "guide"}
-        <GuideView guideId={route.guideId} />
-      {:else if route.view === "tags"}
-        <TagsView guideId={route.guideId} />
-      {:else if route.view === "trash"}
-        <TrashView guideId={route.guideId} />
-      {:else if route.view === "boards"}
-        <BoardsView guideId={route.guideId} />
-      {:else if route.view === "board"}
-        <BoardView boardId={route.boardId} />
-      {:else if route.view === "entry"}
-        <EntryView entryId={route.entryId} />
-      {:else if route.view === "settings"}
-        <SettingsView />
-      {/if}
-    </main>
+    <div class="content">
+      <main tabindex="-1" class:split bind:this={mainEl}>
+        {#if route.view === "guides"}
+          <GuidesView />
+        {:else if route.view === "guide"}
+          <GuideView guideId={route.guideId} />
+        {:else if route.view === "tags"}
+          <TagsView guideId={route.guideId} />
+        {:else if route.view === "trash"}
+          <TrashView guideId={route.guideId} />
+        {:else if route.view === "boards"}
+          <BoardsView guideId={route.guideId} />
+        {:else if route.view === "board"}
+          <BoardView boardId={route.boardId} />
+        {:else if route.view === "entry"}
+          <EntryView entryId={route.entryId} />
+        {:else if route.view === "settings"}
+          <SettingsView />
+        {/if}
+      </main>
+      <!-- One notice at a time, over the bottom of the content column; the region stays mounted
+           so a screen reader hears each new notice. -->
+      <div class="notice-slot" role="status" style:right="calc(var(--space-3) + {noticeRight}px)">
+        {#if current}
+          <div class="notice {current.kind}">
+            <span class="notice-icon" aria-hidden="true">
+              {#if current.kind === "error"}<CircleAlert size={16} />
+              {:else if current.kind === "warning"}<TriangleAlert size={16} />
+              {:else}<Info size={16} />{/if}
+            </span>
+            <span class="text">{current.text}</span>
+            {#if current.action}
+              <button class="link" onclick={() => runAction(current.id, current.action!.run)}>
+                {current.action.label}
+              </button>
+            {/if}
+            {#if session.notices.length > 1}
+              <span class="muted count">1 of {session.notices.length}</span>
+              <button class="link" onclick={() => dismiss(current.id)}>Next</button>
+            {/if}
+            <button
+              class="chrome icon-button"
+              aria-label="Dismiss"
+              title="Dismiss"
+              onclick={() => dismiss(current.id)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        {/if}
+      </div>
+    </div>
   </div>
-  <Palette open={paletteOpen} {route} onclose={() => (paletteOpen = false)} onaction={act} />
+  <Palette open={paletteOpen} {route} onclose={() => (paletteOpen = false)} onaction={(a) => act(a, true)} />
   <WebLinkDialog />
   {#if session.current.guide}
     <NewEntryDialog guideId={session.current.guide.id} open={newEntryOpen} onclose={() => (newEntryOpen = false)} />
@@ -394,25 +522,32 @@
 {/if}
 
 <style>
+  /* The top bar sits on the columns' grid (UI review 10): the history buttons over the sidebar,
+     the breadcrumbs from the content's left padding, the tools at the right. A rail-width
+     sidebar is too narrow for the history buttons, so that column grows to fit them. */
   .topbar {
-    display: flex;
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(var(--sidebar-col), max-content) minmax(0, 1fr);
     align-items: center;
-    gap: var(--space-3);
-    padding: 0 var(--space-3);
-    height: 40px;
+    height: calc(var(--control-h) + var(--space-2));
     border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--bg);
   }
   .topbar nav {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--space-1);
     align-items: center;
   }
-  .search,
-  .settings {
-    display: inline-flex;
+  .history {
+    padding: 0 var(--space-2);
+  }
+  .bar {
+    display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-3);
+    min-width: 0;
+    padding: 0 var(--space-3) 0 var(--space-5);
   }
   .crumbs {
     flex: 1;
@@ -428,37 +563,101 @@
   .crumbs .here {
     font-weight: 600;
   }
-  .tools a.active {
-    text-decoration: underline;
+  /* Chrome icons: muted, the text color on hover, no box. */
+  .chrome {
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--muted);
+  }
+  .chrome:hover:not(:disabled) {
+    border-color: transparent;
+    color: var(--fg);
+  }
+  /* The Settings button on the Settings page: the pressed style. */
+  .settings[aria-current="page"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  /* Search is shaped like a field, so it reads as the place to type. */
+  .search {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 15rem;
+    min-height: var(--control-h);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    color: var(--muted);
+    text-align: left;
+  }
+  .search-label {
+    flex: 1;
   }
   .search kbd {
     font: inherit;
     font-size: var(--text-sm);
-    margin-left: var(--space-1);
     padding: 0 var(--space-1);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--muted);
   }
+  /* The notice floats over the bottom edge of the content column (UI review 13, decision 5): it
+     covers the page's last lines while shown, and nothing moves when it comes or goes. */
+  .notice-slot {
+    position: absolute;
+    left: var(--space-3);
+    bottom: var(--space-3);
+    z-index: 15;
+  }
   .notice {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    min-height: calc(var(--control-h) + var(--space-2));
+    padding-right: var(--space-2);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--raised);
+    box-shadow: var(--e2);
+    color: var(--fg);
   }
-  .notice.warning {
+  .notice > :not(.notice-icon) {
+    align-self: center;
+  }
+  /* The kind is a tinted bar at the left holding its icon; the text stays at --fg. */
+  .notice-icon {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(var(--control-h) + var(--space-1));
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .notice.warning .notice-icon {
     background: var(--warning-bg);
+    color: var(--fg);
   }
-  .notice.error .text {
+  .notice.error .notice-icon {
+    background: var(--danger-soft);
     color: var(--danger);
   }
   .notice .text {
     flex: 1;
+    min-width: 0;
+    padding: var(--space-2) 0;
   }
   .notice .count {
     font-size: var(--text-sm);
+    white-space: nowrap;
+  }
+  .notice button.link {
+    white-space: nowrap;
   }
   /* Every view has the sidebar column; its contents change with the level. */
   .columns {
@@ -467,7 +666,16 @@
     display: grid;
     grid-template-columns: var(--sidebar-col) minmax(0, 1fr);
   }
+  /* The content column: the page, with the notice floating over its bottom edge. */
+  .content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
   main {
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     min-height: 0;

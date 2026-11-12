@@ -7,6 +7,8 @@ import { displayKeys, shortcutFor, type Action } from "./keys";
 export interface Command {
   action: Action;
   label: string;
+  /** The chord to show in place of the map's, or null for none; absent means the map's. */
+  keys?: string | null;
 }
 
 export type Row =
@@ -50,7 +52,7 @@ export function buildGroups(input: string, sources: Sources): Group[] {
     .filter((c) => !q || c.label.toLowerCase().includes(q))
     .slice(0, 8)
     .map((command) => {
-      const keys = shortcutFor(command.action);
+      const keys = command.keys !== undefined ? command.keys : shortcutFor(command.action);
       return { kind: "command", command, keys: keys ? displayKeys(keys, sources.mac) : null };
     });
   const guides: Row[] = sources.guides
@@ -79,4 +81,60 @@ export function buildGroups(input: string, sources: Sources): Group[] {
 
 export function flatten(groups: Group[]): Row[] {
   return groups.flatMap((g) => g.rows);
+}
+
+/** Views inside a guide, where guide commands apply. */
+const GUIDE_VIEWS = ["guide", "entry", "tags", "trash", "boards", "board"];
+
+/**
+ * The commands the palette offers on a view. Page commands come first; on a board, Mod+F goes to
+ * the board's picker search, so the key cap moves from "Search this guide" to "Add entries".
+ */
+export function commandsFor(view: string, inGuide: boolean, hasNotice: boolean): Command[] {
+  const guideLevel = inGuide && GUIDE_VIEWS.includes(view);
+  const list: Command[] = [];
+  if (guideLevel) list.push({ action: "new", label: "New entry" });
+  list.push({ action: "new-guide", label: "New guide" });
+  if (view === "entry") {
+    list.push(
+      { action: "toggle-mode", label: "Toggle Read and Edit" },
+      { action: "focus-relation", label: "Add a relation" },
+      { action: "add-tag", label: "Add a tag" },
+      { action: "rename", label: "Rename entry" },
+      { action: "toggle-panel", label: "Show or hide the right panel" },
+    );
+  }
+  if (view === "board") {
+    list.push(
+      { action: "board-add-entries", label: "Add entries", keys: shortcutFor("focus-search") },
+      { action: "board-new-note", label: "New note" },
+      { action: "board-fit", label: "Fit board" },
+      { action: "toggle-panel", label: "Show or hide the right panel" },
+    );
+  }
+  if (guideLevel) {
+    list.push(
+      view === "board"
+        ? { action: "focus-search", label: "Search this guide", keys: null }
+        : { action: "focus-search", label: "Search this guide" },
+      { action: "tag-editor", label: "Tag editor" },
+      { action: "boards", label: "Boards" },
+      { action: "trash", label: "Trash" },
+    );
+  }
+  list.push(
+    { action: "toggle-sidebar", label: "Show or hide the sidebar" },
+    { action: "settings", label: "Settings" },
+    { action: "back", label: "Back" },
+    { action: "forward", label: "Forward" },
+  );
+  if (hasNotice) list.push({ action: "dismiss-notice", label: "Dismiss notice" });
+  list.push(
+    { action: "density-compact", label: "Density: Compact" },
+    { action: "density-roomy", label: "Density: Roomy" },
+    { action: "theme-system", label: "Theme: System" },
+    { action: "theme-light", label: "Theme: Light" },
+    { action: "theme-dark", label: "Theme: Dark" },
+  );
+  return list;
 }

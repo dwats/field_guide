@@ -77,7 +77,7 @@ export function freshSidebar(guideId: string | null): SidebarState {
 export const session = $state({
   startup: null as Startup | null,
   prefs: { ...DEFAULT_PREFS } as UiPrefs,
-  /** Queue for the one notice slot under the top bar; the first entry is the one shown. */
+  /** Queue for the one notice slot over the bottom of the content; the first entry is the one shown. */
   notices: [] as Notice[],
   /** Most recent rename per entry id. */
   renames: {} as Record<string, RenameRecord>,

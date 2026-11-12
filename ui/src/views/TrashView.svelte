@@ -1,9 +1,12 @@
 <script lang="ts">
   // The guide's Trash (design section 5): select a row, then Restore or Purge from the fixed
-  // action row. Restore does not confirm, since trashing again undoes it; Purge and Empty trash do.
+  // action row, which is hidden while Trash is empty. Restore does not confirm, since trashing
+  // again undoes it; Purge and Empty trash do.
+  import { Trash2 } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import EmptyState from "../components/EmptyState.svelte";
   import { api, errorMessage, type EntrySummary, type Guide } from "../lib/api";
   import { stepIndex } from "../lib/combobox";
   import { when } from "../lib/format";
@@ -112,20 +115,28 @@
 
 <div class="page">
   {#if guide}
-    <div class="row header">
-      <h1>Trash</h1>
-      <span class="spacer"></span>
-      <button class="danger" disabled={entries.length === 0} onclick={() => (confirming = "empty")}>
-        Empty trash
-      </button>
-    </div>
-    <p class="muted">
-      Restore puts an entry back with its tags and relations. Purge removes it for good.
-    </p>
+    <header class="page-header">
+      <div class="page-titles">
+        <h1>Trash</h1>
+        <p class="page-subtitle">
+          Restore puts an entry back with its tags and relations. Purge removes it for good.
+        </p>
+      </div>
+      <div class="page-toolbar">
+        <button class="danger with-icon" disabled={entries.length === 0} onclick={() => (confirming = "empty")}>
+          <Trash2 size={16} aria-hidden="true" />
+          Empty trash
+        </button>
+      </div>
+    </header>
     {#if error}<p class="error">{error}</p>{/if}
 
     {#if entries.length === 0}
-      <p class="muted">Trash is empty.</p>
+      <EmptyState
+        icon={Trash2}
+        title="Trash is empty."
+        line="Entries moved to Trash wait here until you restore or purge them."
+      />
     {:else}
       <table
         class="select-list"
@@ -147,24 +158,25 @@
               aria-selected={entry.id === selected}
               onclick={() => (selected = entry.id)}
             >
-              <td>{entry.title} {#if entry.is_stub}<span class="chip">stub</span>{/if}</td>
-              <td class="muted">{entry.deleted_at ? when(entry.deleted_at) : ""}</td>
+              <td>{entry.title} {#if entry.is_stub}<span class="chip status">stub</span>{/if}</td>
+              <td class="muted date">{entry.deleted_at ? when(entry.deleted_at) : ""}</td>
               <td class="muted">{pathsOf(tags, entry.tag_ids)}</td>
             </tr>
           {/each}
         </tbody>
       </table>
-    {/if}
 
-    <div class="row actions">
-      <button disabled={!selectedEntry} onclick={restore}>Restore</button>
-      <button class="danger" disabled={!selectedEntry} onclick={() => (confirming = "purge")}>
-        Purge...
-      </button>
-      <span class="muted hint">
-        {#if selectedEntry}Selected: {selectedEntry.title}{:else}Select a row to act on it.{/if}
-      </span>
-    </div>
+      <!-- Hidden while the list is empty, since nothing can be selected (decided 2026-11-11). -->
+      <div class="row actions">
+        <button disabled={!selectedEntry} onclick={restore}>Restore</button>
+        <button class="danger" disabled={!selectedEntry} onclick={() => (confirming = "purge")}>
+          Purge...
+        </button>
+        <span class="muted hint">
+          {#if selectedEntry}Enter restores. Delete asks to purge.{:else}Select a row to act on it.{/if}
+        </span>
+      </div>
+    {/if}
 
     <ConfirmDialog
       open={confirming === "purge"}
@@ -188,8 +200,10 @@
 </div>
 
 <style>
-  .header {
-    margin-bottom: var(--space-1);
+  .with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
   }
   .select-list {
     border-radius: var(--radius-sm);
@@ -201,7 +215,11 @@
     cursor: default;
   }
   tbody tr.selected td {
-    background: var(--chip-bg);
+    background: var(--accent-soft);
+  }
+  .date {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
   .actions {
     margin-top: var(--space-2);

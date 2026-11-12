@@ -3,10 +3,11 @@
   // right. Selecting a row fills the pane: name, parent, color, counts, and the actions. Drag a
   // tag onto another to nest it, or onto the bar under the tree to make it top-level. The drag is
   // pointer events, not HTML drag and drop, which the window's native file drop would swallow.
-  import { ChevronDown, ChevronRight, Plus } from "@lucide/svelte";
+  import { ChevronDown, ChevronRight, Plus, Tags } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import EmptyState from "../components/EmptyState.svelte";
   import Modal from "../components/Modal.svelte";
   import Suggestions from "../components/Suggestions.svelte";
   import { api, errorMessage, type EntryCounts, type Guide, type TagNode } from "../lib/api";
@@ -309,25 +310,36 @@
 
 <div class="page">
   {#if guide}
-    <div class="row header">
-      <h1>Tag editor</h1>
-      <span class="spacer"></span>
-      <button
-        class="primary icon-button"
-        aria-label="New tag"
-        title="New tag"
-        onclick={() => {
-          newName = "";
-          creating = { parent: null };
-        }}
-      >
-        <Plus size={18} />
-      </button>
-    </div>
+    <header class="page-header">
+      <div class="page-titles"><h1>Tag editor</h1></div>
+      <div class="page-toolbar">
+        <button
+          class="primary icon-button"
+          aria-label="New tag"
+          title="New tag"
+          onclick={() => {
+            newName = "";
+            creating = { parent: null };
+          }}
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+    </header>
     {#if error}<p class="error">{error}</p>{/if}
 
     {#if tree.length === 0}
-      <p class="muted">No tags yet. Add a tag to an entry, or choose New tag.</p>
+      <EmptyState icon={Tags} title="No tags yet." line="Add a tag to an entry, or create one here.">
+        <button
+          class="primary"
+          onclick={() => {
+            newName = "";
+            creating = { parent: null };
+          }}
+        >
+          New tag
+        </button>
+      </EmptyState>
     {:else}
       <div class="editor">
         <div class="tree-pane">
@@ -391,7 +403,7 @@
           </div>
         </div>
 
-        <div class="detail">
+        <div class="detail" class:empty={!selected}>
           {#if selected}
             <h2 class="path">{selected.path}</h2>
             <form
@@ -449,6 +461,7 @@
                 Add child tag
               </button>
               <button onclick={openMerge} disabled={others.length === 0}>Merge into...</button>
+              <span class="spacer"></span>
               <button class="danger" onclick={() => (pendingDelete = selected)}>Delete tag</button>
             </div>
           {:else}
@@ -536,9 +549,6 @@
 </div>
 
 <style>
-  .header {
-    margin-bottom: var(--space-3);
-  }
   .editor {
     display: grid;
     grid-template-columns: 3fr 2fr;
@@ -592,6 +602,11 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface);
+  }
+  /* With nothing selected the pane holds only a hint, which reads as a hint without the box. */
+  .detail.empty {
+    border-color: transparent;
+    background: none;
   }
   .detail .path {
     font-size: var(--text-md);

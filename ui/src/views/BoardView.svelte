@@ -1,10 +1,12 @@
 <script lang="ts">
-  // One board (design section 6): the header with the layer toggles, zoom, and New note, the
-  // canvas, and the picker panel. Membership, positions, edges, notes, images, and strings come
-  // from core's board view; this page keeps a working copy of the positions and sizes so a drag
-  // or a resize shows at once and is written when it ends. An image dropped or pasted on the
-  // page is stored as media and placed on the board.
-  import { Check, Maximize, Plus } from "@lucide/svelte";
+  // One board (design section 6): the header with the name, the counts, New note, the View menu
+  // (layers and background), and More; the canvas with the zoom controls at its bottom right; and
+  // the panel. Membership, positions, edges, notes, images, and strings come from core's board
+  // view; this page keeps a working copy of the positions and sizes so a drag or a resize shows at
+  // once and is written when it ends. An image dropped or pasted on the page is stored as media and
+  // placed on the board. Each board's pan and zoom are kept while the app runs, so coming back
+  // shows the same place; the first visit fits the board.
+  import { Check, Layers, Maximize, Minus, Plus } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
   import BoardCanvas from "../components/BoardCanvas.svelte";
@@ -12,6 +14,7 @@
   import BoardPanel from "../components/BoardPanel.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import Menu from "../components/Menu.svelte";
+  import { register } from "../lib/actions";
   import {
     api,
     errorMessage,
@@ -34,6 +37,8 @@
     NOTE_DEFAULT_SIZE,
   } from "../lib/api";
   import {
+    MAX_ZOOM,
+    MIN_ZOOM,
     cardRect,
     cardShown,
     edgeShown,
@@ -53,6 +58,7 @@
     type Selection,
     type Viewport,
   } from "../lib/board";
+  import { forgetView, recallView, rememberView } from "../lib/boardMemory";
   import { onDrop, onPaste, type DropPoint } from "../lib/drop";
   import { ingestFile, ingestPath } from "../lib/ingest";
   import { isImagePath } from "../lib/media";
@@ -88,6 +94,7 @@
   let editingNote = $state<string | null>(null);
   let view = $state<Viewport>({ x: 0, y: 0, k: 1 });
   let canvas = $state<ReturnType<typeof BoardCanvas> | null>(null);
+  let panel = $state<ReturnType<typeof BoardPanel> | null>(null);
   let renaming = $state(false);
   let creating = $state(false);
   let confirmingDelete = $state(false);
@@ -101,7 +108,7 @@
   let pendingImages = new Map<string, BoardImageUpdate>();
   let pendingBoard: string | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | undefined;
-  /** The board the view was fitted for, once its first load landed. */
+  /** The board the view was set for (recalled or fitted), once its first load landed. */
   let fitted: string | null = null;
   /** Only the newest load may land. */
   let request = 0;
@@ -161,6 +168,14 @@
   );
   $effect(() => onPaste((files) => addImages(files, null)));
 
+  // The palette and the shortcuts reach the board through the actions registry.
+  $effect(() => register("board-find", () => void findEntries()));
+  $effect(() => register("board-add-entries", () => void findEntries()));
+  $effect(() => register("board-new-note", () => void createNote()));
+  $effect(() => register("board-fit", fit));
+  $effect(() => register("toggle-panel", togglePanel));
+  $effect(() => register("focus-relation", () => void focusRelation()));
+
   // Leaving the page writes what is still waiting.
   $effect(() => () => {
     alive = false;
@@ -211,8 +226,14 @@
         fitted = boardId;
         select(null);
         editingNote = null;
-        await tick();
-        fit();
+        // The place this board was left at, while the app runs; Fit on the first visit.
+        const recalled = recallView(boardId);
+        if (recalled) {
+          view = recalled;
+        } else {
+          await tick();
+          fit();
+        }
       }
     } catch (e) {
       error = errorMessage(e);
@@ -251,16 +272,49 @@
     ];
   }
 
+  /** Shows a new pan and zoom and keeps it for the next visit to this board. */
+  function setView(next: Viewport) {
+    view = next;
+    if (board) rememberView(board.id, next);
+  }
+
   function fit() {
     const size = canvas?.size();
     if (!size || size.w === 0) return;
-    view = fitView(allRects(), size);
+    setView(fitView(allRects(), size));
+  }
+
+  /** Zooms around the middle of the window by `factor`. */
+  function zoomBy(factor: number) {
+    const size = canvas?.size();
+    if (!size) return;
+    setView(zoomAt(view, { x: size.w / 2, y: size.h / 2 }, factor));
   }
 
   function actualSize() {
-    const size = canvas?.size();
-    if (!size) return;
-    view = zoomAt(view, { x: size.w / 2, y: size.h / 2 }, 1 / view.k);
+    zoomBy(1 / view.k);
+  }
+
+  /** Opens the panel when folded and puts the caret in the picker's search (Mod+F, Add entries). */
+  async function findEntries() {
+    if (!panelOpen) void savePrefs({ panel_collapsed: false });
+    await tick();
+    panel?.focusSearch();
+  }
+
+  /** Mod+R: the selected card's relation line, opening the panel when folded. */
+  async function focusRelation() {
+    if (!selected) return;
+    if (!panelOpen) void savePrefs({ panel_collapsed: false });
+    await tick();
+    await panel?.focusRelation();
+  }
+
+  /** A relation was saved from the panel: its line is drawn at once, and the list reloads. */
+  async function relationSaved() {
+    await load();
+    version += 1;
+    touch();
   }
 
   /** The middle of the window in world units, where new things land. */
@@ -730,6 +784,7 @@
     const name = board.name;
     try {
       await api.deleteBoard(board.id);
+      forgetView(board.id);
       confirmingDelete = false;
       notify(`Deleted the board "${name}". Its entries are untouched.`);
       replace({ view: "boards", guideId: guide.id });
@@ -752,35 +807,11 @@
   <div class="content">
     {#if board && guide && filters}
       <div class="row header">
-        <h1>{board.name}</h1>
+        <h1 title={board.name}>{board.name}</h1>
         <span class="muted count">
           {cards.length} {cards.length === 1 ? "card" : "cards"}{#if notes.length > 0}, {notes.length} {notes.length === 1 ? "note" : "notes"}{/if}{#if images.length > 0}, {images.length} {images.length === 1 ? "image" : "images"}{/if}{#if hiddenCards > 0}, {hiddenCards} from other guides hidden{/if}
         </span>
         <span class="spacer"></span>
-        <div class="toggles" role="group" aria-label="Layers">
-          <button
-            class="toggle"
-            aria-pressed={filters.show_mentions}
-            title="Show mentions from entry bodies as dashed lines"
-            onclick={() => void saveFilters({ show_mentions: !filters.show_mentions })}
-          >
-            Mentions
-          </button>
-          <button
-            class="toggle"
-            aria-pressed={filters.show_external}
-            title="Show cards and lines that reach into other guides"
-            onclick={() => void saveFilters({ show_external: !filters.show_external })}
-          >
-            Other guides
-          </button>
-        </div>
-        <button class="icon-button" aria-label="Fit the board to the window" title="Fit to window" onclick={fit}>
-          <Maximize size={18} />
-        </button>
-        <button class="zoom" title="Zoom to 100%" aria-label="Zoom {zoomText}, reset to 100%" onclick={actualSize}>
-          {zoomText}
-        </button>
         <button
           class="primary icon-button"
           aria-label="New note"
@@ -789,6 +820,55 @@
         >
           <Plus size={18} />
         </button>
+        <Menu label="View" icon={Layers}>
+          {#snippet items(close)}
+            <button
+              role="menuitemcheckbox"
+              aria-checked={filters.show_mentions}
+              title="Mentions from entry bodies, as dashed lines"
+              onclick={() => {
+                close();
+                void saveFilters({ show_mentions: !filters.show_mentions });
+              }}
+            >
+              <span class="check" aria-hidden="true">
+                {#if filters.show_mentions}<Check size={14} />{/if}
+              </span>
+              Mentions
+            </button>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={filters.show_external}
+              title="Cards and lines that reach into other guides"
+              onclick={() => {
+                close();
+                void saveFilters({ show_external: !filters.show_external });
+              }}
+            >
+              <span class="check" aria-hidden="true">
+                {#if filters.show_external}<Check size={14} />{/if}
+              </span>
+              Other guides
+            </button>
+            <div class="separator"></div>
+            {#each BACKGROUNDS as option (option.value)}
+              <button
+                role="menuitemradio"
+                aria-label="Background: {option.label}"
+                aria-checked={filters.background === option.value}
+                onclick={() => {
+                  close();
+                  void saveFilters({ background: option.value });
+                }}
+              >
+                <span class="check" aria-hidden="true">
+                  {#if filters.background === option.value}<Check size={14} />{/if}
+                </span>
+                Background: {option.label}
+              </button>
+            {/each}
+          {/snippet}
+        </Menu>
         <Menu>
           {#snippet items(close)}
             <button
@@ -810,25 +890,9 @@
               New board...
             </button>
             <div class="separator"></div>
-            {#each BACKGROUNDS as option (option.value)}
-              <button
-                role="menuitemradio"
-                aria-label="Background: {option.label}"
-                aria-checked={filters.background === option.value}
-                onclick={() => {
-                  close();
-                  void saveFilters({ background: option.value });
-                }}
-              >
-                <span class="check" aria-hidden="true">
-                  {#if filters.background === option.value}<Check size={14} />{/if}
-                </span>
-                Background: {option.label}
-              </button>
-            {/each}
-            <div class="separator"></div>
             <button
               role="menuitem"
+              class="danger"
               onclick={() => {
                 close();
                 confirmingDelete = true;
@@ -854,7 +918,7 @@
           {tying}
           {editingNote}
           {view}
-          onview={(v) => (view = v)}
+          onview={setView}
           onselect={select}
           onopen={openEntry}
           onmove={moveItem}
@@ -873,6 +937,33 @@
             image here.
           </p>
         {/if}
+        <!-- Zoom and Fit, at the canvas's bottom right (UI review, Missing 3). -->
+        <div class="zoom-cluster" role="group" aria-label="Zoom">
+          <button
+            class="icon-button"
+            aria-label="Zoom out"
+            title="Zoom out"
+            disabled={view.k <= MIN_ZOOM}
+            onclick={() => zoomBy(1 / 1.2)}
+          >
+            <Minus size={16} />
+          </button>
+          <button class="zoom" title="Zoom to 100%" aria-label="Zoom {zoomText}, reset to 100%" onclick={actualSize}>
+            {zoomText}
+          </button>
+          <button
+            class="icon-button"
+            aria-label="Zoom in"
+            title="Zoom in"
+            disabled={view.k >= MAX_ZOOM}
+            onclick={() => zoomBy(1.2)}
+          >
+            <Plus size={16} />
+          </button>
+          <button class="icon-button" aria-label="Fit the board to the window" title="Fit to window" onclick={fit}>
+            <Maximize size={16} />
+          </button>
+        </div>
       </div>
     {:else if error}
       <p class="error page">{error}</p>
@@ -880,9 +971,10 @@
   </div>
   {#if board && guide && filters}
     <BoardPanel
+      bind:this={panel}
       open={panelOpen}
       ontoggle={togglePanel}
-      guideId={guide.id}
+      {guide}
       boardId={board.id}
       {filters}
       onfilters={(f) => void saveFilters(f)}
@@ -892,6 +984,9 @@
       onlocate={locate}
       {selected}
       onopen={openEntry}
+      oncreatelink={(title) => void createFromLink(title)}
+      onrelations={() => void relationSaved()}
+      onlines={() => void load()}
       {selectedNote}
       {selectedImage}
       onremoveimage={(id) => void removeImage(id)}
@@ -946,10 +1041,14 @@
     display: flex;
     flex-direction: column;
   }
-  /* One line always: a long name truncates instead of pushing the controls down. */
+  /* One line: the name, the counts, New note, View, and More. Layers, background, and zoom live
+     in the View menu and on the canvas, so the name has the row's free space. */
   .header {
     flex-wrap: nowrap;
-    padding: var(--space-3) var(--space-4);
+    gap: var(--space-2);
+    box-sizing: border-box;
+    min-height: var(--header-h);
+    padding: 0 var(--space-4);
     border-bottom: 1px solid var(--border);
   }
   .header h1 {
@@ -959,6 +1058,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: var(--text-xl);
+    font-weight: 600;
+    line-height: 1.25;
   }
   /* The controls keep their one line; only the name gives way. */
   .header button {
@@ -974,23 +1076,39 @@
     font-size: var(--text-sm);
     white-space: nowrap;
   }
-  .toggles {
-    display: flex;
-    gap: var(--space-1);
+  .check {
+    display: inline-flex;
+    width: var(--icon-sm);
+    margin-right: var(--space-1);
+    vertical-align: -2px;
   }
-  .toggle[aria-pressed="true"] {
-    background: var(--chip-bg);
-    font-weight: 600;
+  .zoom-cluster {
+    position: absolute;
+    right: var(--space-3);
+    /* One notice row above the bottom edge, always, so a notice (App.svelte) never covers it and
+       it never moves when one comes or goes. */
+    bottom: calc(var(--control-h) + var(--space-2) + 2 * var(--space-3));
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--raised);
+    box-shadow: var(--e2);
+  }
+  .zoom-cluster button {
+    border-color: transparent;
+    background: none;
+  }
+  .zoom-cluster button:hover:not(:disabled) {
+    border-color: transparent;
+    background: var(--raised-hover);
   }
   .zoom {
     min-width: 4.5em;
+    padding: 0 var(--space-2);
     font-variant-numeric: tabular-nums;
-  }
-  .check {
-    display: inline-flex;
-    width: 14px;
-    margin-right: var(--space-1);
-    vertical-align: -2px;
   }
   .stage {
     position: relative;

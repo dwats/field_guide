@@ -78,7 +78,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 
 ## Boards
 
-- [ ] The sidebar footer's Boards link and the palette's Boards command open the guide's board list; New board asks for a name and opens the board; a name already used by another board of the guide is refused with a message.
+- [ ] The sidebar tree has a Boards row above Trash that expands to the guide's boards; a board's row opens it; the Boards row and the palette's Boards command open the guide's board list; New board asks for a name and opens the board; a name already used by another board of the guide is refused with a message.
 - [ ] The picker panel lists the guide's entries; the search line narrows by text and `#Tag` chips, Stubs only narrows further; Add puts a card in the middle of the window, Add all fills the cells around it; an entry already on the board shows a check and Remove instead of Add.
 - [ ] Two cards whose entries are related show a line between them labeled with the verb, qualifiers on a second line, an arrowhead at the object unless the verb is symmetric; a body that mentions another member draws a dashed line; the Mentions toggle hides and shows that layer.
 - [ ] Adding a card whose entry is related to members already there draws those lines at once.
@@ -86,6 +86,9 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Dragging a card moves it and the lines follow; after a restart the card is where it was left. The wheel zooms around the pointer, dragging the background pans, Fit shows every card, and clicking the zoom readout returns to 100%.
 - [ ] A card takes focus: Enter or Space opens the entry, Delete removes the card with Undo in the notice and focus moves to the canvas, arrows nudge it, Escape clears the selection; Tab to a card off the edge pans it into view; with the canvas focused, arrows pan and plus and minus zoom; a second click on a card opens the entry.
 - [ ] Hide panel on the board folds it to a rail and the choice survives a restart, shared with the entry page's panel; the panel's own fold button opens and closes it, and the header's plus does not.
+- [ ] The board header shows the whole name; View holds Mentions, Other guides, and the background; zoom out, the readout, zoom in, and Fit sit at the canvas's bottom right and a notice does not cover them; leaving the board and coming back keeps its pan and zoom.
+- [ ] A line's label is horizontal in a pill at the middle of the line, readable on every background in both schemes; a card without a picture is an index card with a red rule.
+- [ ] The selected card's panel has Entry and Relations tabs; typing a relation in the panel draws its line on the board at once; Ctrl+R puts the caret in the relation line; Ctrl+F puts it in the picker's search.
 - [ ] The selected card shows in the panel with its relations, Open entry, and Remove from board; a card with a gallery shows its first image as the picture, proportions following the image; one without shows the title alone.
 - [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
 - [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.
@@ -106,6 +109,10 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 
 ## Entries
 
+- [ ] A long entry title wraps on its own line and is never cut off; the controls sit on the line below and do not move between Read and Edit.
+- [ ] Paste an image on the guide page: New entry opens with the image attached; the cover changes only by a drop on the cover or More, Set cover.
+- [ ] After opening an entry from the palette, focus is on the page heading, not on the element that had it before; Tab from the sidebar search reaches the body in a few presses.
+- [ ] A notice appears over the bottom of the content and nothing on the page moves when it comes or goes.
 - [ ] Create an entry from the guide page and land on it; it shows the "stub" chip and is listed by Stubs only until its body is edited.
 - [ ] A click on a web link in a body asks first, showing the whole address with focus on Cancel; Open in browser opens the default browser; the app itself makes no request.
 - [ ] The right panel keeps the last chosen tab and the open folds from one entry to the next.

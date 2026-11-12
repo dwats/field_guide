@@ -3,7 +3,6 @@
 :root {
   --font-size: 16px;
   --line-height: 1.6;
-  --h1: 1.6rem;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -69,6 +68,12 @@
   --warning-bg: light-dark(#fff4d6, #4a3b12);
   /* A hidden spoiler: a solid block, quiet enough not to glare in either scheme. */
   --spoiler: light-dark(#80868b, #5f6368);
+  /* Alert bars and titles (`> [!NOTE]` and friends), GitHub's values: each title passes 4.5:1. */
+  --alert-note: light-dark(#0969da, #4493f8);
+  --alert-tip: light-dark(#1a7f37, #3fb950);
+  --alert-important: light-dark(#8250df, #ab7df8);
+  --alert-warning: light-dark(#9a6700, #d29922);
+  --alert-caution: light-dark(#cf222e, #f85149);
   --selection: light-dark(#d7d4f0, #2f4a6e);
   --active-line: light-dark(#cceeff44, rgb(255 255 255 / 0.04));
 
@@ -108,7 +113,8 @@
      off-white in dark, where pure white would glare against the board. */
   --paper: light-dark(#fdfcf9, #353230);
   --paper-edge: light-dark(#d9d4c7, #4a4641);
-  --twine: light-dark(#8a6d3b, #c9a86a);
+  /* Relation lines and their arrowheads: a neutral ink, apart from the strings' colors. */
+  --edge: light-dark(#4d5156, #b0b4ba);
   --grid-line: light-dark(#e6e6e6, #2e2e2e);
   --cork: light-dark(#c9a36b, #4a3a27);
   --cork-dark: light-dark(rgba(110, 72, 30, 0.45), rgba(0, 0, 0, 0.45));
@@ -123,7 +129,6 @@
 :root[data-density="compact"] {
   --font-size: 14px;
   --line-height: 1.4;
-  --h1: 1.35rem;
   --space-1: 2px;
   --space-2: 4px;
   --space-3: 8px;
@@ -204,8 +209,10 @@ h3 {
   line-height: 1.2;
 }
 
+/* App page titles: sans at 600 (type table). The entry title is the one serif title. */
 h1 {
-  font-size: var(--h1);
+  font-size: var(--text-xl);
+  font-weight: 600;
 }
 
 h2 {
@@ -216,8 +223,16 @@ p {
   margin: 0 0 var(--space-2);
 }
 
+/* Links carry the accent and no underline, which shows on hover and focus only (UI review 3). */
 a {
   color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover,
+a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 button,
@@ -305,6 +320,39 @@ textarea {
   padding: var(--space-4) var(--space-5) 40px;
 }
 
+/* The page header (UI review 15): the title with an optional muted subtitle, the toolbar at the
+   right, then --space-4 to the content. A long title wraps; it is never cut off. */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-height: var(--header-h);
+  margin-bottom: var(--space-4);
+}
+
+.page-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-titles h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.page-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .row {
   display: flex;
   gap: var(--space-2);
@@ -348,6 +396,15 @@ textarea {
   background: transparent;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+
+/* A status, such as "stub": a dashed pill, since dashed means provisional or indirect. A tag
+   chip is filled; a status never is. */
+.chip.status {
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--field-border);
+  background: transparent;
+  color: var(--muted);
 }
 
 .tag-dot {
@@ -433,15 +490,31 @@ textarea {
   gap: var(--space-1);
   min-height: var(--row-h);
   padding-right: var(--space-3);
-  border-left: 3px solid transparent;
   color: inherit;
   text-decoration: none;
 }
 
+.tree-line:hover,
+.tree-line.scoped {
+  background: var(--chip-bg);
+}
+
+/* The selected row (UI review 11): one per tree, a fill with a 3-pixel inset accent bar. A scope
+   that feeds the list while another page shows is `.scoped`: the fill above, no bar. */
 .tree-line.selected,
 .tree-line[aria-current="page"] {
-  border-left-color: var(--accent);
-  background: var(--chip-bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The keyboard ring goes on the whole row, not on the name inside it. */
+.tree-line:has(.tree-name:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tree-line .tree-name:focus-visible {
+  outline: none;
 }
 
 .tree-name {
@@ -494,6 +567,13 @@ td {
   vertical-align: top;
 }
 
+/* Header cells of the app's own tables; rendered markdown tables set theirs under .preview. */
+th {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* Rendered entry bodies, from core's renderer. */
 .preview {
   max-width: var(--measure);
@@ -540,6 +620,24 @@ td {
   font-size: var(--text-md);
 }
 
+.preview h3,
+.preview h4,
+.preview h5,
+.preview h6 {
+  font-weight: 600;
+}
+
+/* One block spacing for text blocks (UI review 8). In em, so a board note spaces its smaller
+   text to scale. */
+.preview p,
+.preview ul,
+.preview ol,
+.preview pre,
+.preview table,
+.preview blockquote {
+  margin: 0 0 0.85em;
+}
+
 .preview > :first-child {
   margin-top: 0;
 }
@@ -565,32 +663,46 @@ td {
   outline-offset: -4px;
 }
 
+/* Code blocks and inline code in the mono face. Sizes and padding in em on purpose: code follows
+   the text around it, in a heading, an entry, or a board note. */
 .preview pre {
-  padding: var(--space-2);
+  padding: 0.75em 1em;
   overflow: auto;
   background: var(--surface);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.45;
 }
 
 .preview code {
-  padding: 0 var(--space-1);
+  padding: 0.1em 0.35em;
   border-radius: var(--radius-sm);
   background: var(--surface);
-  /* Relative on purpose: code inside a heading or a board note follows the text around it. */
+  font-family: var(--font-mono);
   font-size: 0.92em;
 }
 
 .preview pre code {
   padding: 0;
   background: none;
+  font-size: 1em;
 }
 
-/* A quote: a bar down the left and an opening quote mark; nested quotes add a bar each. */
+/* A quote: a bar down the left and an opening quote mark on the outermost quote only; nested
+   quotes add a bar each. */
 .preview blockquote {
   position: relative;
-  margin: var(--space-3) 0;
   padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-4) + 1.2em);
   border-left: 3px solid var(--border);
+}
+
+.preview blockquote blockquote:not([class^="markdown-alert-"]) {
+  padding-left: var(--space-4);
+}
+
+.preview blockquote blockquote:not([class^="markdown-alert-"])::before {
+  content: none;
 }
 
 .preview blockquote::before {
@@ -613,9 +725,13 @@ td {
   margin-bottom: 0;
 }
 
-/* Alerts (`> [!NOTE]` and friends): a colored bar and a small title instead of the quote mark. */
+/* Alerts (`> [!NOTE]` and friends): a colored bar and a small title with an icon instead of the
+   quote mark. The title is ::before; the icon is ::after, a Lucide shape (Info, Lightbulb,
+   MessageSquareWarning, TriangleAlert, OctagonAlert) used as a mask over the alert color, so it
+   follows the scheme. Title and icon share one font size, so the em offsets line up. */
 .preview blockquote[class^="markdown-alert-"] {
-  --alert: var(--tag-blue);
+  --alert: var(--alert-note);
+  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E");
   padding-left: var(--space-4);
   border-left-color: var(--alert);
 }
@@ -624,6 +740,7 @@ td {
   position: static;
   display: block;
   margin-bottom: 2px;
+  padding-left: 1.5em;
   font-family: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -633,12 +750,26 @@ td {
   color: var(--alert);
 }
 
+.preview blockquote[class^="markdown-alert-"]::after {
+  content: "";
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-4);
+  width: 1.15em;
+  height: 1.4em;
+  font-size: var(--text-sm);
+  background: var(--alert);
+  -webkit-mask: var(--alert-icon) center / 1.15em 1.15em no-repeat;
+  mask: var(--alert-icon) center / 1.15em 1.15em no-repeat;
+}
+
 .preview blockquote.markdown-alert-note::before {
   content: "Note";
 }
 
 .preview blockquote.markdown-alert-tip {
-  --alert: var(--tag-green);
+  --alert: var(--alert-tip);
+  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5'/%3E%3Cpath d='M9 18h6'/%3E%3Cpath d='M10 22h4'/%3E%3C/svg%3E");
 }
 
 .preview blockquote.markdown-alert-tip::before {
@@ -646,7 +777,8 @@ td {
 }
 
 .preview blockquote.markdown-alert-important {
-  --alert: var(--tag-purple);
+  --alert: var(--alert-important);
+  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z'/%3E%3Cpath d='M12 15h.01'/%3E%3Cpath d='M12 7v4'/%3E%3C/svg%3E");
 }
 
 .preview blockquote.markdown-alert-important::before {
@@ -654,7 +786,8 @@ td {
 }
 
 .preview blockquote.markdown-alert-warning {
-  --alert: var(--tag-orange);
+  --alert: var(--alert-warning);
+  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
 }
 
 .preview blockquote.markdown-alert-warning::before {
@@ -662,7 +795,8 @@ td {
 }
 
 .preview blockquote.markdown-alert-caution {
-  --alert: var(--tag-red);
+  --alert: var(--alert-caution);
+  --alert-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16h.01'/%3E%3Cpath d='M12 8v4'/%3E%3Cpath d='M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z'/%3E%3C/svg%3E");
 }
 
 .preview blockquote.markdown-alert-caution::before {
@@ -747,29 +881,40 @@ td {
   user-select: auto;
 }
 
-/* Task boxes in entry bodies are inert (disabled), and the native disabled box nearly vanishes
-   on a dark page. In dark, draw it instead: a field-strength edge, and the accent when done.
-   Light keeps the native box. */
-:root[data-theme="dark"] .preview input[type="checkbox"]:disabled {
+/* Task lists (UI review 7): no bullet, and a drawn box in both schemes, in entries (inert,
+   disabled) and in board notes (live). A field-strength edge; the accent with a check when done.
+   Sizes in em, so the box follows the text. Disabled boxes keep full opacity. */
+.preview li:has(> input[type="checkbox"]),
+.preview li:has(> p > input[type="checkbox"]) {
+  list-style: none;
+}
+
+.preview ul:has(> li > input[type="checkbox"]),
+.preview ul:has(> li > p > input[type="checkbox"]) {
+  padding-left: 0.2em;
+}
+
+.preview input[type="checkbox"] {
   appearance: none;
   display: inline-grid;
   place-content: center;
   box-sizing: border-box;
   width: 1em;
   height: 1em;
-  margin: 0 0.4em 0 0;
+  margin: 0 0.45em 0 0;
   vertical-align: -0.15em;
   border: 1px solid var(--field-border);
   border-radius: var(--radius-sm);
   background: var(--bg);
+  opacity: 1;
 }
 
-:root[data-theme="dark"] .preview input[type="checkbox"]:disabled:checked {
+.preview input[type="checkbox"]:checked {
   border-color: var(--accent);
   background: var(--accent);
 }
 
-:root[data-theme="dark"] .preview input[type="checkbox"]:disabled:checked::before {
+.preview input[type="checkbox"]:checked::before {
   content: "";
   width: 0.28em;
   height: 0.55em;
@@ -779,39 +924,18 @@ td {
   transform: rotate(45deg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .preview input[type="checkbox"]:disabled {
-    appearance: none;
-    display: inline-grid;
-    place-content: center;
-    box-sizing: border-box;
-    width: 1em;
-    height: 1em;
-    margin: 0 0.4em 0 0;
-    vertical-align: -0.15em;
-    border: 1px solid var(--field-border);
-    border-radius: var(--radius-sm);
-    background: var(--bg);
-  }
-
-  :root:not([data-theme="light"]) .preview input[type="checkbox"]:disabled:checked {
-    border-color: var(--accent);
-    background: var(--accent);
-  }
-
-  :root:not([data-theme="light"]) .preview input[type="checkbox"]:disabled:checked::before {
-    content: "";
-    width: 0.28em;
-    height: 0.55em;
-    margin-top: -0.12em;
-    border: solid var(--bg);
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-  }
-}
-
+/* Footnotes: numbers in brackets, as an encyclopedia shows them, and a rule above the first
+   definition. */
 .preview sup.footnote-reference a {
   text-decoration: none;
+}
+
+.preview sup.footnote-reference a::before {
+  content: "[";
+}
+
+.preview sup.footnote-reference a::after {
+  content: "]";
 }
 
 .preview .footnote-definition {
@@ -822,22 +946,45 @@ td {
   color: var(--muted);
 }
 
+.preview :not(.footnote-definition) + .footnote-definition {
+  margin-top: 2em;
+  padding-top: 0.75em;
+  border-top: 1px solid var(--border);
+}
+
 .preview .footnote-definition p {
   margin: 0;
 }
 
+/* Tables in the "wikitable" form: a border on every cell and a shaded header row. */
 .preview table {
   width: auto;
+  font-variant-numeric: tabular-nums;
 }
 
-.preview a.wikilink {
-  text-decoration: none;
-  border-bottom: 1px solid var(--accent);
+.preview th,
+.preview td {
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--border);
 }
 
+.preview th {
+  background: var(--surface);
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* Wikilinks are links: the accent, underlined on hover and focus. An unresolved one keeps its
+   dashed muted underline, which never changes. */
 .preview a.wikilink-unresolved {
   color: var(--muted);
   border-bottom: 1px dashed var(--muted);
+}
+
+.preview a.wikilink-unresolved:hover,
+.preview a.wikilink-unresolved:focus-visible {
+  text-decoration: none;
 }
 
 /* CodeMirror host */

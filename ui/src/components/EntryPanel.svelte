@@ -258,11 +258,14 @@
     display: inline-flex;
     color: var(--muted);
   }
+  /* The head row at --header-h, so its tabs line up with the first lines of the other columns. */
   .head {
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    padding: var(--space-2) var(--space-2) 0 var(--space-3);
+    min-height: var(--header-h);
+    box-sizing: border-box;
+    padding: 0 var(--space-2) 0 var(--space-3);
   }
   .tabs {
     flex: 1;
@@ -321,6 +324,7 @@
     padding-top: var(--space-2);
     border-top: 1px solid var(--border);
   }
+  /* Section titles in the overline style (UI review 15): small caps, 600, muted. */
   .fold-head {
     display: flex;
     align-items: center;
@@ -330,7 +334,11 @@
     padding: var(--space-1) var(--space-2);
     border: none;
     background: none;
+    font-size: var(--text-sm);
     font-weight: 600;
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.05em;
+    color: var(--muted);
   }
   .fold ul {
     padding: 2px 0 0 var(--space-5);

@@ -7,7 +7,7 @@
   import { api, errorMessage, type EntrySummary, type Guide } from "../lib/api";
   import { moveHighlight } from "../lib/combobox";
   import { IS_MAC, type Action } from "../lib/keys";
-  import { buildGroups, flatten, type Command, type Row } from "../lib/palette";
+  import { buildGroups, commandsFor, flatten, type Row } from "../lib/palette";
   import { navigate, type Route } from "../lib/router";
   import { session, touch } from "../lib/session.svelte";
   import { flattenTags, pathsOf, type TagOption } from "../lib/tags";
@@ -27,7 +27,7 @@
   let highlight = $state(0);
   let error = $state("");
   let input = $state<HTMLInputElement | null>(null);
-  /** Where focus was when the palette opened; restored on close unless a command took it. */
+  /** Where focus was when the palette opened; restored on Escape or a backdrop click only. */
   let opener: HTMLElement | null = null;
   let request = 0;
   const uid = $props.id();
@@ -43,7 +43,7 @@
   );
   /** The id, not the object, so a reload of the same guide changes nothing here. */
   const guideId = $derived(inGuide ? (session.current.guide?.id ?? null) : null);
-  const commands = $derived(commandsFor(route, inGuide, session.notices.length > 0));
+  const commands = $derived(commandsFor(route.view, inGuide, session.notices.length > 0));
   const groups = $derived(
     buildGroups(text, {
       entries,
@@ -56,8 +56,8 @@
   );
   const rows = $derived(flatten(groups));
 
-  // Opening resets the text and the lists and loads what they need; focus goes to the input and
-  // back to where it was on close.
+  // Opening resets the text and the lists and loads what they need; focus goes to the input, and
+  // back to where it was when the palette closes without running a row.
   $effect(() => {
     if (open) {
       opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -86,44 +86,6 @@
     highlight = 0;
   });
 
-  function commandsFor(r: Route, guideLevel: boolean, hasNotice: boolean): Command[] {
-    const list: Command[] = [];
-    if (guideLevel) list.push({ action: "new", label: "New entry" });
-    list.push({ action: "new-guide", label: "New guide" });
-    if (r.view === "entry") {
-      list.push(
-        { action: "toggle-mode", label: "Toggle Read and Edit" },
-        { action: "focus-relation", label: "Add a relation" },
-        { action: "add-tag", label: "Add a tag" },
-        { action: "rename", label: "Rename entry" },
-        { action: "toggle-panel", label: "Show or hide the right panel" },
-      );
-    }
-    if (guideLevel) {
-      list.push(
-        { action: "focus-search", label: "Search this guide" },
-        { action: "tag-editor", label: "Tag editor" },
-        { action: "boards", label: "Boards" },
-        { action: "trash", label: "Trash" },
-      );
-    }
-    list.push(
-      { action: "toggle-sidebar", label: "Show or hide the sidebar" },
-      { action: "settings", label: "Settings" },
-      { action: "back", label: "Back" },
-      { action: "forward", label: "Forward" },
-    );
-    if (hasNotice) list.push({ action: "dismiss-notice", label: "Dismiss notice" });
-    list.push(
-      { action: "density-compact", label: "Density: Compact" },
-      { action: "density-roomy", label: "Density: Roomy" },
-      { action: "theme-system", label: "Theme: System" },
-      { action: "theme-light", label: "Theme: Light" },
-      { action: "theme-dark", label: "Theme: Dark" },
-    );
-    return list;
-  }
-
   async function loadStatic() {
     try {
       guides = await api.listGuides();
@@ -150,8 +112,9 @@
   }
 
   async function run(row: Row) {
-    // A command places focus itself (a field, a dialog), so the palette must not take it back.
-    if (row.kind === "command") opener = null;
+    // A row moves on: a command places focus itself (a field, a dialog), and an entry, a guide, or
+    // a created entry is a new page whose heading takes focus (App.svelte). The opener is stale.
+    opener = null;
     onclose();
     if (row.kind === "entry") navigate({ view: "entry", entryId: row.entry.id });
     else if (row.kind === "guide") navigate({ view: "guide", guideId: row.guide.id });
@@ -237,7 +200,7 @@
             >
               <span class="text">
                 {rowText(row)}
-                {#if row.kind === "entry" && row.entry.is_stub}<span class="chip">stub</span>{/if}
+                {#if row.kind === "entry" && row.entry.is_stub}<span class="chip status">stub</span>{/if}
               </span>
               {#if row.kind === "entry" && row.detail}<span class="detail muted">{row.detail}</span>{/if}
               {#if row.kind === "command" && row.keys}<kbd>{row.keys}</kbd>{/if}
@@ -305,9 +268,11 @@
     background: none;
     color: inherit;
   }
-  li.on button,
   li[role="option"] button:hover {
     background: var(--raised-hover);
+  }
+  li.on button {
+    background: var(--accent-soft);
   }
   .text {
     flex: 1;

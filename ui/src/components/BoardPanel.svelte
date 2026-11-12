@@ -1,12 +1,16 @@
 <script lang="ts">
-  // The board's right panel (design section 6): the picker, with the guide's search line, tag
-  // chips, and Stubs only, listing the entries to add one at a time or all at once; above it,
-  // the selected card with its relations, the selected note with its color, the selected image,
-  // or the selected string with its label and color. The name of an entry already on the board
-  // selects its card and brings it into view. The picker's fields are saved with the board and
-  // come back when it opens. It folds to a rail like the entry panel.
+  // The board's right panel (design section 6), in two fixed regions so nothing moves when the
+  // selection changes. Above: the selection. A selected card shows its title, Open entry, Tie a
+  // string, and Remove from board, then two tabs: "Entry" with the entry's rendered body, read
+  // only, and "Relations" with the entry page's relation line and list, so a relation can be
+  // recorded without leaving the board. A selected note shows its color, a selected image its
+  // actions, a selected string its label and color. Below: the picker, with the guide's search
+  // line, tag chips, and Stubs only, listing the entries to add one at a time or all at once. The
+  // name of an entry already on the board selects its card and brings it into view. The picker's
+  // fields are saved with the board and come back when it opens. It folds to a rail like the entry
+  // panel.
   import { Check, PanelRightClose, PanelRightOpen, Plus, X } from "@lucide/svelte";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
 
   import {
     api,
@@ -18,20 +22,26 @@
     type BoardImage,
     type BoardNote,
     type BoardString,
+    type Entry,
     type EntrySummary,
+    type Guide,
   } from "../lib/api";
   import { noteName, pickerFilters, sameFilters, searchLine } from "../lib/board";
+  import { cardTab, chooseCardTab, type CardTab } from "../lib/boardMemory";
   import { parseFilter, type ParsedFilter } from "../lib/filter";
   import { routeHash } from "../lib/router";
   import { queryFor } from "../lib/sidebar";
   import { session } from "../lib/session.svelte";
   import { flattenTags, type TagOption } from "../lib/tags";
+  import Preview from "./Preview.svelte";
+  import RelationBuilder from "./RelationBuilder.svelte";
   import RelationList from "./RelationList.svelte";
 
   interface Props {
     open: boolean;
     ontoggle: () => void;
-    guideId: string;
+    /** The board's guide. */
+    guide: Guide;
     boardId: string;
     filters: BoardFilters;
     onfilters: (filters: BoardFilters) => void;
@@ -43,6 +53,12 @@
     onlocate: (id: string) => void;
     selected: BoardCard | null;
     onopen: (id: string) => void;
+    /** A click on an unresolved link in the selected entry's body: the link's target title. */
+    oncreatelink: (title: string) => void;
+    /** The relation line saved a relation: the board draws its line and the list reloads. */
+    onrelations: () => void;
+    /** The relation list changed by itself (a delete, an Undo, an edit): redraw the lines only. */
+    onlines: () => void;
     selectedNote: BoardNote | null;
     selectedImage: BoardImage | null;
     onremoveimage: (id: string) => void;
@@ -64,7 +80,7 @@
   let {
     open,
     ontoggle,
-    guideId,
+    guide,
     boardId,
     filters,
     onfilters,
@@ -74,6 +90,9 @@
     onlocate,
     selected,
     onopen,
+    oncreatelink,
+    onrelations,
+    onlines,
     selectedNote,
     selectedImage,
     onremoveimage,
@@ -90,6 +109,8 @@
     version,
   }: Props = $props();
 
+  const uid = $props.id();
+
   /** The selected string's label as typed; it is saved when the field changes. */
   let label = $state("");
 
@@ -101,6 +122,93 @@
   function colorName(color: string): string {
     return color.charAt(0).toUpperCase() + color.slice(1);
   }
+
+  // ---- the selected card ----
+
+  /** The selected card's tab; the last one chosen holds while the app runs. */
+  let tab = $state<CardTab>(cardTab());
+  /** The selected card's entry in full, its rendered body, and its guide, for the two tabs. */
+  let entry = $state<Entry | null>(null);
+  let entryGuide = $state<Guide | null>(null);
+  let bodyHtml = $state("");
+  let entryError = $state("");
+  let builder = $state<ReturnType<typeof RelationBuilder> | null>(null);
+  /** Only the newest entry load may land. */
+  let entryRequest = 0;
+
+  const selectedId = $derived(selected?.entry.id ?? null);
+
+  // The entry, its body, and its guide follow the selection and every data change.
+  $effect(() => {
+    const id = selectedId;
+    void version;
+    void session.revision;
+    untrack(() => void loadEntry(id));
+  });
+
+  async function loadEntry(id: string | null) {
+    const mine = ++entryRequest;
+    if (!id) {
+      entry = null;
+      bodyHtml = "";
+      entryError = "";
+      return;
+    }
+    // A different card: nothing of the last one stays on screen while this one loads.
+    if (entry?.id !== id) {
+      entry = null;
+      bodyHtml = "";
+    }
+    try {
+      const [found, rendered] = await Promise.all([api.getEntry(id), api.renderEntry(id)]);
+      const owner =
+        found.guide_id === guide.id
+          ? guide
+          : entryGuide?.id === found.guide_id
+            ? entryGuide
+            : await api.getGuide(found.guide_id);
+      if (mine !== entryRequest) return;
+      entry = found;
+      entryGuide = owner;
+      bodyHtml = rendered.html;
+      entryError = "";
+    } catch (e) {
+      if (mine === entryRequest) entryError = errorMessage(e);
+    }
+  }
+
+  function choose(next: CardTab) {
+    tab = next;
+    chooseCardTab(next);
+  }
+
+  function onTabKey(event: KeyboardEvent) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next: CardTab = tab === "entry" ? "relations" : "entry";
+    choose(next);
+    (event.currentTarget as HTMLElement)
+      .querySelector<HTMLButtonElement>(`#${uid}-tab-${next}`)
+      ?.focus();
+  }
+
+  /**
+   * Opens the Relations tab and puts the caret in the relation line (Mod+R and the palette).
+   * False when no card is selected, so there is no line to go to.
+   */
+  export async function focusRelation(): Promise<boolean> {
+    if (!selected) return false;
+    choose("relations");
+    // The entry may still be loading; the line appears with it.
+    for (let i = 0; i < 20 && !builder; i++) {
+      await tick();
+      if (!builder) await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    builder?.focusLine();
+    return builder !== null;
+  }
+
+  // ---- the picker ----
 
   let search = $state("");
   let searchInput = $state<HTMLInputElement | null>(null);
@@ -121,7 +229,7 @@
 
   // The tags, on guide change and after any data change.
   $effect(() => {
-    const id = guideId;
+    const id = guide.id;
     void session.revision;
     untrack(() => {
       tagsLoaded = false;
@@ -144,7 +252,7 @@
 
   // The list follows the fields, lightly debounced for typing.
   $effect(() => {
-    const id = guideId;
+    const id = guide.id;
     const p = parsed;
     const stubs = stubsOnly;
     const options = tags;
@@ -171,10 +279,7 @@
     return () => clearTimeout(timer);
   });
 
-  /**
-   * Puts the caret in the search field. Nothing calls it at present: the header's plus makes a
-   * new note, and entries are added from this panel's own buttons.
-   */
+  /** Puts the caret in the picker's search field, selecting what is there (Mod+F, Add entries). */
   export function focusSearch() {
     searchInput?.focus();
     searchInput?.select();
@@ -212,36 +317,84 @@
     </button>
   {:else}
     <div class="head">
+      <h2 class="region-head">Selected</h2>
       <span class="spacer"></span>
       <button class="link icon-button" aria-label="Hide panel" title="Hide panel" onclick={ontoggle}>
         <PanelRightClose size={18} />
       </button>
     </div>
-    {#if selected}
-      <section class="selected" aria-label="Selected card">
-        <h2 class="region-head">Selected card</h2>
+    <section class="selected" aria-label="Selected">
+      {#if selected}
         <div class="row card-title">
           <a class="name" href={routeHash({ view: "entry", entryId: selected.entry.id })}>
             {selected.entry.title}
           </a>
-          {#if selected.entry.is_stub}<span class="chip">stub</span>{/if}
+          {#if selected.entry.is_stub}<span class="chip status">stub</span>{/if}
           {#if selected.external}<span class="chip">other guide</span>{/if}
         </div>
         <div class="row actions">
           <button onclick={() => onopen(selected.entry.id)}>Open entry</button>
-          <button onclick={() => onremove(selected.entry.id)}>Remove from board</button>
           <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
+          <button class="danger" onclick={() => onremove(selected.entry.id)}>Remove from board</button>
         </div>
-        <div class="relations">
-          <RelationList entryId={selected.entry.id} guideId={selected.entry.guide_id} {version} />
+        <div class="tabs" role="tablist" aria-label="Selected card" tabindex="-1" onkeydown={onTabKey}>
+          <button
+            role="tab"
+            id={`${uid}-tab-entry`}
+            aria-selected={tab === "entry"}
+            aria-controls={`${uid}-entry`}
+            tabindex={tab === "entry" ? 0 : -1}
+            onclick={() => choose("entry")}
+          >
+            Entry
+          </button>
+          <button
+            role="tab"
+            id={`${uid}-tab-relations`}
+            aria-selected={tab === "relations"}
+            aria-controls={`${uid}-relations`}
+            tabindex={tab === "relations" ? 0 : -1}
+            onclick={() => choose("relations")}
+          >
+            Relations
+          </button>
         </div>
-      </section>
-    {/if}
-    {#if selectedNote}
-      {@const note = selectedNote}
-      <section class="selected" aria-label="Selected note">
-        <h2 class="region-head">Selected note</h2>
-        <p class="item-name">{noteName(note.body_md)}</p>
+        {#if entryError}<p class="side-hint error">{entryError}</p>{/if}
+        {#if tab === "entry"}
+          <div class="tab-body body" id={`${uid}-entry`} role="tabpanel" aria-labelledby={`${uid}-tab-entry`}>
+            {#if entry && entry.id === selected.entry.id}
+              {#if entry.body_md.trim() === ""}
+                <p class="side-hint muted">This entry has no body yet.</p>
+              {:else}
+                <Preview
+                  html={bodyHtml}
+                  mediaDir={session.startup?.media_dir ?? null}
+                  onnavigate={onopen}
+                  oncreate={oncreatelink}
+                />
+              {/if}
+            {/if}
+          </div>
+        {:else}
+          <div
+            class="tab-body relations"
+            id={`${uid}-relations`}
+            role="tabpanel"
+            aria-labelledby={`${uid}-tab-relations`}
+          >
+            {#if entry && entryGuide && entry.id === selected.entry.id}
+              {#key entry.id}
+                <RelationBuilder bind:this={builder} {entry} guide={entryGuide} onsaved={onrelations} />
+              {/key}
+              <div class="scroll">
+                <RelationList entryId={entry.id} guideId={entry.guide_id} {version} onchange={onlines} />
+              </div>
+            {/if}
+          </div>
+        {/if}
+      {:else if selectedNote}
+        {@const note = selectedNote}
+        <p class="item-name">Note: {noteName(note.body_md)}</p>
         <div class="row swatches" role="group" aria-label="Note color">
           {#each NOTE_COLORS as color (color)}
             <button
@@ -257,27 +410,20 @@
         <div class="row actions">
           <button onclick={() => oneditnote(note.id)}>Edit note</button>
           <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
-          <button onclick={() => onremovenote(note.id)}>Delete note</button>
+          <button class="danger" onclick={() => onremovenote(note.id)}>Delete note</button>
         </div>
-      </section>
-    {/if}
-    {#if selectedImage}
-      {@const image = selectedImage}
-      <section class="selected" aria-label="Selected image">
-        <h2 class="region-head">Selected image</h2>
+      {:else if selectedImage}
+        {@const image = selectedImage}
+        <p class="item-name">Image</p>
         <div class="row actions">
           <button aria-pressed={tying} onclick={ontie}>Tie a string</button>
-          <button onclick={() => onremoveimage(image.id)}>Delete image</button>
+          <button class="danger" onclick={() => onremoveimage(image.id)}>Delete image</button>
         </div>
-      </section>
-    {/if}
-    {#if selectedString}
-      {@const string = selectedString}
-      <section class="selected" aria-label="Selected string">
-        <h2 class="region-head">Selected string</h2>
-        {#if stringEnds}
-          <p class="item-name">{stringEnds[0]} to {stringEnds[1]}</p>
-        {/if}
+      {:else if selectedString}
+        {@const string = selectedString}
+        <p class="item-name">
+          String{#if stringEnds}: {stringEnds[0]} to {stringEnds[1]}{/if}
+        </p>
         <div class="fields">
           <input
             type="text"
@@ -300,10 +446,14 @@
           {/each}
         </div>
         <div class="row actions">
-          <button onclick={() => onremovestring(string.id)}>Delete string</button>
+          <button class="danger" onclick={() => onremovestring(string.id)}>Delete string</button>
         </div>
-      </section>
-    {/if}
+      {:else}
+        <p class="side-hint muted">
+          Nothing selected. Click a card, a note, an image, or a string, or press Tab on the board.
+        </p>
+      {/if}
+    </section>
     <section class="picker" aria-label="Add entries">
       <h2 class="region-head">Add entries</h2>
       <div class="fields">
@@ -345,7 +495,7 @@
             {:else}
               <span class="name">{e.title}</span>
             {/if}
-            {#if e.is_stub}<span class="chip">stub</span>{/if}
+            {#if e.is_stub}<span class="chip status">stub</span>{/if}
             {#if onBoard.has(e.id)}
               <span class="on muted" title="On this board"><Check size={14} /></span>
               <button
@@ -395,25 +545,37 @@
   .head {
     display: flex;
     align-items: center;
-    padding: var(--space-2) var(--space-2) 0;
+    min-height: var(--header-h);
+    box-sizing: border-box;
+    padding: 0 var(--space-2) 0 0;
   }
-  .selected {
-    flex: 0 1 auto;
-    max-height: 45%;
+  .head .region-head {
+    margin: 0;
+  }
+  /* Two fixed regions: the selection above, the picker below, each half the panel and each
+     scrolling inside itself, so a new selection moves nothing. */
+  .selected,
+  .picker {
+    flex: 1 1 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+  }
+  .selected {
     border-bottom: 1px solid var(--border);
     padding-bottom: var(--space-2);
   }
   .card-title,
   .actions,
   .swatches {
-    padding: 2px var(--space-3);
+    padding: var(--space-1) var(--space-3);
+  }
+  .actions {
+    gap: var(--space-2);
   }
   .item-name {
     margin: 0;
-    padding: 2px var(--space-3);
+    padding: var(--space-1) var(--space-3);
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -423,8 +585,8 @@
     gap: var(--space-2);
   }
   .swatch {
-    width: 24px;
-    height: 24px;
+    width: var(--control-sm);
+    height: var(--control-sm);
     min-height: 0;
     padding: 0;
     border: 1px solid var(--control-border);
@@ -435,7 +597,9 @@
     outline-offset: 2px;
   }
   .actions button[aria-pressed="true"] {
-    background: var(--chip-bg);
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
     font-weight: 600;
   }
   .card-title .name {
@@ -444,17 +608,46 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .relations {
+  .tabs {
+    display: flex;
+    gap: var(--space-1);
+    padding: 0 var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .tabs button {
+    min-height: var(--control-sm);
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    padding: var(--space-1) var(--space-2);
+    color: var(--muted);
+  }
+  .tabs button[aria-selected="true"] {
+    color: var(--fg);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  .tab-body {
+    flex: 1;
+    min-height: 0;
+    padding: var(--space-2) var(--space-3) 0;
+  }
+  .tab-body.body {
+    overflow: auto;
+  }
+  .tab-body.body :global(.preview) {
+    max-width: none;
+    font-size: var(--text-sm);
+  }
+  .tab-body.relations {
+    display: flex;
+    flex-direction: column;
+  }
+  .scroll {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 0 var(--space-3);
-  }
-  .picker {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
   }
   .fields {
     display: grid;
@@ -495,6 +688,6 @@
   }
   .small {
     min-height: 0;
-    padding: 2px;
+    padding: var(--space-1);
   }
 </style>

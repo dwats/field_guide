@@ -1,6 +1,9 @@
 <script lang="ts">
   // The entry's album (decided 2026-11-09): every image the entry has, body and gallery, as
   // thumbnails in a grid, the primary one marked. A click opens the viewer on that image.
+  import { Images as ImagesIcon } from "@lucide/svelte";
+
+  import EmptyState from "./EmptyState.svelte";
   import type { LightboxImage } from "./Lightbox.svelte";
   import Modal from "./Modal.svelte";
 
@@ -17,7 +20,7 @@
 
 <Modal {open} title="Images" {onclose}>
   {#if images.length === 0}
-    <p class="muted">This entry has no images yet. Drop or paste one onto the entry.</p>
+    <EmptyState icon={ImagesIcon} title="This entry has no images yet." line="Drop or paste one onto the entry." />
   {:else}
     <p class="muted count">
       {images.length} {images.length === 1 ? "image" : "images"}. The primary image is the one boards
@@ -31,7 +34,7 @@
             <img class="user-image" src={image.src} alt={image.alt} draggable="false" />
             {#if primary}<span class="badge">Primary</span>{/if}
           </button>
-          <div class="caption" title={image.alt}>{image.alt || "No caption"}</div>
+          <div class="caption" class:none={!image.alt} title={image.alt}>{image.alt || "No caption"}</div>
         </li>
       {/each}
     </ul>
@@ -63,6 +66,11 @@
     border: 1px solid var(--control-border);
     border-radius: var(--radius-sm);
     background: var(--surface);
+    box-shadow: var(--e1);
+  }
+  /* Offset past the primary ring, so a focused primary thumbnail shows both. */
+  .thumb:focus-visible {
+    outline-offset: 3px;
   }
   .thumb.primary {
     border-color: var(--accent);
@@ -92,5 +100,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .caption.none {
+    font-style: italic;
   }
 </style>

@@ -3,19 +3,23 @@ import { describe, expect, it } from "vitest";
 import type { BoardCard, BoardEdge, BoardFilters, BoardString } from "./api";
 import {
   CAPTION_H,
+  CAPTION_TEXT_H,
   CARD_GAP,
   CARD_W,
   FRAME,
+  LABEL_CLEARANCE,
   MAX_ZOOM,
   PLAIN_H,
+  PLAIN_TITLE_H,
   cardShown,
   cardSize,
   edgeOffsets,
   edgeSegment,
   edgeShown,
   fitView,
+  detailFits,
   intersects,
-  labelAngle,
+  pillWidth,
   pickerFilters,
   placeFree,
   placeNear,
@@ -26,8 +30,10 @@ import {
   imageSize,
   resizeRect,
   searchLine,
+  stringExits,
   stringMidpoint,
   stringPath,
+  stringPoint,
   stringSag,
   stringShown,
   toWorld,
@@ -75,6 +81,15 @@ describe("card sizes", () => {
     expect(cardSize({ width: 100, height: 400 }).h).toBe(FRAME + Math.round(inner * 1.5) + CAPTION_H);
     expect(cardSize({ width: 400, height: 100 }).h).toBe(FRAME + Math.round(inner * 0.5) + CAPTION_H);
   });
+
+  it("holds two lines of a 14 px title on either kind of card", () => {
+    expect(CAPTION_TEXT_H).toBeGreaterThanOrEqual(2 * 14 * 1.3);
+    // The picture card's band: the title and its padding above the bottom frame.
+    expect(CAPTION_H - FRAME).toBeGreaterThanOrEqual(CAPTION_TEXT_H + 8);
+    // The index card: the title area above the rule, and blank paper below it.
+    expect(PLAIN_TITLE_H).toBeGreaterThanOrEqual(CAPTION_TEXT_H + 16);
+    expect(PLAIN_H).toBeGreaterThan(PLAIN_TITLE_H);
+  });
 });
 
 describe("edges", () => {
@@ -101,11 +116,16 @@ describe("edges", () => {
     expect(intersects(left, right)).toBe(false);
   });
 
-  it("keeps labels upright", () => {
-    expect(labelAngle({ a: { x: 0, y: 0 }, b: { x: 10, y: 0 } })).toBe(0);
-    expect(labelAngle({ a: { x: 10, y: 0 }, b: { x: 0, y: 0 } })).toBe(0);
-    expect(labelAngle({ a: { x: 0, y: 0 }, b: { x: 10, y: 10 } })).toBeCloseTo(45);
-    expect(labelAngle({ a: { x: 10, y: 10 }, b: { x: 0, y: 0 } })).toBeCloseTo(45);
+  it("keeps the qualifier line only where the visible line is longer than the pill", () => {
+    const pill = pillWidth([60, 110]);
+    // The widest line plus 5 px of padding and a 1 px border on each side.
+    expect(pill).toBe(122);
+    const long = { a: { x: 0, y: 0 }, b: { x: pill + LABEL_CLEARANCE, y: 0 } };
+    const short = { a: { x: 0, y: 0 }, b: { x: 0, y: pill + LABEL_CLEARANCE - 1 } };
+    expect(detailFits(long, pill)).toBe(true);
+    expect(detailFits(short, pill)).toBe(false);
+    // A steep line is measured along its length, not across.
+    expect(detailFits({ a: { x: 0, y: 0 }, b: { x: 90, y: 120 } }, pill)).toBe(true);
   });
 
   it("fans out edges between the same two cards, whichever way they run", () => {
@@ -305,6 +325,26 @@ describe("strings", () => {
     const half = onPath(stringPath(a, b), 0.5);
     expect(mid.x).toBeCloseTo(half.x);
     expect(mid.y).toBeCloseTo(half.y);
+  });
+
+  it("marks its ends where the curve comes out from under each item", () => {
+    const from = { x: 0, y: 0, w: 180, h: 76 };
+    const to = { x: 500, y: 0, w: 180, h: 76 };
+    const ends = stringExits(from, to)!;
+    // On the right border of the first item and the left border of the second.
+    expect(ends.a.x).toBeCloseTo(180, 3);
+    expect(ends.b.x).toBeCloseTo(500, 3);
+    // Both points lie on the curve that is drawn.
+    for (const p of [ends.a, ends.b]) {
+      let best = Infinity;
+      for (let t = 0; t <= 1; t += 0.0005) {
+        const q = stringPoint({ x: 90, y: 38 }, { x: 590, y: 38 }, t);
+        best = Math.min(best, Math.hypot(q.x - p.x, q.y - p.y));
+      }
+      expect(best).toBeLessThan(0.5);
+    }
+    // Overlapping items leave nothing to mark.
+    expect(stringExits(from, { ...from, x: 20 })).toBeNull();
   });
 
   it("shows only when both ends are drawn", () => {

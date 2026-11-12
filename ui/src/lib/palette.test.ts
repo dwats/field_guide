@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EntrySummary, Guide } from "./api";
-import { buildGroups, flatten, parseInput } from "./palette";
+import { buildGroups, commandsFor, flatten, parseInput } from "./palette";
 
 function entry(title: string): EntrySummary {
   return {
@@ -65,5 +65,49 @@ describe("buildGroups", () => {
     const groups = buildGroups("> sett", { entries: [entry("Settings Page")], tagPathOf: () => "", commands, guides, inGuide: true });
     expect(groups.map((g) => g.heading)).toEqual(["Commands"]);
     expect(groups[0].rows).toHaveLength(1);
+  });
+});
+
+describe("commandsFor", () => {
+  const actions = (view: string) => commandsFor(view, true, false).map((c) => c.action);
+
+  it("offers the board commands on a board page only", () => {
+    const board = actions("board");
+    for (const a of ["board-add-entries", "board-new-note", "board-fit", "toggle-panel"] as const) {
+      expect(board).toContain(a);
+    }
+    expect(actions("entry")).not.toContain("board-fit");
+    expect(actions("guide")).not.toContain("toggle-panel");
+  });
+
+  it("moves the Mod+F key cap to Add entries on a board", () => {
+    const rows = flatten(
+      buildGroups("", {
+        entries: [],
+        tagPathOf: () => "",
+        commands: commandsFor("board", true, false),
+        guides: [],
+        inGuide: true,
+        mac: false,
+      }),
+    );
+    const keysOf = (label: string) =>
+      rows.find((r) => r.kind === "command" && r.command.label === label) as { keys: string | null } | undefined;
+    expect(keysOf("Add entries")?.keys).toBe("Ctrl+F");
+    expect(keysOf("Search this guide")?.keys).toBeNull();
+    const guideRows = buildGroups("search", {
+      entries: [],
+      tagPathOf: () => "",
+      commands: commandsFor("guide", true, false),
+      guides: [],
+      inGuide: true,
+      mac: false,
+    });
+    expect(guideRows[0].rows[0]).toMatchObject({ kind: "command", keys: "Ctrl+F" });
+  });
+
+  it("leaves guide commands out outside a guide and adds Dismiss notice only with a notice", () => {
+    expect(commandsFor("guides", false, false).map((c) => c.action)).not.toContain("trash");
+    expect(commandsFor("guides", false, true).map((c) => c.action)).toContain("dismiss-notice");
   });
 });

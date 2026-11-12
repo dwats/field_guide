@@ -2,10 +2,11 @@
   // Top-level browse: every guide in the vault as 2:3 posters in rows that fill the width, or a
   // table. The filters live in the sidebar (`session.guidesFilter`); the toolbar holds the view
   // toggle and New guide as icons. The New guide dialog is the shell's.
-  import { Image as ImageIcon, LayoutGrid, List, Plus } from "@lucide/svelte";
+  import { Image as ImageIcon, LayoutGrid, Library, List, Plus } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import CoverImage from "../components/CoverImage.svelte";
+  import EmptyState from "../components/EmptyState.svelte";
   import { api, errorMessage, type Guide, type GuideView, type Media } from "../lib/api";
   import { perform } from "../lib/actions";
   import { keysFor } from "../lib/keys";
@@ -82,53 +83,54 @@
 </script>
 
 <div class="page">
-  <div class="row header">
-    <h1>Guides</h1>
-    <span class="spacer"></span>
-    <div class="segmented" role="group" aria-label="View">
+  <header class="page-header">
+    <div class="page-titles"><h1>Guides</h1></div>
+    <div class="page-toolbar">
+      <div class="segmented" role="group" aria-label="View">
+        <button
+          class="icon-button"
+          class:on={session.prefs.guide_view === "cards"}
+          aria-label="Posters"
+          aria-pressed={session.prefs.guide_view === "cards"}
+          title="Posters"
+          onclick={() => setView("cards")}
+        >
+          <LayoutGrid size={18} />
+        </button>
+        <button
+          class="icon-button"
+          class:on={session.prefs.guide_view === "table"}
+          aria-label="Table"
+          aria-pressed={session.prefs.guide_view === "table"}
+          title="Table"
+          onclick={() => setView("table")}
+        >
+          <List size={18} />
+        </button>
+      </div>
       <button
-        class="icon-button"
-        class:on={session.prefs.guide_view === "cards"}
-        aria-label="Posters"
-        aria-pressed={session.prefs.guide_view === "cards"}
-        title="Posters"
-        onclick={() => setView("cards")}
+        class="primary icon-button"
+        aria-label="New guide"
+        title="New guide ({keysFor('new-guide')})"
+        onclick={() => perform("new-guide")}
       >
-        <LayoutGrid size={18} />
-      </button>
-      <button
-        class="icon-button"
-        class:on={session.prefs.guide_view === "table"}
-        aria-label="Table"
-        aria-pressed={session.prefs.guide_view === "table"}
-        title="Table"
-        onclick={() => setView("table")}
-      >
-        <List size={18} />
+        <Plus size={18} />
       </button>
     </div>
-    <button
-      class="primary icon-button"
-      aria-label="New guide"
-      title="New guide ({keysFor('new-guide')})"
-      onclick={() => perform("new-guide")}
-    >
-      <Plus size={18} />
-    </button>
-  </div>
+  </header>
 
   {#if error}<p class="error">{error}</p>{/if}
 
   {#if guides.length === 0}
-    <div class="empty">
-      {#if filtering}
-        <p class="muted">No guides match.</p>
+    {#if filtering}
+      <EmptyState icon={Library} title="No guides match." line="Change the name or the tags in the filter, or clear it.">
         <button onclick={clearFilter}>Clear filter</button>
-      {:else}
-        <p class="muted">No guides yet.</p>
+      </EmptyState>
+    {:else}
+      <EmptyState icon={Library} title="No guides yet." line="A guide holds the entries, tags, and boards for one subject.">
         <button class="primary" onclick={() => perform("new-guide")}>New guide</button>
-      {/if}
-    </div>
+      </EmptyState>
+    {/if}
   {:else if session.prefs.guide_view === "cards"}
     <div class="posters">
       {#each guides as guide (guide.id)}
@@ -174,14 +176,6 @@
 </div>
 
 <style>
-  .header {
-    margin-bottom: var(--space-4);
-  }
-  .empty {
-    display: grid;
-    gap: var(--space-2);
-    justify-items: start;
-  }
   /* Posters fill the row from the left, the way a game library does. */
   .posters {
     display: grid;

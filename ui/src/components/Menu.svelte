@@ -3,19 +3,22 @@
   // walk the items, Escape or a click anywhere else closes it, and focus returns to the button.
   // Items receive `close`, so a dialog an item opens returns focus to the button when it is done.
   import { Ellipsis } from "@lucide/svelte";
-  import type { Snippet } from "svelte";
+  import type { Component, Snippet } from "svelte";
 
   import { moveHighlight } from "../lib/combobox";
 
   interface Props {
     label?: string;
+    /** The button's Lucide icon; More's ellipsis unless given. */
+    icon?: Component<{ size?: number }>;
     /**
      * `<button role="menuitem">` rows, `<button role="menuitemradio" aria-checked>` rows for a
-     * choice, and `<div class="separator">` lines.
+     * choice, `<button role="menuitemcheckbox" aria-checked>` rows for an on or off setting, and
+     * `<div class="separator">` lines.
      */
     items: Snippet<[() => void]>;
   }
-  let { label = "More", items }: Props = $props();
+  let { label = "More", icon: Icon = Ellipsis, items }: Props = $props();
 
   let open = $state(false);
   let button = $state<HTMLButtonElement | null>(null);
@@ -25,7 +28,9 @@
     if (!open) return;
     const rows = () =>
       Array.from(
-        menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"]') ?? [],
+        menu?.querySelectorAll<HTMLButtonElement>(
+          '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+        ) ?? [],
       );
     rows()[0]?.focus();
     const closeOnClick = () => (open = false);
@@ -71,7 +76,7 @@
       open = !open;
     }}
   >
-    <Ellipsis size={18} />
+    <Icon size={18} />
   </button>
   {#if open}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

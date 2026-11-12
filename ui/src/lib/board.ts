@@ -29,12 +29,24 @@ export interface Rect extends Point, Size {}
 
 /** Every card is this wide; the height follows the picture. */
 export const CARD_W = 180;
-/** The paper frame around the picture, in pixels. */
+/** The paper frame around the picture, in pixels; a board image's frame is the same. */
 export const FRAME = 8;
-/** The caption band along the bottom edge, bottom frame included. */
-export const CAPTION_H = 36;
-/** A card without a picture: the title alone. */
-export const PLAIN_H = 56;
+/** A card's title: 14 px at a line height of 1.3, two lines at most. */
+export const CAPTION_SIZE = 14;
+export const CAPTION_LINE = 1.3;
+/** The height two lines of title take, rounded up. */
+export const CAPTION_TEXT_H = Math.ceil(2 * CAPTION_SIZE * CAPTION_LINE);
+/**
+ * The caption band along the bottom edge of a card with a picture, bottom frame included: 6 px
+ * above the title, two lines, 3 px below, then the frame.
+ */
+export const CAPTION_H = 6 + CAPTION_TEXT_H + 3 + FRAME;
+/**
+ * A card without a picture is an index card: the title area, 10 px above the title and 6 px
+ * below, ends at a red rule, and blank paper follows.
+ */
+export const PLAIN_TITLE_H = 10 + CAPTION_TEXT_H + 6;
+export const PLAIN_H = PLAIN_TITLE_H + 22;
 export const MIN_ZOOM = 0.15;
 export const MAX_ZOOM = 3;
 
@@ -123,15 +135,30 @@ export function midpoint(segment: Segment): Point {
   return { x: (segment.a.x + segment.b.x) / 2, y: (segment.a.y + segment.b.y) / 2 };
 }
 
+export function segmentLength(segment: Segment): number {
+  return Math.hypot(segment.b.x - segment.a.x, segment.b.y - segment.a.y);
+}
+
 /**
- * The angle of a segment in degrees, turned so a label along it reads left to right: never more
- * than a quarter turn either way.
+ * A line's label: horizontal at the line's midpoint, in a pill. The verb is 12 px, the
+ * qualifiers 11 px on a second line, inside 1 by 5 px of padding.
  */
-export function labelAngle(segment: Segment): number {
-  let angle = (Math.atan2(segment.b.y - segment.a.y, segment.b.x - segment.a.x) * 180) / Math.PI;
-  if (angle > 90) angle -= 180;
-  else if (angle < -90) angle += 180;
-  return angle;
+export const LABEL = { verbSize: 12, detailSize: 11, padX: 5, padY: 1 } as const;
+/** How much of the visible line must show beside the pill for the qualifier line to be kept. */
+export const LABEL_CLEARANCE = 16;
+
+/** The pill's width for text of the given widths in pixels, padding and border included. */
+export function pillWidth(textWidths: number[]): number {
+  return Math.max(0, ...textWidths) + 2 * LABEL.padX + 2;
+}
+
+/**
+ * Whether a line's qualifier line fits: the visible segment must be longer than the pill with
+ * it, plus the clearance, or the qualifiers would cover the line they describe. The verb always
+ * shows.
+ */
+export function detailFits(segment: Segment, pill: number): boolean {
+  return segmentLength(segment) >= pill + LABEL_CLEARANCE;
 }
 
 /**
@@ -460,8 +487,48 @@ export function stringPath(a: Point, b: Point): string {
 
 /** The point on a string's curve halfway along it (t = 0.5), where its label goes. */
 export function stringMidpoint(a: Point, b: Point): Point {
+  return stringPoint(a, b, 0.5);
+}
+
+/** The point on a string's curve at `t`, from 0 at `a` to 1 at `b`. */
+export function stringPoint(a: Point, b: Point, t: number): Point {
   const c = stringControl(a, b);
-  return { x: (a.x + 2 * c.x + b.x) / 4, y: (a.y + 2 * c.y + b.y) / 4 };
+  const u = 1 - t;
+  return {
+    x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+    y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
+  };
+}
+
+function inside(rect: Rect, p: Point): boolean {
+  return p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h;
+}
+
+/**
+ * Where a string tied between the centers of two items comes out from under each of them: the
+ * points on its curve where it crosses the first item's border and the second's. The selected
+ * string marks its ends there, where they can be seen. Null when the curve never leaves one item
+ * for the other, as when the two overlap.
+ */
+export function stringExits(from: Rect, to: Rect): Segment | null {
+  const a = center(from);
+  const b = center(to);
+  // The last t still inside `rect`, searching from the end that starts inside it.
+  const edge = (rect: Rect, start: number, end: number): number | null => {
+    if (inside(rect, stringPoint(a, b, end))) return null;
+    let low = start;
+    let high = end;
+    for (let i = 0; i < 30; i++) {
+      const mid = (low + high) / 2;
+      if (inside(rect, stringPoint(a, b, mid))) low = mid;
+      else high = mid;
+    }
+    return high;
+  };
+  const t1 = edge(from, 0, 1);
+  const t2 = edge(to, 1, 0);
+  if (t1 === null || t2 === null || t1 >= t2) return null;
+  return { a: stringPoint(a, b, t1), b: stringPoint(a, b, t2) };
 }
 
 function clamp(value: number, low: number, high: number): number {

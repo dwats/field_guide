@@ -2,26 +2,39 @@
   // The sidebar inside a guide (design section 5, "Sidebar model"): the search line and the tag
   // tree above, the entries of the selected scope below, a splitter between them. The state is
   // `session.sidebar`, so the guide page shows the same list and the choice survives moving
-  // between entries. A different guide starts fresh.
-  import { untrack } from "svelte";
+  // between entries. A different guide starts fresh. The tree ends with Boards, which expands to
+  // the guide's boards, and Trash. Each region folds from its head; each list is one Tab stop
+  // (a roving tab stop) with the arrow keys inside.
+  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+  import { tick, untrack } from "svelte";
 
-  import { api, errorMessage, type Entry, type EntryCounts, type TagNode } from "../lib/api";
+  import { api, errorMessage, type Board, type Entry, type EntryCounts, type TagNode } from "../lib/api";
   import { register } from "../lib/actions";
   import { stepIndex } from "../lib/combobox";
   import { startDrag } from "../lib/drag";
   import { formatFilter, parseFilter, type ParsedFilter } from "../lib/filter";
   import { routeHash, type Route } from "../lib/router";
   import { freshSidebar, savePrefs, session } from "../lib/session.svelte";
+  import { shell } from "../lib/shell.svelte";
   import {
     ancestorsOf,
+    boardRowKey,
     idsWithChildren,
     inScope,
+    isListPage,
     pruneTree,
     queryFor,
+    rovingStop,
+    ROW_ALL,
+    ROW_BOARDS,
+    ROW_TRASH,
+    ROW_UNTAGGED,
     sameScope,
     scopeLabel,
     subtreeCount,
     tagScope,
+    visibleTreeKeys,
+    widenRow,
     type Scope,
   } from "../lib/sidebar";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
@@ -38,6 +51,12 @@
   let tags = $state<TagOption[]>([]);
   let counts = $state<EntryCounts | null>(null);
   let unknownTags = $state<string[]>([]);
+  let boards = $state<Board[]>([]);
+  /** Entries matching the search in All entries, while the scope is a tag and the search has text. */
+  let allCount = $state<number | null>(null);
+  /** The row each list last had focus on, so Tab returns there. */
+  let treeFocus = $state<string | null>(null);
+  let listFocus = $state<string | null>(null);
   let error = $state("");
   let regions = $state<HTMLElement | null>(null);
   let treeEl = $state<HTMLElement | null>(null);
@@ -47,6 +66,8 @@
   let listRequest = 0;
   /** The entry the scope was last moved for, so a reload does not move it again. */
   let revealedId: string | null = null;
+  /** The board the Boards node was last opened for. */
+  let revealedBoardId: string | null = null;
 
   /** The id, not the object: a reload of the same guide must not refetch the sidebar. */
   const guideId = $derived(session.current.guide?.id ?? null);
@@ -59,6 +80,37 @@
     parsed.text !== "" || parsed.tags.length > 0 || session.sidebar.stubsOnly,
   );
   const chipsIgnored = $derived(session.sidebar.scope.kind === "untagged" && parsed.tags.length > 0);
+  /** On a page that is not the list (Trash, Tag editor, a board), the scope row is only muted. */
+  const listPage = $derived(isListPage(route.view));
+  const widen = $derived(
+    widenRow(session.sidebar.scope, parsed.text, session.sidebar.entries.length, allCount),
+  );
+  const scopeKey = $derived.by(() => {
+    const scope = session.sidebar.scope;
+    return scope.kind === "tag" ? scope.id : scope.kind === "all" ? ROW_ALL : ROW_UNTAGGED;
+  });
+  /** The tree's selected row: the page's own row, else the scope while the page is the list. */
+  const treeSelected = $derived.by(() => {
+    if (route.view === "trash") return ROW_TRASH;
+    if (route.view === "boards") return ROW_BOARDS;
+    if (route.view === "board") return boardRowKey(route.boardId);
+    return scopeKey;
+  });
+  const treeStop = $derived(
+    rovingStop(
+      visibleTreeKeys(shownTree, isOpen, shell.boardsOpen ? boards.map((b) => b.id) : null),
+      treeFocus,
+      treeSelected,
+    ),
+  );
+  const listStop = $derived(
+    rovingStop(
+      session.sidebar.entries.map((e) => e.id),
+      listFocus,
+      session.current.entry?.id ?? null,
+    ),
+  );
+  const bothOpen = $derived(shell.tagsOpen && shell.entriesOpen);
 
   // A different guide gets fresh state.
   $effect(() => {
@@ -66,7 +118,29 @@
     if (session.sidebar.guideId !== id) {
       session.sidebar = freshSidebar(id);
       revealedId = null;
+      revealedBoardId = null;
+      treeFocus = null;
+      listFocus = null;
+      boards = [];
     }
+  });
+
+  // The guide's boards for the Boards node: on guide change, data change, and page change, since
+  // a board made or renamed on its page comes back through one of those.
+  $effect(() => {
+    const id = guideId;
+    void session.revision;
+    void route;
+    void session.current.board?.name;
+    if (!id) return;
+    untrack(() => void loadBoards(id));
+  });
+
+  // Opening a board shows it in the tree, once per board, so the node can still be folded.
+  $effect(() => {
+    if (route.view !== "board" || route.boardId === revealedBoardId) return;
+    revealedBoardId = route.boardId;
+    shell.boardsOpen = true;
   });
 
   // The tree and the counts: on guide change and after any data change.
@@ -127,9 +201,43 @@
       session.sidebar.entries = result;
       unknownTags = unknown;
       error = "";
+      // The count behind "N more in All entries": the same search without the tag.
+      if (scope.kind === "tag" && p.text) {
+        const all = await api.listEntries(id, queryFor({ kind: "all" }, p, stubs, options).query);
+        if (request !== listRequest) return;
+        allCount = all.length;
+      } else {
+        allCount = null;
+      }
     } catch (e) {
       error = errorMessage(e);
     }
+  }
+
+  async function loadBoards(id: string) {
+    try {
+      const list = await api.listBoards(id);
+      if (guideId === id) boards = list;
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  /** The widen row: the scope becomes All entries; focus goes back to the search it widened. */
+  async function widenScope() {
+    select({ kind: "all" });
+    await tick();
+    searchInput?.focus();
+  }
+
+  /** Remembers the focused row of a list, so it is that list's Tab stop. */
+  function rememberRow(set: (key: string) => void) {
+    return (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.classList.contains("tree-name")) return;
+      const key = target.closest<HTMLElement>("[data-row-id]")?.dataset.rowId;
+      if (key) set(key);
+    };
   }
 
   function reveal(entry: Entry, nodes: TagNode[]) {
@@ -198,6 +306,10 @@
       }
       if (!withTree) return;
       const rowId = target.closest<HTMLElement>("[data-row-id]")?.dataset.rowId;
+      if (rowId === ROW_BOARDS || rowId?.startsWith("board:")) {
+        boardKeys(event, rowId === ROW_BOARDS, names, index);
+        return;
+      }
       const node = rowId ? findNode(tree, rowId) : null;
       if (!node) return;
       if (event.key === "ArrowRight") {
@@ -216,6 +328,22 @@
         }
       }
     };
+  }
+
+  /** Right and Left on the Boards node and its rows, as on a tag with children. */
+  function boardKeys(event: KeyboardEvent, onNode: boolean, names: HTMLElement[], index: number) {
+    if (event.key === "ArrowRight" && onNode) {
+      event.preventDefault();
+      if (!shell.boardsOpen) shell.boardsOpen = true;
+      else if (boards.length > 0) names[index + 1]?.focus();
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (onNode) shell.boardsOpen = false;
+      else
+        treeEl
+          ?.querySelector<HTMLElement>(`[data-row-id="${ROW_BOARDS}"] .tree-name`)
+          ?.focus();
+    }
   }
 
   /** Escape clears the text, then the chips, then leaves the field (review 4.1.1). */
@@ -253,7 +381,9 @@
         count={subtreeCount(counts, id)}
         {depth}
         onkeydown={rowKeys(treeEl, true)}
-        selected={sameScope(session.sidebar.scope, tagScope(id))}
+        tabindex={treeStop === id ? 0 : -1}
+        selected={listPage && sameScope(session.sidebar.scope, tagScope(id))}
+        scoped={!listPage && sameScope(session.sidebar.scope, tagScope(id))}
         open={node.children.length > 0 ? open : undefined}
         ontoggle={() => toggle(id)}
         onpick={() => select(tagScope(id))}
@@ -291,86 +421,158 @@
     {#if error}<p class="side-hint error">{error}</p>{/if}
 
     <div class="regions" bind:this={regions}>
-      <section class="region tree" style:flex-basis="{split}%" aria-label="Tags" bind:this={treeEl}>
-        <h2 class="region-head">Tags</h2>
-        <ul class="side-list">
-          <li>
-            <TreeRow
-              name="All entries"
-              count={counts?.total ?? 0}
-              selected={sameScope(session.sidebar.scope, { kind: "all" })}
-              onpick={() => select({ kind: "all" })}
-              onkeydown={rowKeys(treeEl, true)}
-            />
-          </li>
-          {@render branch(shownTree, 0)}
-          {#if tree.length === 0}
-            <li><p class="side-hint muted">No tags yet.</p></li>
-          {:else if parsed.text && shownTree.length === 0}
-            <li><p class="side-hint muted">No tags match.</p></li>
-          {/if}
-          <li>
-            <TreeRow
-              name="Untagged"
-              count={counts?.untagged ?? 0}
-              selected={sameScope(session.sidebar.scope, { kind: "untagged" })}
-              onpick={() => select({ kind: "untagged" })}
-              onkeydown={rowKeys(treeEl, true)}
-            />
-          </li>
-          <li>
-            <TreeRow
-              name="Trash"
-              count={counts?.trashed ?? 0}
-              selected={route.view === "trash"}
-              href={routeHash({ view: "trash", guideId })}
-              onkeydown={rowKeys(treeEl, true)}
-            />
-          </li>
-        </ul>
-      </section>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <div
-        class="splitter"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize the regions"
-        onpointerdown={resizeSplit}
-      ></div>
-      <section class="region entries" aria-label="Entries" bind:this={listEl}>
+      <section
+        class="region tree"
+        class:folded={!shell.tagsOpen}
+        class:alone={!shell.entriesOpen}
+        style:flex-basis={bothOpen ? `${split}%` : undefined}
+        aria-label="Tags"
+        bind:this={treeEl}
+      >
         <h2 class="region-head">
-          <span class="label">{scopeLabel(session.sidebar.scope, tags)}</span>
-          <span class="tree-count muted">{session.sidebar.entries.length}</span>
+          <button
+            class="region-toggle"
+            aria-expanded={shell.tagsOpen}
+            onclick={() => (shell.tagsOpen = !shell.tagsOpen)}
+          >
+            {#if shell.tagsOpen}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+            <span class="label">Tags</span>
+          </button>
         </h2>
-        {#if session.sidebar.entries.length === 0}
-          <p class="side-hint muted">{filtering ? "No entries match." : "No entries here yet."}</p>
-        {:else}
-          <ul class="side-list">
-            {#each session.sidebar.entries as e (e.id)}
-              <li>
-                <TreeRow
-                  name={e.title}
-                  stub={e.is_stub}
-                  selected={session.current.entry?.id === e.id}
-                  href={routeHash({ view: "entry", entryId: e.id })}
-                  onpick={() => (session.sidebar.pickedId = e.id)}
-                  onkeydown={rowKeys(listEl, false)}
-                />
-              </li>
-            {/each}
+        {#if shell.tagsOpen}
+          <ul class="side-list" onfocusin={rememberRow((key) => (treeFocus = key))}>
+            <li>
+              <TreeRow
+                id={ROW_ALL}
+                name="All entries"
+                count={counts?.total ?? 0}
+                selected={listPage && sameScope(session.sidebar.scope, { kind: "all" })}
+                scoped={!listPage && sameScope(session.sidebar.scope, { kind: "all" })}
+                tabindex={treeStop === ROW_ALL ? 0 : -1}
+                onpick={() => select({ kind: "all" })}
+                onkeydown={rowKeys(treeEl, true)}
+              />
+            </li>
+            {@render branch(shownTree, 0)}
+            {#if tree.length === 0}
+              <li><p class="side-hint muted">No tags yet.</p></li>
+            {:else if parsed.text && shownTree.length === 0}
+              <li><p class="side-hint muted">No tags match.</p></li>
+            {/if}
+            <li>
+              <TreeRow
+                id={ROW_UNTAGGED}
+                name="Untagged"
+                count={counts?.untagged ?? 0}
+                selected={listPage && sameScope(session.sidebar.scope, { kind: "untagged" })}
+                scoped={!listPage && sameScope(session.sidebar.scope, { kind: "untagged" })}
+                tabindex={treeStop === ROW_UNTAGGED ? 0 : -1}
+                onpick={() => select({ kind: "untagged" })}
+                onkeydown={rowKeys(treeEl, true)}
+              />
+            </li>
+            <li>
+              <TreeRow
+                id={ROW_BOARDS}
+                name="Boards"
+                count={boards.length}
+                selected={route.view === "boards"}
+                href={routeHash({ view: "boards", guideId })}
+                open={shell.boardsOpen}
+                ontoggle={() => (shell.boardsOpen = !shell.boardsOpen)}
+                tabindex={treeStop === ROW_BOARDS ? 0 : -1}
+                onkeydown={rowKeys(treeEl, true)}
+              />
+              {#if shell.boardsOpen}
+                <ul class="side-list">
+                  {#each boards as board (board.id)}
+                    {@const key = boardRowKey(board.id)}
+                    <li>
+                      <TreeRow
+                        id={key}
+                        name={board.name}
+                        depth={1}
+                        selected={route.view === "board" && route.boardId === board.id}
+                        href={routeHash({ view: "board", boardId: board.id })}
+                        tabindex={treeStop === key ? 0 : -1}
+                        onkeydown={rowKeys(treeEl, true)}
+                      />
+                    </li>
+                  {/each}
+                  {#if boards.length === 0}
+                    <li><p class="side-hint muted nested">No boards yet.</p></li>
+                  {/if}
+                </ul>
+              {/if}
+            </li>
+            <li>
+              <TreeRow
+                id={ROW_TRASH}
+                name="Trash"
+                count={counts?.trashed ?? 0}
+                selected={route.view === "trash"}
+                href={routeHash({ view: "trash", guideId })}
+                tabindex={treeStop === ROW_TRASH ? 0 : -1}
+                onkeydown={rowKeys(treeEl, true)}
+              />
+            </li>
           </ul>
         {/if}
       </section>
+      {#if bothOpen}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          class="splitter"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the regions"
+          onpointerdown={resizeSplit}
+        ></div>
+      {/if}
+      <section class="region entries" class:folded={!shell.entriesOpen} aria-label="Entries" bind:this={listEl}>
+        <h2 class="region-head">
+          <button
+            class="region-toggle"
+            aria-expanded={shell.entriesOpen}
+            onclick={() => (shell.entriesOpen = !shell.entriesOpen)}
+          >
+            {#if shell.entriesOpen}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+            <span class="label">{scopeLabel(session.sidebar.scope, tags)}</span>
+            <span class="tree-count">{session.sidebar.entries.length}</span>
+          </button>
+        </h2>
+        {#if shell.entriesOpen}
+          {#if session.sidebar.entries.length === 0}
+            <p class="side-hint muted">{filtering ? "No entries match." : "No entries here yet."}</p>
+          {:else}
+            <ul class="side-list" onfocusin={rememberRow((key) => (listFocus = key))}>
+              {#each session.sidebar.entries as e (e.id)}
+                <li>
+                  <TreeRow
+                    id={e.id}
+                    name={e.title}
+                    stub={e.is_stub}
+                    selected={session.current.entry?.id === e.id}
+                    href={routeHash({ view: "entry", entryId: e.id })}
+                    tabindex={listStop === e.id ? 0 : -1}
+                    onpick={() => (session.sidebar.pickedId = e.id)}
+                    onkeydown={rowKeys(listEl, false)}
+                  />
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </section>
+      {#if shell.entriesOpen && widen}
+        <button class="widen" disabled={widen.more === 0} onclick={() => void widenScope()}>
+          {widen.label}
+        </button>
+      {/if}
     </div>
     <nav class="foot" aria-label="Guide tools">
       <a href={routeHash({ view: "tags", guideId })} aria-current={route.view === "tags" ? "page" : undefined}>
         Tag editor
-      </a>
-      <a
-        href={routeHash({ view: "boards", guideId })}
-        aria-current={route.view === "boards" || route.view === "board" ? "page" : undefined}
-      >
-        Boards
       </a>
     </nav>
   </SidebarFrame>
@@ -391,8 +593,40 @@
     flex: 0 0 auto;
     max-height: 80%;
   }
+  /* The list folded: the tree takes the room. */
+  .region.tree.alone {
+    flex: 1 1 auto;
+    max-height: none;
+  }
   .region.entries {
     flex: 1 1 0;
+  }
+  /* A folded region is its head only. */
+  .region.folded {
+    flex: none;
+    max-height: none;
+    overflow: hidden;
+  }
+  .region-toggle {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 0;
+    margin-left: calc(-1 * var(--space-1));
+    padding: 0 var(--space-1);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-variant-caps: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+  }
+  .region-toggle:hover:not(:disabled) {
+    color: var(--fg);
   }
   .region-head .label {
     flex: 1;
@@ -409,6 +643,33 @@
     border-bottom: 1px solid var(--border);
     background: var(--bg);
     touch-action: none;
+  }
+  .side-hint.nested {
+    padding-left: calc(var(--space-3) + 14px);
+  }
+  /* The fixed row under a tag-scoped search; it sits outside the list's scroll. */
+  .widen {
+    flex: none;
+    min-height: var(--row-h);
+    margin: 0;
+    padding: 0 var(--space-3);
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
+    color: var(--accent);
+    font-size: var(--text-sm);
+    text-align: left;
+  }
+  .widen:hover:not(:disabled) {
+    background: var(--chip-bg);
+  }
+  .widen:disabled {
+    color: var(--muted);
+    opacity: 1;
+  }
+  .widen:focus-visible {
+    outline-offset: -2px;
   }
   .foot {
     display: flex;

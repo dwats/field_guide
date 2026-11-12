@@ -1,14 +1,16 @@
 <script lang="ts">
-  // An entry: the content column (title row with the mode toggle, the autosave slot and a More
-  // menu; tags; aliases; the rendered body or the editor with a live preview) and the right
+  // An entry: the content column (the title on its own line; a toolbar line with the tags and
+  // the mode toggle, the autosave slot, Images, and More; aliases; the rendered body or the
+  // editor with a live preview) and the right
   // panel with the Contents and Relations tabs. Edits save on a short delay and when the page is
   // left. Moving to Trash does not confirm; it offers Undo in a notice instead. Images dropped or
   // pasted onto the editor go in where they land; elsewhere on the page they join the end of the
   // body. A click on an image opens the viewer over the page.
-  import { Images } from "@lucide/svelte";
+  import { FileText, Images } from "@lucide/svelte";
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
+  import EmptyState from "../components/EmptyState.svelte";
   import EntryPanel from "../components/EntryPanel.svelte";
   import ImageAlbum from "../components/ImageAlbum.svelte";
   import Lightbox, { type LightboxImage } from "../components/Lightbox.svelte";
@@ -445,87 +447,89 @@
   <div class="content" class:drop-target={session.dropActive && entry !== null} bind:this={content}>
     <div class="page">
       {#if entry && guide}
-        <div class="row header">
-          <h1>{entry.title}</h1>
-          {#if entry.is_stub}<span class="chip">stub</span>{/if}
-          <span class="spacer"></span>
-          <div class="segmented" role="group" aria-label="Mode">
-            <button class:on={mode === "read"} onclick={() => setMode("read")}>Read</button>
-            <button class:on={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
+        <header class="entry-head">
+          <h1 class="entry-title">{entry.title}</h1>
+          <div class="toolbar">
+            <div class="row meta">
+              {#if entry.is_stub}<span class="chip status">stub</span>{/if}
+              <TagPicker bind:this={tagPicker} scope={guide.id} selected={entry.tag_ids} onchange={setTags} compact />
+            </div>
+            <div class="controls">
+              <div class="segmented" role="group" aria-label="Mode">
+                <button class:on={mode === "read"} onclick={() => setMode("read")}>Read</button>
+                <button class:on={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
+              </div>
+              <span class="save-slot" aria-live="polite">
+                {#if mode === "edit"}
+                  {#if saveState === "saved"}
+                    <span class="muted">Saved</span>
+                  {:else if saveState === "dirty"}
+                    <span class="muted">Unsaved</span>
+                  {:else}
+                    <span class="error">Save failed</span>
+                    <button class="link" onclick={() => void save()}>Retry</button>
+                  {/if}
+                {/if}
+              </span>
+              <button
+                class="icon-button"
+                aria-label="Images"
+                title={hasImages ? "Images" : "This entry has no images"}
+                disabled={!hasImages}
+                onclick={() => (albumOpen = true)}
+              >
+                <Images size={18} />
+              </button>
+              <Menu>
+                {#snippet items(close)}
+                  <button
+                    role="menuitem"
+                    onclick={() => {
+                      close();
+                      openRename();
+                    }}
+                  >
+                    Rename...
+                  </button>
+                  <button
+                    role="menuitem"
+                    onclick={() => {
+                      close();
+                      editingAliases = true;
+                    }}
+                  >
+                    Edit aliases...
+                  </button>
+                  {#if undoable}
+                    <button
+                      role="menuitem"
+                      onclick={() => {
+                        close();
+                        void undoRename();
+                      }}
+                    >
+                      Undo rename (from "{undoable.old_title}")
+                    </button>
+                  {/if}
+                  <div class="separator"></div>
+                  <button
+                    role="menuitem"
+                    class="danger"
+                    onclick={() => {
+                      close();
+                      void moveToTrash();
+                    }}
+                  >
+                    Move to Trash
+                  </button>
+                {/snippet}
+              </Menu>
+            </div>
           </div>
-          <span class="save-slot" aria-live="polite">
-            {#if mode === "edit"}
-              {#if saveState === "saved"}
-                <span class="muted">Saved</span>
-              {:else if saveState === "dirty"}
-                <span class="muted">Unsaved</span>
-              {:else}
-                <span class="error">Save failed</span>
-                <button class="link" onclick={() => void save()}>Retry</button>
-              {/if}
-            {/if}
-          </span>
-          <button
-            class="icon-button"
-            aria-label="Images"
-            title={hasImages ? "Images" : "This entry has no images"}
-            disabled={!hasImages}
-            onclick={() => (albumOpen = true)}
-          >
-            <Images size={18} />
-          </button>
-          <Menu>
-            {#snippet items(close)}
-              <button
-                role="menuitem"
-                onclick={() => {
-                  close();
-                  openRename();
-                }}
-              >
-                Rename...
-              </button>
-              <button
-                role="menuitem"
-                onclick={() => {
-                  close();
-                  editingAliases = true;
-                }}
-              >
-                Edit aliases...
-              </button>
-              {#if undoable}
-                <button
-                  role="menuitem"
-                  onclick={() => {
-                    close();
-                    void undoRename();
-                  }}
-                >
-                  Undo rename (from "{undoable.old_title}")
-                </button>
-              {/if}
-              <div class="separator"></div>
-              <button
-                role="menuitem"
-                class="danger"
-                onclick={() => {
-                  close();
-                  void moveToTrash();
-                }}
-              >
-                Move to Trash
-              </button>
-            {/snippet}
-          </Menu>
-        </div>
-
-        <div class="row meta">
-          <TagPicker bind:this={tagPicker} scope={guide.id} selected={entry.tag_ids} onchange={setTags} compact />
-        </div>
-        {#if entry.aliases.length > 0}
-          <p class="muted aliases">Aliases: {entry.aliases.join(", ")}</p>
-        {/if}
+          {#if entry.aliases.length > 0}
+            <p class="muted aliases">Aliases: {entry.aliases.join(", ")}</p>
+          {/if}
+        </header>
 
         {#if error}<p class="error">{error}</p>{/if}
 
@@ -548,7 +552,13 @@
           </div>
         {:else if rendered}
           {#if entry.body_md.trim() === ""}
-            <p class="muted">No body yet. Press {keysFor("toggle-mode")} or choose Edit. Drop or paste an image to add one.</p>
+            <EmptyState
+              icon={FileText}
+              title="This entry has no body yet."
+              line={`Press ${keysFor("toggle-mode")} or choose Edit to write one. Drop or paste an image to add it.`}
+            >
+              <button onclick={() => void setMode("edit")}>Edit</button>
+            </EmptyState>
           {:else}
             <Preview
               html={rendered.html}
@@ -671,25 +681,43 @@
     overflow: auto;
     scrollbar-gutter: stable;
   }
-  /* One line always: a long title truncates instead of pushing the controls down. */
-  .header {
-    flex-wrap: nowrap;
-    margin-bottom: var(--space-2);
+  /* The title block (UI review 1 and 4): the title on its own line, wrapping and never cut off,
+     with a rule under it; then the toolbar line, tags at the left and the controls at the right;
+     then --space-5 to the body. */
+  .entry-head {
+    margin-bottom: var(--space-5);
   }
-  .header h1 {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  /* The one serif page title, larger than any body heading (body h1 is --text-2xl). */
+  .entry-title {
+    margin: 0;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-serif);
+    font-size: var(--text-3xl);
+    font-weight: 400;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-2);
   }
   .meta {
-    margin-bottom: var(--space-2);
+    min-height: var(--control-h);
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
   .aliases {
-    margin: 0 0 var(--space-2);
+    margin: var(--space-2) 0 0;
     font-size: var(--text-md);
   }
-  /* The slot exists in both modes so the More button never moves. */
+  /* The slot exists in both modes so nothing beside it moves between Read and Edit. */
   .save-slot {
     display: inline-flex;
     align-items: center;
@@ -701,7 +729,6 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-4);
-    margin-top: var(--space-3);
     min-height: 60vh;
   }
   .pane {

@@ -28,8 +28,18 @@
     guideId: string;
     /** Bump to reload after the builder saves. */
     version: number;
+    /** The line shown when there are no relations; it names where to add one. */
+    emptyText?: string;
+    /** Called after this list changed the entry's relations: a delete, its Undo, or a qualifier edit. */
+    onchange?: () => void;
   }
-  let { entryId, guideId, version }: Props = $props();
+  let {
+    entryId,
+    guideId,
+    version,
+    emptyText = "No relations yet. Type a verb above, such as DROPS.",
+    onchange,
+  }: Props = $props();
 
   interface QualifierRow {
     label_id: string;
@@ -285,6 +295,7 @@
       await api.replaceQualifiers(editing.relation.id, qualifiers);
       closeEdit();
       await load(includeExternal);
+      onchange?.();
     } catch (e) {
       error = errorMessage(e);
     }
@@ -297,6 +308,7 @@
     try {
       const removed = await api.deleteRelation(view.relation.id);
       await load(includeExternal);
+      onchange?.();
       // The keyboard user keeps their place: the line that took this one's place is selected.
       const next = ordered[Math.min(index, ordered.length - 1)];
       selected = next ? keyOf(next) : null;
@@ -306,6 +318,8 @@
           run: async () => {
             await api.restoreRelation(removed);
             if (alive && entryId === shownOn) await load(includeExternal);
+            // Told even after this list is gone: a board still has the line to draw.
+            onchange?.();
           },
         },
       });
@@ -334,7 +348,7 @@
           {seg.text}
         {/if}
       {/each}
-      {#if view.external}<span class="chip">external</span>{/if}
+      {#if view.external}<span class="chip status">external</span>{/if}
     </span>
   </li>
 {/snippet}
@@ -342,7 +356,7 @@
 <section class="relations" aria-label="Relations">
   {#if error}<p class="error">{error}</p>{/if}
   {#if ordered.length === 0}
-    <p class="muted">No relations yet. Type a verb above, such as DROPS.</p>
+    <p class="muted">{emptyText}</p>
   {:else}
     <div
       class="list"
@@ -476,7 +490,7 @@
     cursor: default;
   }
   .line.selected {
-    background: var(--chip-bg);
+    background: var(--accent-soft);
   }
   .actions {
     margin-top: var(--space-3);
