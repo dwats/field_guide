@@ -84,7 +84,7 @@ export function flatten(groups: Group[]): Row[] {
 }
 
 /** Views inside a guide, where guide commands apply. */
-const GUIDE_VIEWS = ["guide", "entry", "tags", "trash", "boards", "board"];
+const GUIDE_VIEWS = ["guide", "entry", "tags", "vocabulary", "trash", "boards", "board"];
 
 /**
  * The commands the palette offers on a view. Page commands come first; on a board, Mod+F goes to
@@ -118,6 +118,7 @@ export function commandsFor(view: string, inGuide: boolean, hasNotice: boolean):
         ? { action: "focus-search", label: "Search this guide", keys: null }
         : { action: "focus-search", label: "Search this guide" },
       { action: "tag-editor", label: "Tag editor" },
+      { action: "vocabulary", label: "Vocabulary" },
       { action: "boards", label: "Boards" },
       { action: "trash", label: "Trash" },
     );

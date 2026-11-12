@@ -536,7 +536,7 @@
         {#if mode === "edit"}
           <div class="split">
             <div class="pane" bind:this={editorPane}>
-              <Editor bind:this={editor} value={draft} onchange={onEditorChange} onsave={() => void save()} />
+              <Editor bind:this={editor} value={draft} guideId={entry.guide_id} onchange={onEditorChange} onsave={() => void save()} />
             </div>
             <div class="pane">
               {#if rendered}

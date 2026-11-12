@@ -43,6 +43,7 @@
   import SettingsView from "./views/SettingsView.svelte";
   import TagsView from "./views/TagsView.svelte";
   import TrashView from "./views/TrashView.svelte";
+  import VocabularyView from "./views/VocabularyView.svelte";
 
   let route = $state<Route>(parseRoute(window.location.hash));
   let loading = $state(true);
@@ -60,6 +61,7 @@
   const inGuide = $derived(
     route.view === "guide" ||
       route.view === "tags" ||
+      route.view === "vocabulary" ||
       route.view === "entry" ||
       route.view === "trash" ||
       route.view === "boards" ||
@@ -118,6 +120,7 @@
     if (!inGuide || !guide) return out;
     out.push({ text: guide.name, href: routeHash({ view: "guide", guideId: guide.id }) });
     if (route.view === "tags") out.push({ text: "Tag editor" });
+    else if (route.view === "vocabulary") out.push({ text: "Vocabulary" });
     else if (route.view === "trash") out.push({ text: "Trash" });
     else if (route.view === "boards") out.push({ text: "Boards" });
     else if (route.view === "board" && session.current.board) {
@@ -229,6 +232,9 @@
         return;
       case "tag-editor":
         if (session.current.guide) navigate({ view: "tags", guideId: session.current.guide.id });
+        return;
+      case "vocabulary":
+        if (session.current.guide) navigate({ view: "vocabulary", guideId: session.current.guide.id });
         return;
       case "trash":
         if (session.current.guide) navigate({ view: "trash", guideId: session.current.guide.id });
@@ -468,6 +474,8 @@
           <GuideView guideId={route.guideId} />
         {:else if route.view === "tags"}
           <TagsView guideId={route.guideId} />
+        {:else if route.view === "vocabulary"}
+          <VocabularyView guideId={route.guideId} />
         {:else if route.view === "trash"}
           <TrashView guideId={route.guideId} />
         {:else if route.view === "boards"}

@@ -1,5 +1,7 @@
 use fieldguide_core::Error;
-use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb, VocabularyCopy};
+use fieldguide_core::vocabulary::{
+    Direction, LabelMergePreview, NewQualifierLabel, NewVerb, VerbMergePreview, VocabularyCopy,
+};
 
 use crate::common::*;
 
@@ -383,6 +385,173 @@ fn default_tags_must_belong_to_the_verbs_guide() {
         Err(Error::Invalid(_))
     ));
     assert!(v.list_verbs(&g).unwrap().is_empty());
+}
+
+#[test]
+fn usage_counts_follow_relations_and_qualifiers_including_trash() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    let c = entry(&mut v, &g, "C", "");
+    let drops = verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+    let unused = verb(&mut v, &g, "EATS", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    let idle = qualifier_label(&mut v, &g, "idle", None);
+    relate_with(
+        &mut v,
+        &a,
+        &drops,
+        &b,
+        vec![q_text(&with, "pick"), q_text(&with, "axe")],
+    );
+    relate_with(&mut v, &a, &drops, &c, vec![q_text(&with, "pick")]);
+    v.trash_entry(&c).unwrap();
+
+    let verbs: Vec<(String, usize, usize)> = v
+        .verb_usage(&g)
+        .unwrap()
+        .into_iter()
+        .map(|u| (u.verb.label, u.relations, u.in_trash))
+        .collect();
+    assert_eq!(
+        verbs,
+        [("DROPS".to_owned(), 2, 1), ("EATS".to_owned(), 0, 0)],
+        "an edge to a trashed entry still uses the verb"
+    );
+    let labels: Vec<(String, usize, usize)> = v
+        .qualifier_label_usage(&g)
+        .unwrap()
+        .into_iter()
+        .map(|u| (u.label.label, u.qualifiers, u.relations))
+        .collect();
+    assert_eq!(
+        labels,
+        [("idle".to_owned(), 0, 0), ("with".to_owned(), 3, 2)]
+    );
+
+    // The counts are the rule delete enforces: in use is refused, unused goes.
+    match v.delete_verb(&drops) {
+        Err(Error::InUse { count: 2, .. }) => {}
+        other => panic!("expected InUse with 2, got {other:?}"),
+    }
+    v.delete_verb(&unused).unwrap();
+    v.delete_qualifier_label(&idle).unwrap();
+    assert_eq!(v.verb_usage(&g).unwrap().len(), 1);
+    assert_eq!(v.qualifier_label_usage(&g).unwrap().len(), 1);
+}
+
+#[test]
+fn verb_merge_preview_matches_the_merge_and_changes_nothing() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    let c = entry(&mut v, &g, "C", "");
+    let drops = verb(&mut v, &g, "DROPS", None);
+    let gives = verb(&mut v, &g, "GIVES", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    relate_with(&mut v, &a, &drops, &b, vec![q_text(&with, "x")]);
+    relate_with(&mut v, &a, &gives, &b, vec![q_text(&with, "y")]);
+    relate(&mut v, &a, &gives, &c);
+
+    let preview = v.preview_merge_verbs(&gives, &drops).unwrap();
+    assert_eq!(
+        preview,
+        VerbMergePreview {
+            relations: 2,
+            combined: 1,
+        }
+    );
+    // Nothing moved.
+    assert_eq!(views(&v, &a).len(), 3);
+    assert!(v.get_verb(&gives).is_ok());
+
+    v.merge_verbs(&gives, &drops).unwrap();
+    let after = v.verb_usage(&g).unwrap();
+    assert_eq!(after.len(), 1);
+    assert_eq!(
+        after[0].relations,
+        preview.relations - preview.combined + 1,
+        "the target's own edge plus the moved ones, less those combined"
+    );
+    assert!(matches!(
+        v.preview_merge_verbs(&drops, &drops),
+        Err(Error::Invalid(_))
+    ));
+}
+
+#[test]
+fn verb_merge_preview_counts_source_edges_that_collide_with_each_other() {
+    // Into a symmetric verb, A GIVES B and B GIVES A become one edge.
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    let gives = verb(&mut v, &g, "GIVES", None);
+    let near = v
+        .create_verb(
+            &g,
+            NewVerb {
+                label: "NEAR".to_owned(),
+                symmetric: true,
+                ..NewVerb::default()
+            },
+        )
+        .unwrap()
+        .id;
+    relate(&mut v, &a, &gives, &b);
+    relate(&mut v, &b, &gives, &a);
+    let preview = v.preview_merge_verbs(&gives, &near).unwrap();
+    assert_eq!(
+        preview,
+        VerbMergePreview {
+            relations: 2,
+            combined: 1,
+        }
+    );
+    v.merge_verbs(&gives, &near).unwrap();
+    assert_eq!(views(&v, &a), ["NEAR B"]);
+}
+
+#[test]
+fn label_merge_preview_matches_the_merge_and_changes_nothing() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    let drops = verb(&mut v, &g, "DROPS", None);
+    let tool = qualifier_label(&mut v, &g, "tool", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    relate_with(
+        &mut v,
+        &a,
+        &drops,
+        &b,
+        vec![
+            q_text(&tool, "pick"),
+            q_text(&with, "pick"),
+            q_text(&with, "axe"),
+        ],
+    );
+    let preview = v.preview_merge_qualifier_labels(&with, &tool).unwrap();
+    assert_eq!(
+        preview,
+        LabelMergePreview {
+            qualifiers: 2,
+            dropped: 1,
+        }
+    );
+    assert_eq!(
+        views(&v, &a),
+        ["DROPS B · tool pick · with pick · with axe"]
+    );
+    v.merge_qualifier_labels(&with, &tool).unwrap();
+    let usage = v.qualifier_label_usage(&g).unwrap();
+    assert_eq!(
+        usage[0].qualifiers,
+        1 + preview.qualifiers - preview.dropped
+    );
 }
 
 #[test]

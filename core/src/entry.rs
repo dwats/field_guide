@@ -355,7 +355,8 @@ impl Vault {
     }
 
     /// Live entries in the guide whose title or an alias starts with `prefix`, case-insensitively,
-    /// ordered by the matched text. An empty prefix matches nothing.
+    /// ordered by the matched text. An empty prefix lists titles only, in title order, so a list
+    /// opened on a bare `[[` has rows before the first letter.
     pub fn suggest_names(
         &self,
         guide_id: &GuideId,
@@ -364,7 +365,23 @@ impl Vault {
     ) -> Result<Vec<NameMatch>> {
         let key = normalize(prefix);
         if key.is_empty() {
-            return Ok(Vec::new());
+            let mut stmt = self.conn().prepare(
+                "SELECT n.id, n.title, n.is_stub FROM entry n
+                 WHERE n.guide_id = ?1 AND n.deleted_at IS NULL
+                 ORDER BY n.title COLLATE NOCASE, n.id
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![guide_id, limit as i64], |row| {
+                let title: String = row.get(1)?;
+                Ok(NameMatch {
+                    entry_id: row.get(0)?,
+                    matched: title.clone(),
+                    title,
+                    is_alias: false,
+                    is_stub: row.get::<_, i64>(2)? != 0,
+                })
+            })?;
+            return Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
         let pattern = format!("{}%", escape_like(&key));
         let mut stmt = self.conn().prepare(

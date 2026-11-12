@@ -110,4 +110,11 @@ describe("commandsFor", () => {
     expect(commandsFor("guides", false, false).map((c) => c.action)).not.toContain("trash");
     expect(commandsFor("guides", false, true).map((c) => c.action)).toContain("dismiss-notice");
   });
+
+  it("offers Vocabulary inside a guide, on the Vocabulary page too, and not outside one", () => {
+    expect(actions("guide")).toContain("vocabulary");
+    expect(actions("vocabulary")).toContain("vocabulary");
+    expect(actions("vocabulary")).toContain("new");
+    expect(commandsFor("guides", false, false).map((c) => c.action)).not.toContain("vocabulary");
+  });
 });

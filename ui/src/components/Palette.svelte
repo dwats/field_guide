@@ -37,6 +37,7 @@
       (route.view === "guide" ||
         route.view === "entry" ||
         route.view === "tags" ||
+        route.view === "vocabulary" ||
         route.view === "trash" ||
         route.view === "boards" ||
         route.view === "board"),

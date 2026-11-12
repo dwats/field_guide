@@ -16,6 +16,7 @@ export type Action =
   | "toggle-sidebar"
   | "toggle-panel"
   | "tag-editor"
+  | "vocabulary"
   | "trash"
   | "boards"
   | "board-find"

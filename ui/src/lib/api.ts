@@ -467,6 +467,33 @@ export interface NewQualifierLabel {
   inverse_label: string | null;
 }
 
+/** A verb and the relations using it; delete is refused while `relations` is above zero. */
+export interface VerbUsage {
+  verb: Verb;
+  relations: number;
+  /** Of `relations`, those with an end in Trash. */
+  in_trash: number;
+}
+
+/** A qualifier label, its qualifiers, and the distinct relations they sit on. */
+export interface QualifierLabelUsage {
+  label: QualifierLabel;
+  qualifiers: number;
+  relations: number;
+}
+
+export interface VerbMergePreview {
+  relations: number;
+  /** Of `relations`, those that join an edge the target already has. */
+  combined: number;
+}
+
+export interface LabelMergePreview {
+  qualifiers: number;
+  /** Qualifiers removed as exact duplicates on their edge. */
+  dropped: number;
+}
+
 export type QualifierValue =
   | { kind: "entry"; value: Id }
   | { kind: "text"; value: string }
@@ -658,6 +685,24 @@ export const api = {
     invoke<QualifierLabel[]>("list_qualifier_labels", { guide_id }),
   lookupQualifierLabel: (guide_id: Id, text: string) =>
     invoke<QualifierLabel | null>("lookup_qualifier_label", { guide_id, text }),
+  verbUsage: (guide_id: Id) => invoke<VerbUsage[]>("verb_usage", { guide_id }),
+  qualifierLabelUsage: (guide_id: Id) =>
+    invoke<QualifierLabelUsage[]>("qualifier_label_usage", { guide_id }),
+  /** Replaces the verb's whole definition; a rename keeps every edge. */
+  updateVerb: (id: Id, next: NewVerb) => invoke<Verb>("update_verb", { id, new: next }),
+  /** Refused while any relation uses the verb. */
+  deleteVerb: (id: Id) => invoke<void>("delete_verb", { id }),
+  previewMergeVerbs: (source: Id, target: Id) =>
+    invoke<VerbMergePreview>("preview_merge_verbs", { source, target }),
+  mergeVerbs: (source: Id, target: Id) => invoke<void>("merge_verbs", { source, target }),
+  updateQualifierLabel: (id: Id, next: NewQualifierLabel) =>
+    invoke<QualifierLabel>("update_qualifier_label", { id, new: next }),
+  /** Refused while any qualifier uses the label. */
+  deleteQualifierLabel: (id: Id) => invoke<void>("delete_qualifier_label", { id }),
+  previewMergeQualifierLabels: (source: Id, target: Id) =>
+    invoke<LabelMergePreview>("preview_merge_qualifier_labels", { source, target }),
+  mergeQualifierLabels: (source: Id, target: Id) =>
+    invoke<void>("merge_qualifier_labels", { source, target }),
 
   listBackups: () => invoke<BackupInfo[]>("list_backups"),
   backupNow: () => invoke<BackupInfo>("backup_now"),

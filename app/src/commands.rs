@@ -25,7 +25,8 @@ use fieldguide_core::relation::{
 };
 use fieldguide_core::tag::{EntryCounts, Tag, TagNode};
 use fieldguide_core::vocabulary::{
-    Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb, VerbMatch, VocabularyCopy,
+    Direction, LabelMergePreview, NewQualifierLabel, NewVerb, QualifierLabel, QualifierLabelUsage,
+    Verb, VerbMatch, VerbMergePreview, VerbUsage, VocabularyCopy,
 };
 use fieldguide_core::{
     BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, QualifierId,
@@ -495,6 +496,37 @@ pub fn lookup_qualifier_label(
 #[tauri::command(rename_all = "snake_case")]
 pub fn copy_vocabulary(state: S<'_>, from: GuideId, to: GuideId) -> CmdResult<VocabularyCopy> {
     state.with_vault(|v| v.copy_vocabulary(&from, &to))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn verb_usage(state: S<'_>, guide_id: GuideId) -> CmdResult<Vec<VerbUsage>> {
+    state.with_vault(|v| v.verb_usage(&guide_id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn qualifier_label_usage(
+    state: S<'_>,
+    guide_id: GuideId,
+) -> CmdResult<Vec<QualifierLabelUsage>> {
+    state.with_vault(|v| v.qualifier_label_usage(&guide_id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn preview_merge_verbs(
+    state: S<'_>,
+    source: VerbId,
+    target: VerbId,
+) -> CmdResult<VerbMergePreview> {
+    state.with_vault(|v| v.preview_merge_verbs(&source, &target))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn preview_merge_qualifier_labels(
+    state: S<'_>,
+    source: QualifierLabelId,
+    target: QualifierLabelId,
+) -> CmdResult<LabelMergePreview> {
+    state.with_vault(|v| v.preview_merge_qualifier_labels(&source, &target))
 }
 
 // ---- boards ----

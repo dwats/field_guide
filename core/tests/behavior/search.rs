@@ -151,7 +151,16 @@ fn name_suggestions_match_title_and_alias_prefixes_and_skip_the_trash() {
         names("LUM"),
         [("Oak Log".to_owned(), "Lumber".to_owned(), true)]
     );
-    assert!(names("").is_empty());
+    assert_eq!(
+        names(""),
+        [
+            ("Oak Log".to_owned(), "Oak Log".to_owned(), false),
+            ("Oak Planks".to_owned(), "Oak Planks".to_owned(), false),
+        ],
+        "an empty prefix lists live titles in this guide, no aliases"
+    );
+    assert_eq!(names("  ").len(), 2, "white space is an empty prefix");
+    assert_eq!(v.suggest_names(&g, "", 1).unwrap().len(), 1);
     assert!(names("100%").is_empty(), "wildcards are literal");
     assert_eq!(v.suggest_names(&g, "oak", 1).unwrap().len(), 1);
 }

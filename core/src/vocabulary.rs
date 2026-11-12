@@ -57,6 +57,46 @@ pub struct NewQualifierLabel {
     pub inverse_label: Option<String>,
 }
 
+/// A verb and how much uses it, for the Vocabulary page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerbUsage {
+    pub verb: Verb,
+    /// Relations using the verb, including those with an end in Trash. Delete is refused while
+    /// this is above zero.
+    pub relations: usize,
+    /// Of `relations`, those hidden because an end is in Trash.
+    pub in_trash: usize,
+}
+
+/// A qualifier label and how much uses it, for the Vocabulary page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualifierLabelUsage {
+    pub label: QualifierLabel,
+    /// Qualifiers with this label; one edge may carry the label more than once.
+    pub qualifiers: usize,
+    /// Distinct relations those qualifiers sit on. Delete is refused while this is above zero.
+    pub relations: usize,
+}
+
+/// What merging one verb into another will do.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerbMergePreview {
+    /// Relations of the source verb; all of them end up under the target.
+    pub relations: usize,
+    /// Of `relations`, those that duplicate an edge the target already has and merge into it,
+    /// so the relation count goes down by this many.
+    pub combined: usize,
+}
+
+/// What merging one qualifier label into another will do.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LabelMergePreview {
+    /// Qualifiers of the source label that get the target label.
+    pub qualifiers: usize,
+    /// Qualifiers removed because they became exact duplicates on their edge.
+    pub dropped: usize,
+}
+
 /// Which way a typed label points, relative to the entry it was typed on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -164,39 +204,136 @@ impl Vault {
             return Err(Error::Invalid("cannot merge a verb into itself".to_owned()));
         }
         let tx = self.savepoint()?;
-        let from = load_verb(&tx, source)?;
-        let into = load_verb(&tx, target)?;
-        if from.guide_id != into.guide_id {
-            return Err(Error::Invalid("verbs are in different guides".to_owned()));
-        }
-        let edges: Vec<(crate::RelationId, crate::EntryId, crate::EntryId)> = {
-            let mut stmt = tx.prepare(
-                "SELECT id, subject_entry_id, object_entry_id FROM relation WHERE verb_id = ?1 ORDER BY created_at, id",
-            )?;
-            stmt.query_map(params![source], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?
-            .collect::<rusqlite::Result<_>>()?
-        };
-        for (edge, subject, object) in edges {
-            match crate::relation::find_edge(&tx, &subject, target, &object, into.symmetric)? {
-                Some(existing) => {
-                    crate::relation::move_qualifiers(&tx, &edge, &existing)?;
-                    tx.execute("DELETE FROM relation WHERE id = ?1", params![edge])?;
-                }
-                None => {
-                    tx.execute(
-                        "UPDATE relation SET verb_id = ?2 WHERE id = ?1",
-                        params![edge, target],
-                    )?;
-                }
-            }
-        }
-        tx.execute("DELETE FROM verb WHERE id = ?1", params![source])?;
+        merge_verbs_in(&tx, source, target)?;
         tx.commit()?;
         Ok(())
     }
 
+    /// A guide's verbs with the number of relations using each, ordered by label.
+    pub fn verb_usage(&self, guide_id: &GuideId) -> Result<Vec<VerbUsage>> {
+        guide::ensure_guide_exists(self.conn(), guide_id)?;
+        let mut out = Vec::new();
+        for verb in self.list_verbs(guide_id)? {
+            let (relations, in_trash) = verb_counts(self.conn(), &verb.id)?;
+            out.push(VerbUsage {
+                verb,
+                relations,
+                in_trash,
+            });
+        }
+        Ok(out)
+    }
+
+    /// What [`Vault::merge_verbs`] would do, without doing it: the merge runs inside a savepoint
+    /// that is rolled back, so the numbers are exactly the merge's.
+    pub fn preview_merge_verbs(
+        &mut self,
+        source: &VerbId,
+        target: &VerbId,
+    ) -> Result<VerbMergePreview> {
+        if source == target {
+            return Err(Error::Invalid("cannot merge a verb into itself".to_owned()));
+        }
+        let tx = self.savepoint()?;
+        let (relations, _) = verb_counts(&tx, source)?;
+        let (before, _) = verb_counts(&tx, target)?;
+        merge_verbs_in(&tx, source, target)?;
+        let (after, _) = verb_counts(&tx, target)?;
+        // Dropping the savepoint without committing rolls the merge back.
+        drop(tx);
+        Ok(VerbMergePreview {
+            relations,
+            combined: relations - (after - before),
+        })
+    }
+}
+
+/// Moves `source`'s edges onto `target` and deletes `source`. Callers own the transaction.
+fn merge_verbs_in(conn: &Connection, source: &VerbId, target: &VerbId) -> Result<()> {
+    let from = load_verb(conn, source)?;
+    let into = load_verb(conn, target)?;
+    if from.guide_id != into.guide_id {
+        return Err(Error::Invalid("verbs are in different guides".to_owned()));
+    }
+    let edges: Vec<(crate::RelationId, crate::EntryId, crate::EntryId)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, subject_entry_id, object_entry_id FROM relation WHERE verb_id = ?1 ORDER BY created_at, id",
+        )?;
+        stmt.query_map(params![source], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?
+    };
+    for (edge, subject, object) in edges {
+        match crate::relation::find_edge(conn, &subject, target, &object, into.symmetric)? {
+            Some(existing) => {
+                crate::relation::move_qualifiers(conn, &edge, &existing)?;
+                conn.execute("DELETE FROM relation WHERE id = ?1", params![edge])?;
+            }
+            None => {
+                conn.execute(
+                    "UPDATE relation SET verb_id = ?2 WHERE id = ?1",
+                    params![edge, target],
+                )?;
+            }
+        }
+    }
+    conn.execute("DELETE FROM verb WHERE id = ?1", params![source])?;
+    Ok(())
+}
+
+/// Relations using a verb, and how many of those have an end in Trash.
+fn verb_counts(conn: &Connection, id: &VerbId) -> Result<(usize, usize)> {
+    load_verb(conn, id)?;
+    let (all, trashed): (i64, i64) = conn.query_row(
+        "SELECT count(*),
+                coalesce(sum(s.deleted_at IS NOT NULL OR o.deleted_at IS NOT NULL), 0)
+         FROM relation r
+         JOIN entry s ON s.id = r.subject_entry_id
+         JOIN entry o ON o.id = r.object_entry_id
+         WHERE r.verb_id = ?1",
+        params![id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok((all as usize, trashed as usize))
+}
+
+/// Qualifiers using a label, and the distinct relations they sit on.
+fn label_counts(conn: &Connection, id: &QualifierLabelId) -> Result<(usize, usize)> {
+    load_qualifier_label(conn, id)?;
+    let (qualifiers, relations): (i64, i64) = conn.query_row(
+        "SELECT count(*), count(DISTINCT relation_id) FROM relation_qualifier
+         WHERE qualifier_label_id = ?1",
+        params![id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok((qualifiers as usize, relations as usize))
+}
+
+/// Relabels `source`'s qualifiers to `target`, drops new exact duplicates, and deletes `source`.
+/// Callers own the transaction.
+fn merge_labels_in(
+    conn: &Connection,
+    source: &QualifierLabelId,
+    target: &QualifierLabelId,
+) -> Result<()> {
+    let from = load_qualifier_label(conn, source)?;
+    let into = load_qualifier_label(conn, target)?;
+    if from.guide_id != into.guide_id {
+        return Err(Error::Invalid(
+            "qualifier labels are in different guides".to_owned(),
+        ));
+    }
+    conn.execute(
+        "UPDATE relation_qualifier SET qualifier_label_id = ?2 WHERE qualifier_label_id = ?1",
+        params![source, target],
+    )?;
+    crate::relation::drop_duplicate_qualifiers(conn, target)?;
+    conn.execute("DELETE FROM qualifier_label WHERE id = ?1", params![source])?;
+    Ok(())
+}
+
+impl Vault {
     /// Resolves typed text to a verb and the direction it implies: a label reads forward, an
     /// inverse label reads from the object side. Case-insensitive.
     pub fn lookup_verb(&self, guide_id: &GuideId, text: &str) -> Result<Option<VerbMatch>> {
@@ -315,21 +452,50 @@ impl Vault {
             ));
         }
         let tx = self.savepoint()?;
-        let from = load_qualifier_label(&tx, source)?;
-        let into = load_qualifier_label(&tx, target)?;
-        if from.guide_id != into.guide_id {
-            return Err(Error::Invalid(
-                "qualifier labels are in different guides".to_owned(),
-            ));
-        }
-        tx.execute(
-            "UPDATE relation_qualifier SET qualifier_label_id = ?2 WHERE qualifier_label_id = ?1",
-            params![source, target],
-        )?;
-        crate::relation::drop_duplicate_qualifiers(&tx, target)?;
-        tx.execute("DELETE FROM qualifier_label WHERE id = ?1", params![source])?;
+        merge_labels_in(&tx, source, target)?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// A guide's qualifier labels with the number of qualifiers and relations using each, ordered
+    /// by label.
+    pub fn qualifier_label_usage(&self, guide_id: &GuideId) -> Result<Vec<QualifierLabelUsage>> {
+        guide::ensure_guide_exists(self.conn(), guide_id)?;
+        let mut out = Vec::new();
+        for label in self.list_qualifier_labels(guide_id)? {
+            let (qualifiers, relations) = label_counts(self.conn(), &label.id)?;
+            out.push(QualifierLabelUsage {
+                label,
+                qualifiers,
+                relations,
+            });
+        }
+        Ok(out)
+    }
+
+    /// What [`Vault::merge_qualifier_labels`] would do, without doing it: the merge runs inside a
+    /// savepoint that is rolled back.
+    pub fn preview_merge_qualifier_labels(
+        &mut self,
+        source: &QualifierLabelId,
+        target: &QualifierLabelId,
+    ) -> Result<LabelMergePreview> {
+        if source == target {
+            return Err(Error::Invalid(
+                "cannot merge a qualifier label into itself".to_owned(),
+            ));
+        }
+        let tx = self.savepoint()?;
+        let (qualifiers, _) = label_counts(&tx, source)?;
+        let (before, _) = label_counts(&tx, target)?;
+        merge_labels_in(&tx, source, target)?;
+        let (after, _) = label_counts(&tx, target)?;
+        // Dropping the savepoint without committing rolls the merge back.
+        drop(tx);
+        Ok(LabelMergePreview {
+            qualifiers,
+            dropped: before + qualifiers - after,
+        })
     }
 
     /// Resolves typed text to a qualifier label by its label, case-insensitively.

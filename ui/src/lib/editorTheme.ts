@@ -44,6 +44,38 @@ export const editorTheme = EditorView.theme({
     backgroundColor: "var(--active-line)",
     color: "var(--fg)",
   },
+  // Link suggestions (@codemirror/autocomplete 6.20), drawn like the app's other suggestion
+  // lists (Suggestions.svelte): a raised layer, a 1-pixel border, the hover color on the
+  // highlighted row. The package's base rules are `&light .cm-tooltip...`, the same specificity
+  // as these, so these win by order as above. The package has no transitions to turn off; its
+  // delays are off in Editor.svelte.
+  ".cm-tooltip": {
+    color: "var(--fg)",
+    backgroundColor: "var(--raised)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-md)",
+    boxShadow: "var(--e2)",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+    fontFamily: "var(--font-sans)",
+    fontSize: "var(--text-sm)",
+    padding: "var(--space-1) 0",
+    minWidth: "16rem",
+    maxHeight: "260px",
+  },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+    padding: "var(--space-1) var(--space-3)",
+    lineHeight: "1.4",
+  },
+  ".cm-tooltip-autocomplete ul li[aria-selected], .cm-tooltip-autocomplete ul li:hover": {
+    background: "var(--raised-hover)",
+    color: "var(--fg)",
+  },
+  ".cm-completionDetail": {
+    marginLeft: "var(--space-2)",
+    fontStyle: "normal",
+    color: "var(--muted)",
+  },
 });
 
 /** Markdown in the editor: marks and rules muted, links in the accent, no fixed colors. */

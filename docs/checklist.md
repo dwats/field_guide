@@ -117,6 +117,8 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] A click on a web link in a body asks first, showing the whole address with focus on Cancel; Open in browser opens the default browser; the app itself makes no request.
 - [ ] The right panel keeps the last chosen tab and the open folds from one entry to the next.
 - [ ] Line numbers are off in the editor; Settings, Editor turns them on at once.
+- [ ] Typing `[[` in the editor opens a list of titles that narrows by prefix; an alias match shows its alias; the last row links to a new entry; Enter or Tab accepts and writes the closing `]]` once; Escape closes and leaves the text; no list opens inside a code span or a fenced code block.
+- [ ] Vocabulary (sidebar footer, palette): rename a verb with F2 and every relation line follows; set an inverse; Merge into... asks first with both words and the counts, focus on Cancel; Delete on a word in use is refused and offers Merge; the same for qualifier labels.
 - [ ] Edit mode shows the editor and a live preview that updates while typing; "Saved" appears after a pause.
 - [ ] Leaving the page while unsaved saves the body.
 - [ ] A `[[Title]]` link to an existing entry renders as a link and navigates; a link to a missing entry renders dashed and offers to create it.
