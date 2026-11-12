@@ -124,7 +124,7 @@
       </div>
       <div class="page-toolbar">
         <button class="danger with-icon" disabled={entries.length === 0} onclick={() => (confirming = "empty")}>
-          <Trash2 size={16} aria-hidden="true" />
+          <Trash2 aria-hidden="true" />
           Empty trash
         </button>
       </div>

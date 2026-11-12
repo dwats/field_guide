@@ -6,7 +6,7 @@
   // left. Moving to Trash does not confirm; it offers Undo in a notice instead. Images dropped or
   // pasted onto the editor go in where they land; elsewhere on the page they join the end of the
   // body. A click on an image opens the viewer over the page.
-  import { FileText, Images } from "@lucide/svelte";
+  import { FileText, Images, X } from "@lucide/svelte";
   import { onDestroy, untrack } from "svelte";
 
   import Editor from "../components/Editor.svelte";
@@ -444,7 +444,12 @@
 </script>
 
 <div class="entry">
-  <div class="content" class:drop-target={session.dropActive && entry !== null} bind:this={content}>
+  <div
+    class="content"
+    class:editing={mode === "edit"}
+    class:drop-target={session.dropActive && entry !== null}
+    bind:this={content}
+  >
     <div class="page">
       {#if entry && guide}
         <header class="entry-head">
@@ -456,8 +461,8 @@
             </div>
             <div class="controls">
               <div class="segmented" role="group" aria-label="Mode">
-                <button class:on={mode === "read"} onclick={() => setMode("read")}>Read</button>
-                <button class:on={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
+                <button aria-pressed={mode === "read"} onclick={() => setMode("read")}>Read</button>
+                <button aria-pressed={mode === "edit"} onclick={() => setMode("edit")}>Edit</button>
               </div>
               <span class="save-slot" aria-live="polite">
                 {#if mode === "edit"}
@@ -478,7 +483,7 @@
                 disabled={!hasImages}
                 onclick={() => (albumOpen = true)}
               >
-                <Images size={18} />
+                <Images />
               </button>
               <Menu>
                 {#snippet items(close)}
@@ -599,7 +604,7 @@
             {#each entry.aliases as alias (alias)}
               <span class="chip">
                 {alias}
-                <button onclick={() => removeAlias(alias)} aria-label="Remove alias {alias}">&times;</button>
+                <button onclick={() => removeAlias(alias)} aria-label="Remove alias {alias}" title="Remove alias"><X class="icon-sm" /></button>
               </span>
             {/each}
           </div>
@@ -725,11 +730,23 @@
     min-width: 11em;
     font-size: var(--text-sm);
   }
+  /* In Edit the page is a flex column at least the column's height, and the split takes what
+     the title block leaves, so the editor reaches the bottom of the window (UI review 6). Longer
+     text grows the split and the column scrolls, as in Read. */
+  .content.editing {
+    display: flex;
+    flex-direction: column;
+  }
+  .content.editing > .page {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+  }
   .split {
+    flex: 1 0 auto;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-4);
-    min-height: 60vh;
   }
   .pane {
     display: flex;

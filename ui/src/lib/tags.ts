@@ -34,6 +34,11 @@ export const TAG_COLORS = [
   "gray",
 ] as const;
 
+/** A color's name as a swatch shows it, in sentence case: "teal" is "Teal". */
+export function colorName(color: string): string {
+  return color.charAt(0).toUpperCase() + color.slice(1);
+}
+
 /** The CSS value for a tag's color, or null when it has none or an unknown one. */
 export function colorVar(color: string | null | undefined): string | null {
   return color && (TAG_COLORS as readonly string[]).includes(color) ? `var(--tag-${color})` : null;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TagNode } from "./api";
-import { colorVar, findByPath, flattenTags, pathsOf } from "./tags";
+import { colorName, colorVar, findByPath, flattenTags, pathsOf } from "./tags";
 
 function node(id: string, path: string, color: string | null, children: TagNode[] = []): TagNode {
   const name = path.split("/").pop() ?? path;
@@ -34,5 +34,12 @@ describe("colorVar", () => {
     expect(colorVar("chartreuse")).toBeNull();
     expect(colorVar(null)).toBeNull();
     expect(colorVar(undefined)).toBeNull();
+  });
+});
+
+describe("colorName", () => {
+  it("names a swatch in sentence case", () => {
+    expect(colorName("teal")).toBe("Teal");
+    expect(colorName("gray")).toBe("Gray");
   });
 });

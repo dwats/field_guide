@@ -1,10 +1,12 @@
 <script lang="ts">
   // The guide's boards (design section 6): the list, New board, and Rename or Delete per row.
-  import { Plus } from "@lucide/svelte";
+  // The header and the empty state follow the shared page rules (UI review 15 and 16).
+  import { Pin, Plus } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import BoardNameDialog from "../components/BoardNameDialog.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import EmptyState from "../components/EmptyState.svelte";
   import Menu from "../components/Menu.svelte";
   import { api, errorMessage, type Board, type Guide } from "../lib/api";
   import { when } from "../lib/format";
@@ -69,21 +71,31 @@
 
 <div class="page">
   {#if guide}
-    <div class="row header">
-      <h1>Boards</h1>
-      <span class="spacer"></span>
-      <button class="primary new" onclick={() => (creating = true)}>
-        <Plus size={16} /> New board
-      </button>
-    </div>
-    <p class="muted">
-      A board is a cork board you fill by hand: pick entries from this guide, arrange the cards,
-      and the relations between them are drawn as lines. Add notes and images, and tie them
-      together with strings.
-    </p>
+    <header class="page-header">
+      <div class="page-titles">
+        <h1>Boards</h1>
+        <p class="page-subtitle">
+          A board is a cork board you fill by hand: pick entries from this guide, arrange the
+          cards, and the relations between them are drawn as lines. Add notes and images, and tie
+          them together with strings.
+        </p>
+      </div>
+      <div class="page-toolbar">
+        <button
+          class="primary icon-button"
+          aria-label="New board"
+          title="New board"
+          onclick={() => (creating = true)}
+        >
+          <Plus />
+        </button>
+      </div>
+    </header>
     {#if error}<p class="error">{error}</p>{/if}
     {#if boards.length === 0}
-      <p class="muted">No boards yet.</p>
+      <EmptyState icon={Pin} title="No boards yet." line="Make one to lay out entries, notes, and images.">
+        <button class="primary" onclick={() => (creating = true)}>New board</button>
+      </EmptyState>
     {:else}
       <table>
         <thead>
@@ -92,7 +104,7 @@
         <tbody>
           {#each boards as board (board.id)}
             <tr>
-              <td><a href={routeHash({ view: "board", boardId: board.id })}>{board.name}</a></td>
+              <td><a class="title-link" href={routeHash({ view: "board", boardId: board.id })}>{board.name}</a></td>
               <td class="muted">{when(board.updated_at)}</td>
               <td class="actions">
                 <Menu label="More for {board.name}">
@@ -153,14 +165,6 @@
 />
 
 <style>
-  .header {
-    margin-bottom: var(--space-2);
-  }
-  .new {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-  }
   table {
     max-width: 60em;
   }

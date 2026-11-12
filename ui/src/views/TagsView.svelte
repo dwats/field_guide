@@ -14,7 +14,7 @@
   import { moveHighlight, pickExplicitIndex, stepIndex } from "../lib/combobox";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
   import { subtreeCount } from "../lib/sidebar";
-  import { TAG_COLORS, colorVar, flattenTags, type TagOption } from "../lib/tags";
+  import { TAG_COLORS, colorName, colorVar, flattenTags, type TagOption } from "../lib/tags";
   import { findNode, subtreeIds, visibleRows } from "../lib/tree";
 
   interface Props {
@@ -322,7 +322,7 @@
             creating = { parent: null };
           }}
         >
-          <Plus size={18} />
+          <Plus />
         </button>
       </div>
     </header>
@@ -387,7 +387,7 @@
                       toggle(id);
                     }}
                   >
-                    {#if open}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                    {#if open}<ChevronDown class="icon-sm" />{:else}<ChevronRight class="icon-sm" />{/if}
                   </button>
                 {:else}
                   <span class="tree-chev"></span>
@@ -433,19 +433,26 @@
               </select>
             </div>
             <div class="field">
-              <label for={`${uid}-color`}>Color</label>
-              <div class="row">
-                <select
-                  id={`${uid}-color`}
-                  value={selected.tag.color ?? ""}
-                  onchange={(e) => setColor((e.currentTarget as HTMLSelectElement).value)}
-                >
-                  <option value="">None</option>
-                  {#each TAG_COLORS as color (color)}<option value={color}>{color}</option>{/each}
-                </select>
-                {#if colorVar(selected.tag.color)}
-                  <span class="tag-dot big" style:--dot={colorVar(selected.tag.color)}></span>
-                {/if}
+              <span class="label" id={`${uid}-color`}>Color</span>
+              <!-- The board's swatch group (UI review 26): the nine tag colors and None. -->
+              <div class="swatches" role="group" aria-labelledby={`${uid}-color`}>
+                <button
+                  class="swatch none"
+                  aria-pressed={!selected.tag.color}
+                  aria-label="None"
+                  title="None"
+                  onclick={() => setColor("")}
+                ></button>
+                {#each TAG_COLORS as color (color)}
+                  <button
+                    class="swatch"
+                    style:background={colorVar(color)}
+                    aria-pressed={selected.tag.color === color}
+                    aria-label={colorName(color)}
+                    title={colorName(color)}
+                    onclick={() => setColor(color)}
+                  ></button>
+                {/each}
               </div>
             </div>
             <p class="muted">
@@ -615,7 +622,8 @@
     display: grid;
     gap: 2px;
   }
-  .field label {
+  .field label,
+  .field .label {
     font-size: var(--text-sm);
     color: var(--muted);
   }
@@ -628,9 +636,5 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-  }
-  .tag-dot.big {
-    width: 14px;
-    height: 14px;
   }
 </style>

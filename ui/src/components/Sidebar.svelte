@@ -5,7 +5,7 @@
   // between entries. A different guide starts fresh. The tree ends with Boards, which expands to
   // the guide's boards, and Trash. Each region folds from its head; each list is one Tab stop
   // (a roving tab stop) with the arrow keys inside.
-  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+  import { BookA, ChevronDown, ChevronRight, Tags } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
   import { api, errorMessage, type Board, type Entry, type EntryCounts, type TagNode } from "../lib/api";
@@ -14,6 +14,7 @@
   import { startDrag } from "../lib/drag";
   import { formatFilter, parseFilter, type ParsedFilter } from "../lib/filter";
   import { routeHash, type Route } from "../lib/router";
+  import { listKeydown, rememberRow as rememberListRow } from "../lib/rovingList";
   import { freshSidebar, savePrefs, session } from "../lib/session.svelte";
   import { shell } from "../lib/shell.svelte";
   import {
@@ -57,10 +58,12 @@
   /** The row each list last had focus on, so Tab returns there. */
   let treeFocus = $state<string | null>(null);
   let listFocus = $state<string | null>(null);
+  let footFocus = $state<string | null>(null);
   let error = $state("");
   let regions = $state<HTMLElement | null>(null);
   let treeEl = $state<HTMLElement | null>(null);
   let listEl = $state<HTMLElement | null>(null);
+  let footEl = $state<HTMLElement | null>(null);
   let searchInput = $state<HTMLInputElement | null>(null);
   /** Only the newest list request may land. */
   let listRequest = 0;
@@ -110,6 +113,11 @@
       session.current.entry?.id ?? null,
     ),
   );
+  /** The footer's pages, one Tab stop like the lists above it. */
+  const footStop = $derived(
+    rovingStop(["tags", "vocabulary"], footFocus, route.view === "vocabulary" ? "vocabulary" : "tags"),
+  );
+  const onFootKey = listKeydown(() => footEl);
   const bothOpen = $derived(shell.tagsOpen && shell.entriesOpen);
 
   // A different guide gets fresh state.
@@ -435,7 +443,7 @@
             aria-expanded={shell.tagsOpen}
             onclick={() => (shell.tagsOpen = !shell.tagsOpen)}
           >
-            {#if shell.tagsOpen}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+            {#if shell.tagsOpen}<ChevronDown class="icon-sm" />{:else}<ChevronRight class="icon-sm" />{/if}
             <span class="label">Tags</span>
           </button>
         </h2>
@@ -536,7 +544,7 @@
             aria-expanded={shell.entriesOpen}
             onclick={() => (shell.entriesOpen = !shell.entriesOpen)}
           >
-            {#if shell.entriesOpen}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+            {#if shell.entriesOpen}<ChevronDown class="icon-sm" />{:else}<ChevronRight class="icon-sm" />{/if}
             <span class="label">{scopeLabel(session.sidebar.scope, tags)}</span>
             <span class="tree-count">{session.sidebar.entries.length}</span>
           </button>
@@ -570,16 +578,31 @@
         </button>
       {/if}
     </div>
-    <nav class="foot" aria-label="Guide tools">
-      <a href={routeHash({ view: "tags", guideId })} aria-current={route.view === "tags" ? "page" : undefined}>
-        Tag editor
-      </a>
-      <a
-        href={routeHash({ view: "vocabulary", guideId })}
-        aria-current={route.view === "vocabulary" ? "page" : undefined}
-      >
-        Vocabulary
-      </a>
+    <nav class="foot" aria-label="Guide tools" bind:this={footEl}>
+      <ul class="side-list" onfocusin={rememberListRow((key) => (footFocus = key))}>
+        <li>
+          <TreeRow
+            id="tags"
+            name="Tag editor"
+            icon={Tags}
+            selected={route.view === "tags"}
+            href={routeHash({ view: "tags", guideId })}
+            tabindex={footStop === "tags" ? 0 : -1}
+            onkeydown={onFootKey}
+          />
+        </li>
+        <li>
+          <TreeRow
+            id="vocabulary"
+            name="Vocabulary"
+            icon={BookA}
+            selected={route.view === "vocabulary"}
+            href={routeHash({ view: "vocabulary", guideId })}
+            tabindex={footStop === "vocabulary" ? 0 : -1}
+            onkeydown={onFootKey}
+          />
+        </li>
+      </ul>
     </nav>
   </SidebarFrame>
 {/if}
@@ -641,17 +664,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* One divider line in a 7-pixel transparent hit area, as the width handle is drawn. */
   .splitter {
     flex: none;
     height: 7px;
     cursor: row-resize;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
+    background: linear-gradient(var(--border), var(--border)) center / 100% 1px no-repeat;
     touch-action: none;
   }
   .side-hint.nested {
-    padding-left: calc(var(--space-3) + 14px);
+    padding-left: calc(var(--row-text) + 14px);
   }
   /* The fixed row under a tag-scoped search; it sits outside the list's scroll. */
   .widen {
@@ -677,14 +699,10 @@
   .widen:focus-visible {
     outline-offset: -2px;
   }
+  /* The footer's pages are rows like the tree's, with an icon in the chevron's slot. */
   .foot {
-    display: flex;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
+    flex: none;
+    padding: var(--space-1) 0;
     border-top: 1px solid var(--border);
-    font-size: var(--text-sm);
-  }
-  .foot a[aria-current="page"] {
-    font-weight: 600;
   }
 </style>

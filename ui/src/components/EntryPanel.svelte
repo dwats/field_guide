@@ -127,7 +127,7 @@
 <aside class="panel" class:open style:--panel-col={width} aria-label="Entry panel" bind:this={panelEl}>
   {#if !open}
     <button class="link icon-button rail-button" aria-label="Show panel" title="Show panel" onclick={expand}>
-      <PanelRightOpen size={18} />
+      <PanelRightOpen />
     </button>
   {:else}
     <div class="head">
@@ -158,7 +158,7 @@
         </button>
       </div>
       <button class="link icon-button" aria-label="Hide panel" title="Hide panel" onclick={collapse}>
-        <PanelRightClose size={18} />
+        <PanelRightClose />
       </button>
     </div>
     {#if tab === "contents"}
@@ -190,7 +190,7 @@
             <section class="fold">
               <button class="fold-head" aria-expanded={remembered.showMentions} onclick={() => (remembered.showMentions = !remembered.showMentions)}>
                 <span class="chev" aria-hidden="true">
-                  {#if remembered.showMentions}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                  {#if remembered.showMentions}<ChevronDown class="icon-sm" />{:else}<ChevronRight class="icon-sm" />{/if}
                 </span>
                 Mentioned by ({mentionedBy.length})
               </button>
@@ -207,7 +207,7 @@
             <section class="fold">
               <button class="fold-head" aria-expanded={remembered.showUnresolved} onclick={() => (remembered.showUnresolved = !remembered.showUnresolved)}>
                 <span class="chev" aria-hidden="true">
-                  {#if remembered.showUnresolved}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                  {#if remembered.showUnresolved}<ChevronDown class="icon-sm" />{:else}<ChevronRight class="icon-sm" />{/if}
                 </span>
                 Unresolved links ({rendered.unresolved_links.length})
               </button>

@@ -155,6 +155,9 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Restore the oldest backup through the in-app confirm dialog; it replaces the vault after taking one more backup; the guides list reflects the restored state.
 - [ ] Notices show one at a time with "1 of n" and Next when several are queued; a warning stays until dismissed; an info notice is replaced by the next one.
 - [ ] "Check for updates" is present and looks disabled.
+- [ ] Settings switches show on or off at a glance in both schemes; Theme and Density are tiles, one Tab stop each, with arrow keys moving the choice.
+- [ ] Tag editor: the color is picked from swatches. Read or Edit and Posters or Table show which choice is pressed.
+- [ ] In the editor, a long media file name shows shortened except on the line being edited, and the saved text is unchanged.
 
 ## Theme
 

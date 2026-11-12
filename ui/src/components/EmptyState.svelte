@@ -15,7 +15,7 @@
 </script>
 
 <div class="empty-state">
-  <span class="icon"><Icon size={32} aria-hidden="true" /></span>
+  <span class="icon"><Icon class="icon-lg" aria-hidden="true" /></span>
   <p class="title">{title}</p>
   {#if line}<p class="line">{line}</p>{/if}
   {#if children}<div class="action">{@render children()}</div>{/if}

@@ -999,7 +999,7 @@
   </div>
   {#if tying}
     <p class="tying-hint" role="status">
-      <Spline size={16} aria-hidden="true" />
+      <Spline aria-hidden="true" />
       <span>
         Choose the other end: click a card, a note, or an image, or press Enter on one. Escape
         cancels.

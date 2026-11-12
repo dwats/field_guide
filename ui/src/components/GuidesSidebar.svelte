@@ -1,12 +1,14 @@
 <script lang="ts">
   // The sidebar on the guides list (review 3.1): the name filter and the global tags applied to
   // guides, each with how many guides carry it. The filter is `session.guidesFilter`, which the
-  // list reads.
+  // list reads. The tag list is one Tab stop with the arrow keys inside.
   import { untrack } from "svelte";
 
   import { api, errorMessage, type Guide } from "../lib/api";
   import { register } from "../lib/actions";
+  import { listKeydown, rememberRow } from "../lib/rovingList";
   import { session } from "../lib/session.svelte";
+  import { rovingStop } from "../lib/sidebar";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
   import SidebarFrame from "./SidebarFrame.svelte";
   import TreeRow from "./TreeRow.svelte";
@@ -15,6 +17,18 @@
   let guides = $state<Guide[]>([]);
   let error = $state("");
   let filterInput = $state<HTMLInputElement | null>(null);
+  let listEl = $state<HTMLElement | null>(null);
+  /** The row the list last had focus on, so Tab returns there. */
+  let focused = $state<string | null>(null);
+
+  const stop = $derived(
+    rovingStop(
+      tags.map((t) => t.id),
+      focused,
+      tags.find((t) => session.guidesFilter.tagIds.includes(t.id))?.id ?? null,
+    ),
+  );
+  const onListKey = listKeydown(() => listEl);
 
   $effect(() => {
     void session.revision;
@@ -59,15 +73,18 @@
     {#if tags.length === 0}
       <p class="side-hint muted">No tags on guides yet. Add one from Edit guide.</p>
     {:else}
-      <ul class="side-list">
+      <ul class="side-list" bind:this={listEl} onfocusin={rememberRow((key) => (focused = key))}>
         {#each tags as tag (tag.id)}
           <li>
             <TreeRow
+              id={tag.id}
               name={tag.path}
               count={count(tag.id)}
               selected={session.guidesFilter.tagIds.includes(tag.id)}
               onpick={() => toggle(tag.id)}
               dot={colorVar(tag.color)}
+              tabindex={stop === tag.id ? 0 : -1}
+              onkeydown={onListKey}
             />
           </li>
         {/each}

@@ -25,6 +25,7 @@
   import { session } from "../lib/session.svelte";
   import { editorHighlight, editorTheme } from "../lib/editorTheme";
   import { asOwnParagraph } from "../lib/insert";
+  import { shortMediaNames } from "../lib/mediaNames";
   import { api, type NameMatch } from "../lib/api";
   import { LINK_ROWS, inCode, linkInsertion, linkRows, openLinkBefore } from "../lib/linkSuggest";
 
@@ -97,6 +98,7 @@
           markdown(),
           syntaxHighlighting(editorHighlight),
           editorTheme,
+          shortMediaNames,
           // No delays: the list opens, updates, and takes Enter at once (design: no animation).
           autocompletion({
             override: [linkSource],
@@ -168,9 +170,15 @@
 <div class="editor" bind:this={host}></div>
 
 <style>
-  /* Fills whatever height the parent gives it; the parent is a flex column. */
+  /* Fills whatever height the parent gives it; the parent is a flex column, and so is this, so
+     the editor box reaches the bottom of the pane however short the text is. */
   .editor {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     min-height: 240px;
+  }
+  .editor :global(.cm-editor) {
+    flex: 1;
   }
 </style>

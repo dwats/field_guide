@@ -42,7 +42,7 @@
       title="Show sidebar"
       onclick={() => void savePrefs({ sidebar_collapsed: false })}
     >
-      <PanelLeftOpen size={18} />
+      <PanelLeftOpen />
     </button>
   {:else}
     <div class="head">
@@ -53,7 +53,7 @@
         title="Hide sidebar"
         onclick={() => void savePrefs({ sidebar_collapsed: true })}
       >
-        <PanelLeftClose size={18} />
+        <PanelLeftClose />
       </button>
     </div>
     {@render children()}

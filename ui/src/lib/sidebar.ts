@@ -100,14 +100,17 @@ export function queryFor(
   };
 }
 
-/** `Blocks/Natural · "stone" · #Ore · 6 entries`: the guide page's fixed summary line. */
+/**
+ * `Blocks/Natural · "stone" · #Ore · 6 entries`: the guide page's fixed summary line. A null label
+ * is the whole guide (All entries), which the count already says, so the line starts after it.
+ */
 export function summaryLine(
-  label: string,
+  label: string | null,
   parsed: ParsedFilter,
   stubsOnly: boolean,
   count: number,
 ): string {
-  const parts = [label];
+  const parts = label === null ? [] : [label];
   if (parsed.text) parts.push(`"${parsed.text}"`);
   for (const tag of parsed.tags) parts.push(`#${tag}`);
   if (stubsOnly) parts.push("stubs only");

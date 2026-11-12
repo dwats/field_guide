@@ -3,6 +3,7 @@
   // shared suggestion list, with a last row that creates the typed path (every missing level
   // included, core's `ensure_tag_path`) when no tag has it. Enter takes the exact match, else the
   // highlighted row. In compact form the input hides behind an "Add tag" button until needed.
+  import { Plus, X } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import Suggestions from "./Suggestions.svelte";
@@ -148,11 +149,13 @@
       <span class="chip">
         {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
         {pathsOf(entries, [id])}
-        <button onclick={() => remove(id)} aria-label="Remove tag {pathsOf(entries, [id])}">&times;</button>
+        <button onclick={() => remove(id)} aria-label="Remove tag {pathsOf(entries, [id])}" title="Remove tag">
+          <X class="icon-sm" />
+        </button>
       </span>
     {/each}
     {#if compact && !adding}
-      <button class="ghost" onclick={startAdding}>+ Add tag</button>
+      <button class="ghost" onclick={startAdding}><Plus class="icon-sm" aria-hidden="true" />Add tag</button>
     {:else}
       <input
         type="text"
@@ -186,6 +189,10 @@
     min-width: 18em;
   }
   .ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 0;
     border-style: dashed;
     background: transparent;
     color: var(--muted);

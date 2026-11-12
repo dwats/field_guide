@@ -103,7 +103,9 @@ describe("scopeLabel and subtreeCount", () => {
 
 describe("summaryLine", () => {
   it("lists the parts in effect with a pluralised count", () => {
-    expect(summaryLine("All entries", { text: "", tags: [] }, false, 124)).toBe("All entries · 124 entries");
+    expect(summaryLine(null, { text: "", tags: [] }, false, 124)).toBe("124 entries");
+    expect(summaryLine(null, { text: "stone", tags: [] }, false, 6)).toBe('"stone" · 6 entries');
+    expect(summaryLine("Untagged", { text: "", tags: [] }, false, 3)).toBe("Untagged · 3 entries");
     expect(summaryLine("Blocks/Natural", { text: "stone", tags: ["Ore"] }, true, 1)).toBe(
       'Blocks/Natural · "stone" · #Ore · stubs only · 1 entry',
     );

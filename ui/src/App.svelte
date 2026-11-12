@@ -423,10 +423,10 @@
   <header class="topbar" style:--sidebar-col={sidebarWidth}>
     <nav class="history" aria-label="History">
       <button class="chrome icon-button" onclick={() => history.back()} aria-label="Back" title="Back (Alt+Left)">
-        <ArrowLeft size={18} />
+        <ArrowLeft />
       </button>
       <button class="chrome icon-button" onclick={() => history.forward()} aria-label="Forward" title="Forward (Alt+Right)">
-        <ArrowRight size={18} />
+        <ArrowRight />
       </button>
     </nav>
     <div class="bar">
@@ -442,7 +442,7 @@
       </nav>
       <nav class="tools" aria-label="Tools">
         <button class="search" onclick={() => (paletteOpen = true)}>
-          <Search size={16} />
+          <Search />
           <span class="search-label">Search</span>
           <kbd>{keysFor("palette")}</kbd>
         </button>
@@ -453,7 +453,7 @@
           title={`Settings (${keysFor("settings")})`}
           aria-current={route.view === "settings" ? "page" : undefined}
         >
-          <Settings size={18} />
+          <Settings />
         </a>
       </nav>
     </div>
@@ -494,9 +494,9 @@
         {#if current}
           <div class="notice {current.kind}">
             <span class="notice-icon" aria-hidden="true">
-              {#if current.kind === "error"}<CircleAlert size={16} />
-              {:else if current.kind === "warning"}<TriangleAlert size={16} />
-              {:else}<Info size={16} />{/if}
+              {#if current.kind === "error"}<CircleAlert />
+              {:else if current.kind === "warning"}<TriangleAlert />
+              {:else}<Info />{/if}
             </span>
             <span class="text">{current.text}</span>
             {#if current.action}
@@ -514,7 +514,7 @@
               title="Dismiss"
               onclick={() => dismiss(current.id)}
             >
-              <X size={16} />
+              <X />
             </button>
           </div>
         {/if}
@@ -567,6 +567,10 @@
   .crumbs .here {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* The way back is muted; the page you are on is the text color at 600 (UI review 3). */
+  .crumbs a {
+    color: var(--muted);
   }
   .crumbs .here {
     font-weight: 600;

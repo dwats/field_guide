@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { ChevronDown, ChevronRight } from "@lucide/svelte";
+  import { ChevronDown, ChevronRight, type LucideIcon } from "@lucide/svelte";
 
-  // One row in a sidebar list or tree: an optional chevron, a color dot, the name, an optional
-  // marker, and a count. The name is a link when `href` is given, else a button. Every sidebar
+  // One row in a sidebar list or tree: an optional chevron or icon, a color dot, the name, an
+  // optional marker, and a count. The name is a link when `href` is given, else a button. Every sidebar
   // and the Settings section list draw their rows with this, so they look and behave the same.
   // The keyboard ring is drawn on the whole row (app.css), not on the name.
   interface Props {
@@ -18,6 +18,8 @@
     /** Chevron state; leave undefined for no chevron (an empty slot keeps names aligned). */
     open?: boolean;
     ontoggle?: () => void;
+    /** An icon in the chevron's slot, for a row that never folds (the sidebar footer). */
+    icon?: LucideIcon;
     /** A CSS color for the tag dot. */
     dot?: string | null;
     /** Title of a marker dot after the name, such as "The open entry has this tag". */
@@ -39,6 +41,7 @@
     onpick,
     open,
     ontoggle,
+    icon: Icon,
     dot = null,
     marker = null,
     stub = false,
@@ -58,10 +61,10 @@
       aria-expanded={open}
       onclick={ontoggle}
     >
-      {#if open}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+      {#if open}<ChevronDown class="icon-sm" />{:else}<ChevronRight class="icon-sm" />{/if}
     </button>
   {:else}
-    <span class="tree-chev"></span>
+    <span class="tree-chev">{#if Icon}<Icon aria-hidden="true" />{/if}</span>
   {/if}
   {#if dot}<span class="tag-dot" style:--dot={dot}></span>{/if}
   {#if href}

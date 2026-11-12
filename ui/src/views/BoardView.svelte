@@ -818,7 +818,7 @@
           title="New note"
           onclick={() => void createNote()}
         >
-          <Plus size={18} />
+          <Plus />
         </button>
         <Menu label="View" icon={Layers}>
           {#snippet items(close)}
@@ -832,7 +832,7 @@
               }}
             >
               <span class="check" aria-hidden="true">
-                {#if filters.show_mentions}<Check size={14} />{/if}
+                {#if filters.show_mentions}<Check class="icon-sm" />{/if}
               </span>
               Mentions
             </button>
@@ -846,7 +846,7 @@
               }}
             >
               <span class="check" aria-hidden="true">
-                {#if filters.show_external}<Check size={14} />{/if}
+                {#if filters.show_external}<Check class="icon-sm" />{/if}
               </span>
               Other guides
             </button>
@@ -862,7 +862,7 @@
                 }}
               >
                 <span class="check" aria-hidden="true">
-                  {#if filters.background === option.value}<Check size={14} />{/if}
+                  {#if filters.background === option.value}<Check class="icon-sm" />{/if}
                 </span>
                 Background: {option.label}
               </button>
@@ -946,7 +946,7 @@
             disabled={view.k <= MIN_ZOOM}
             onclick={() => zoomBy(1 / 1.2)}
           >
-            <Minus size={16} />
+            <Minus />
           </button>
           <button class="zoom" title="Zoom to 100%" aria-label="Zoom {zoomText}, reset to 100%" onclick={actualSize}>
             {zoomText}
@@ -958,10 +958,10 @@
             disabled={view.k >= MAX_ZOOM}
             onclick={() => zoomBy(1.2)}
           >
-            <Plus size={16} />
+            <Plus />
           </button>
           <button class="icon-button" aria-label="Fit the board to the window" title="Fit to window" onclick={fit}>
-            <Maximize size={16} />
+            <Maximize />
           </button>
         </div>
       </div>

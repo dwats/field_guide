@@ -89,23 +89,21 @@
       <div class="segmented" role="group" aria-label="View">
         <button
           class="icon-button"
-          class:on={session.prefs.guide_view === "cards"}
           aria-label="Posters"
           aria-pressed={session.prefs.guide_view === "cards"}
           title="Posters"
           onclick={() => setView("cards")}
         >
-          <LayoutGrid size={18} />
+          <LayoutGrid />
         </button>
         <button
           class="icon-button"
-          class:on={session.prefs.guide_view === "table"}
           aria-label="Table"
           aria-pressed={session.prefs.guide_view === "table"}
           title="Table"
           onclick={() => setView("table")}
         >
-          <List size={18} />
+          <List />
         </button>
       </div>
       <button
@@ -114,7 +112,7 @@
         title="New guide ({keysFor('new-guide')})"
         onclick={() => perform("new-guide")}
       >
-        <Plus size={18} />
+        <Plus />
       </button>
     </div>
   </header>
@@ -140,7 +138,7 @@
             {#if url}
               <CoverImage src={url} crop={guide.cover_crop} />
             {:else}
-              <div class="poster-empty muted"><ImageIcon size={28} /></div>
+              <div class="poster-empty muted"><ImageIcon class="icon-lg" /></div>
             {/if}
           </div>
           <span class="poster-title">{guide.name}</span>
@@ -155,7 +153,7 @@
       <tbody>
         {#each guides as guide (guide.id)}
           <tr>
-            <td><a href={routeHash({ view: "guide", guideId: guide.id })}>{guide.name}</a></td>
+            <td><a class="title-link" href={routeHash({ view: "guide", guideId: guide.id })}>{guide.name}</a></td>
             <td>{guide.description}</td>
             <td>
               <div class="row">

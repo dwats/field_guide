@@ -21,6 +21,7 @@
   import { when } from "../lib/format";
   import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
   import { sectionElementId } from "../lib/settingsSections";
+  import { radioTarget } from "../lib/rovingList";
 
   let backups = $state<BackupInfo[]>([]);
   let busy = $state(false);
@@ -137,6 +138,20 @@
     void savePrefs({ theme });
   }
 
+  /**
+   * Arrow keys in a radio group move to the next choice and choose it, as native radios do; the
+   * group is one Tab stop, on the chosen tile.
+   */
+  function onRadioKey(event: KeyboardEvent) {
+    const group = event.currentTarget as HTMLElement;
+    const radios = Array.from(group.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    const next = radioTarget(event.key, radios.indexOf(event.target as HTMLButtonElement), radios.length);
+    if (next === null) return;
+    event.preventDefault();
+    radios[next].focus();
+    radios[next].click();
+  }
+
   function fileName(path: string): string {
     return path.split(/[\\/]/).pop() ?? path;
   }
@@ -237,9 +252,9 @@
   <section id={sectionElementId("appearance")}>
     <h2>Appearance</h2>
     <p class="muted">Each choice shows what it changes. Nothing here touches your data.</p>
-    <div class="group" role="radiogroup" aria-label="Theme">
-      <h3>Theme</h3>
-      <div class="cards">
+    <div class="group">
+      <h3 id="theme-label">Theme</h3>
+      <div class="cards tiles" role="radiogroup" aria-labelledby="theme-label" tabindex="-1" onkeydown={onRadioKey}>
         <PrefCard
           label="System"
           description="Follows the Windows light or dark setting."
@@ -281,9 +296,9 @@
         </PrefCard>
       </div>
     </div>
-    <div class="group" role="radiogroup" aria-label="Density">
-      <h3>Density</h3>
-      <div class="cards">
+    <div class="group">
+      <h3 id="density-label">Density</h3>
+      <div class="cards tiles" role="radiogroup" aria-labelledby="density-label" tabindex="-1" onkeydown={onRadioKey}>
         <PrefCard
           label="Compact"
           description="Smaller type and tighter rows."
@@ -309,7 +324,7 @@
       <div class="cards">
         <PrefCard
           label="Keep the right panel open while editing"
-          description="Off, the panel folds away in Split so the editor and the preview get the room."
+          description="The panel stays open beside the editor and the preview in Split."
           selected={session.prefs.panel_open_in_edit}
           onselect={(next) => void savePrefs({ panel_open_in_edit: next })}
         >
@@ -317,7 +332,7 @@
         </PrefCard>
         <PrefCard
           label="Always hide the table of contents"
-          description="Off, the Contents tab appears whenever the entry has a heading."
+          description="The Contents tab never shows, even when the entry has headings."
           selected={session.prefs.hide_contents}
           onselect={(next) => void savePrefs({ hide_contents: next })}
         >
@@ -334,7 +349,7 @@
       <div class="cards">
         <PrefCard
           label="Line numbers"
-          description="Numbers the lines in the left margin of the editor. Off by default."
+          description="Numbers each line in the left margin of the editor."
           selected={session.prefs.editor_line_numbers}
           onselect={(next) => void savePrefs({ editor_line_numbers: next })}
         >
@@ -510,8 +525,15 @@
 </div>
 
 <style>
+  /* One column width for every section, and a rule with room above each section title. */
+  .page {
+    max-width: 46rem;
+    margin: 0;
+  }
   section {
-    margin-bottom: var(--space-5);
+    margin-top: var(--space-6);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
   }
   .group {
     margin-top: var(--space-4);
@@ -523,6 +545,11 @@
   .cards {
     display: grid;
     gap: var(--space-3);
+  }
+  /* Radio tiles sit side by side and wrap. */
+  .cards.tiles {
+    display: flex;
+    flex-wrap: wrap;
   }
   .thumb-button {
     padding: 0;
@@ -634,5 +661,6 @@
   }
   code {
     font-size: var(--text-sm);
+    overflow-wrap: anywhere;
   }
 </style>

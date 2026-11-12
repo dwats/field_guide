@@ -89,7 +89,12 @@
   );
   const summary = $derived(
     sidebar
-      ? summaryLine(scopeLabel(sidebar.scope, tags), shownParsed, sidebar.stubsOnly, sidebar.entries.length)
+      ? summaryLine(
+          sidebar.scope.kind === "all" ? null : scopeLabel(sidebar.scope, tags),
+          shownParsed,
+          sidebar.stubsOnly,
+          sidebar.entries.length,
+        )
       : "",
   );
   const coverUrl = $derived(cover ? mediaSrc(cover) : null);
@@ -339,7 +344,7 @@
             aria-label="Set cover"
             title="Set cover: paste an image, or drop one here"
           >
-            <ImagePlus size={24} aria-hidden="true" />
+            <ImagePlus class="icon-lg" aria-hidden="true" />
             <span>Cover</span>
           </button>
         {/if}
@@ -355,7 +360,7 @@
           title="New entry ({keysFor('new')})"
           onclick={() => perform("new")}
         >
-          <Plus size={18} />
+          <Plus />
         </button>
         <Menu>
           {#snippet items(close)}
@@ -487,7 +492,7 @@
 
     <Modal open={choosingCover} title="Set cover" onclose={() => (choosingCover = false)}>
       <div class="cover-drop">
-        <ImagePlus size={32} aria-hidden="true" />
+        <ImagePlus class="icon-lg" aria-hidden="true" />
         <p>Paste an image with {displayKeys("Mod+V")}, or drop one on this window.</p>
         <p class="muted">You can crop it next. The cover shows on the guide page and in Guides.</p>
       </div>

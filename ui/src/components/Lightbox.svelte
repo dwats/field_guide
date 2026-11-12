@@ -102,20 +102,20 @@
   <div class="top">
     <span class="counter">{index + 1} / {images.length}</span>
     <button class="link icon-button close" bind:this={closeButton} aria-label="Close" title="Close (Escape)" onclick={onclose}>
-      <X size={22} />
+      <X />
     </button>
   </div>
   {#if images.length > 1}
     <button class="nav prev" aria-label="Previous image" title="Previous (Left)" onclick={() => step(-1)}>
-      <ChevronLeft size={32} />
+      <ChevronLeft class="icon-lg" />
     </button>
     <button class="nav next" aria-label="Next image" title="Next (Right)" onclick={() => step(1)}>
-      <ChevronRight size={32} />
+      <ChevronRight class="icon-lg" />
     </button>
   {/if}
   <div class="bar">
     <div class="text">
-      <div class="caption">{image?.alt || "No caption"}</div>
+      <div class="caption" class:none={!image?.alt}>{image?.alt || "No caption"}</div>
       <div class="details muted">
         {#if media}
           {#if media.width && media.height}{media.width} × {media.height} ·{/if}
@@ -216,6 +216,17 @@
   }
   .caption {
     font-weight: 600;
+  }
+  /* "No caption" is a note about the picture, not a caption. */
+  .caption.none {
+    font-weight: 400;
+    font-style: italic;
+    color: var(--muted);
+  }
+  /* The accent ring measures 3.3:1 on the black stage; the controls over it ring in white. */
+  .top :focus-visible,
+  .nav:focus-visible {
+    outline-color: #fff;
   }
   .details {
     font-size: var(--text-sm);

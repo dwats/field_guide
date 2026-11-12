@@ -32,7 +32,7 @@
   import { routeHash } from "../lib/router";
   import { queryFor } from "../lib/sidebar";
   import { session } from "../lib/session.svelte";
-  import { flattenTags, type TagOption } from "../lib/tags";
+  import { colorName, flattenTags, type TagOption } from "../lib/tags";
   import Preview from "./Preview.svelte";
   import RelationBuilder from "./RelationBuilder.svelte";
   import RelationList from "./RelationList.svelte";
@@ -118,10 +118,6 @@
   $effect(() => {
     label = selectedString?.label ?? "";
   });
-
-  function colorName(color: string): string {
-    return color.charAt(0).toUpperCase() + color.slice(1);
-  }
 
   // ---- the selected card ----
 
@@ -313,14 +309,14 @@
 <aside class="panel" class:open aria-label="Board panel">
   {#if !open}
     <button class="link icon-button rail-button" aria-label="Show panel" title="Show panel" onclick={ontoggle}>
-      <PanelRightOpen size={18} />
+      <PanelRightOpen />
     </button>
   {:else}
     <div class="head">
       <h2 class="region-head">Selected</h2>
       <span class="spacer"></span>
       <button class="link icon-button" aria-label="Hide panel" title="Hide panel" onclick={ontoggle}>
-        <PanelRightClose size={18} />
+        <PanelRightClose />
       </button>
     </div>
     <section class="selected" aria-label="Selected">
@@ -395,7 +391,7 @@
       {:else if selectedNote}
         {@const note = selectedNote}
         <p class="item-name">Note: {noteName(note.body_md)}</p>
-        <div class="row swatches" role="group" aria-label="Note color">
+        <div class="swatches" role="group" aria-label="Note color">
           {#each NOTE_COLORS as color (color)}
             <button
               class="swatch"
@@ -422,7 +418,7 @@
       {:else if selectedString}
         {@const string = selectedString}
         <p class="item-name">
-          String{#if stringEnds}: {stringEnds[0]} to {stringEnds[1]}{/if}
+          String{#if stringEnds} from {stringEnds[0]} to {stringEnds[1]}{/if}
         </p>
         <div class="fields">
           <input
@@ -433,7 +429,7 @@
             onchange={() => onstringlabel(string.id, label)}
           />
         </div>
-        <div class="row swatches" role="group" aria-label="String color">
+        <div class="swatches" role="group" aria-label="String color">
           {#each STRING_COLORS as color (color)}
             <button
               class="swatch"
@@ -497,14 +493,14 @@
             {/if}
             {#if e.is_stub}<span class="chip status">stub</span>{/if}
             {#if onBoard.has(e.id)}
-              <span class="on muted" title="On this board"><Check size={14} /></span>
+              <span class="on muted" title="On this board"><Check class="icon-sm" /></span>
               <button
                 class="link icon-button small"
                 aria-label="Remove {e.title} from the board"
                 title="Remove from the board"
                 onclick={() => onremove(e.id)}
               >
-                <X size={14} />
+                <X class="icon-row" />
               </button>
             {:else}
               <button
@@ -513,7 +509,7 @@
                 title="Add to the board"
                 onclick={() => onadd([e.id])}
               >
-                <Plus size={16} />
+                <Plus class="icon-row" />
               </button>
             {/if}
           </li>
@@ -580,27 +576,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .swatches {
-    gap: var(--space-2);
-  }
-  .swatch {
-    width: var(--control-sm);
-    height: var(--control-sm);
-    min-height: 0;
-    padding: 0;
-    border: 1px solid var(--control-border);
-    border-radius: 50%;
-  }
-  .swatch[aria-pressed="true"] {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-  .actions button[aria-pressed="true"] {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-weight: 600;
   }
   .card-title .name {
     font-weight: 600;
