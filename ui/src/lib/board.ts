@@ -197,13 +197,18 @@ export function fitView(rects: Rect[], size: Size, padding = 48): Viewport {
   return { k, x: size.w / 2 - c.x * k, y: size.h / 2 - c.y * k };
 }
 
-/** The grid new cards land on: a card's width and a plain card's height, each plus a gap. */
-const CELL: Size = { w: CARD_W + 24, h: 120 };
+/**
+ * The space kept around a new card, wide and tall enough for a line's verb and its qualifiers
+ * to be read between two cards.
+ */
+export const CARD_GAP: Size = { w: 120, h: 140 };
+/** The grid new cards land on: a card's width and a plain card's height, each plus the gap. */
+const CELL: Size = { w: CARD_W + CARD_GAP.w, h: PLAIN_H + CARD_GAP.h };
 
 /**
  * Where `count` new cards land: the first centered on `at`, the rest on the nearest free cells
- * of a grid around it. A cell is free when no card already there would overlap a plain card on
- * it. Returns top-left corners, in order.
+ * of a grid around it. A cell is free when no card already there comes within the gap of a
+ * plain card on it. Returns top-left corners, in order.
  */
 export function placeNear(at: Point, count: number, taken: Rect[]): Point[] {
   const out: Point[] = [];
@@ -218,7 +223,13 @@ export function placeNear(at: Point, count: number, taken: Rect[]): Point[] {
         w: CARD_W,
         h: PLAIN_H,
       };
-      if (occupied.some((r) => intersects(r, candidate))) continue;
+      const clearance = {
+        x: candidate.x - CARD_GAP.w,
+        y: candidate.y - CARD_GAP.h,
+        w: candidate.w + 2 * CARD_GAP.w,
+        h: candidate.h + 2 * CARD_GAP.h,
+      };
+      if (occupied.some((r) => intersects(r, clearance))) continue;
       out.push({ x: candidate.x, y: candidate.y });
       occupied.push(candidate);
     }

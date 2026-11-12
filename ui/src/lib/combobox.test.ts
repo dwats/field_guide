@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { moveHighlight, pickIndex, stepIndex } from "./combobox";
+import { moveHighlight, pickExplicitIndex, pickIndex, stepIndex } from "./combobox";
 
 describe("moveHighlight", () => {
   it("wraps at both ends and tolerates an empty list", () => {
@@ -29,5 +29,20 @@ describe("stepIndex", () => {
     expect(stepIndex(-1, 1, 3)).toBe(0);
     expect(stepIndex(-1, -1, 3)).toBe(2);
     expect(stepIndex(0, 1, 0)).toBe(-1);
+  });
+});
+
+describe("pickExplicitIndex", () => {
+  it("takes an exact match without arrow keys", () => {
+    expect(pickExplicitIndex(2, 0, 5, false)).toBe(2);
+  });
+  it("takes the highlighted row once the arrow keys reached it", () => {
+    expect(pickExplicitIndex(-1, 3, 5, true)).toBe(3);
+  });
+  it("takes nothing for a partial entry the arrow keys did not touch", () => {
+    expect(pickExplicitIndex(-1, 0, 5, false)).toBeNull();
+  });
+  it("takes nothing from an empty list", () => {
+    expect(pickExplicitIndex(-1, 0, 0, true)).toBeNull();
   });
 });

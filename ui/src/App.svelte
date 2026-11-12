@@ -13,6 +13,7 @@
   import Palette from "./components/Palette.svelte";
   import SettingsSidebar from "./components/SettingsSidebar.svelte";
   import Sidebar from "./components/Sidebar.svelte";
+  import WebLinkDialog from "./components/WebLinkDialog.svelte";
   import { perform, register } from "./lib/actions";
   import { api, errorMessage } from "./lib/api";
   import { dispatchDrop, dispatchPaste, imageFiles } from "./lib/drop";
@@ -99,7 +100,7 @@
     const guide = session.current.guide;
     if (!inGuide || !guide) return out;
     out.push({ text: guide.name, href: routeHash({ view: "guide", guideId: guide.id }) });
-    if (route.view === "tags") out.push({ text: "Tags" });
+    if (route.view === "tags") out.push({ text: "Tag editor" });
     else if (route.view === "trash") out.push({ text: "Trash" });
     else if (route.view === "boards") out.push({ text: "Boards" });
     else if (route.view === "board" && session.current.board) {
@@ -385,6 +386,7 @@
     </main>
   </div>
   <Palette open={paletteOpen} {route} onclose={() => (paletteOpen = false)} onaction={act} />
+  <WebLinkDialog />
   {#if session.current.guide}
     <NewEntryDialog guideId={session.current.guide.id} open={newEntryOpen} onclose={() => (newEntryOpen = false)} />
   {/if}

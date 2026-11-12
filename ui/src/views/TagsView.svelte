@@ -10,8 +10,8 @@
   import Modal from "../components/Modal.svelte";
   import Suggestions from "../components/Suggestions.svelte";
   import { api, errorMessage, type EntryCounts, type Guide, type TagNode } from "../lib/api";
-  import { moveHighlight, pickIndex, stepIndex } from "../lib/combobox";
-  import { notify, setCurrent, touch } from "../lib/session.svelte";
+  import { moveHighlight, pickExplicitIndex, stepIndex } from "../lib/combobox";
+  import { notify, session, setCurrent, touch } from "../lib/session.svelte";
   import { subtreeCount } from "../lib/sidebar";
   import { TAG_COLORS, colorVar, flattenTags, type TagOption } from "../lib/tags";
   import { findNode, subtreeIds, visibleRows } from "../lib/tree";
@@ -39,6 +39,18 @@
   let merging = $state(false);
   let mergeText = $state("");
   let mergeHighlight = $state(0);
+  /** True once an arrow key has moved the highlight; Enter then takes that row. */
+  let mergeNavigated = $state(false);
+  /** A merge waiting for its confirm. */
+  let pendingMerge = $state<{
+    source: TagNode;
+    targetId: string;
+    targetPath: string;
+    entries: number;
+    children: number;
+  } | null>(null);
+  /** The sidebar's selected tag is applied once, when the page first has a tree. */
+  let followedSidebar = false;
   let pendingDelete = $state<TagNode | null>(null);
   /** A press on a row; it becomes a drag after a few pixels of movement. */
   let drag = $state<{ id: string; active: boolean; x: number; y: number } | null>(null);
@@ -79,6 +91,7 @@
   $effect(() => {
     void mergeItems;
     mergeHighlight = 0;
+    mergeNavigated = false;
   });
 
   async function load() {
@@ -89,10 +102,27 @@
       tags = flattenTags(tree);
       counts = await api.entryCounts(guideId);
       if (selectedId && !findNode(tree, selectedId)) selectedId = null;
+      followSidebar();
       error = "";
     } catch (e) {
       error = errorMessage(e);
     }
+  }
+
+  /** On first load, select the tag the sidebar has selected and open the path to it. */
+  function followSidebar() {
+    if (followedSidebar) return;
+    followedSidebar = true;
+    const scope = session.sidebar.scope;
+    if (selectedId || session.sidebar.guideId !== guideId || scope.kind !== "tag") return;
+    const node = findNode(tree, scope.id);
+    if (!node) return;
+    selectedId = node.tag.id;
+    const open: string[] = [];
+    for (let parent = node.tag.parent_id; parent; parent = findNode(tree, parent)?.tag.parent_id ?? null) {
+      open.push(parent);
+    }
+    expanded = [...new Set([...expanded, ...open])];
   }
 
   async function run(action: () => Promise<unknown>) {
@@ -175,16 +205,35 @@
     merging = true;
   }
 
+  /** Picking a target opens the confirm; nothing merges until it is accepted. */
   function mergeInto(index: number) {
     const node = selected;
     const target = mergeItems[index];
     if (!node || !target) return;
     merging = false;
-    const sourcePath = node.path;
-    void run(async () => {
-      await api.mergeTags(node.tag.id, target.key);
-      selectedId = target.key;
-      notify(`Merged "${sourcePath}" into "${target.text}".`);
+    pendingMerge = {
+      source: node,
+      targetId: target.key,
+      targetPath: target.text,
+      entries: selectedCount?.direct ?? 0,
+      children: node.children.length,
+    };
+  }
+
+  function mergeBody(m: NonNullable<typeof pendingMerge>): string[] {
+    const entries = `${m.entries} ${m.entries === 1 ? "entry" : "entries"}`;
+    const children = `${m.children} child ${m.children === 1 ? "tag" : "tags"}`;
+    return [`${entries} and ${children} move. This cannot be undone.`];
+  }
+
+  async function confirmMerge() {
+    const m = pendingMerge;
+    pendingMerge = null;
+    if (!m) return;
+    await run(async () => {
+      await api.mergeTags(m.source.tag.id, m.targetId);
+      selectedId = m.targetId;
+      notify(`Merged "${m.source.path}" into "${m.targetPath}".`);
     });
   }
 
@@ -192,11 +241,13 @@
     if ((event.key === "ArrowDown" || event.key === "ArrowUp") && mergeItems.length > 0) {
       event.preventDefault();
       mergeHighlight = moveHighlight(mergeHighlight, event.key === "ArrowDown" ? 1 : -1, mergeItems.length);
+      mergeNavigated = true;
     } else if (event.key === "Enter") {
       event.preventDefault();
+      // A merge cannot be undone, so Enter takes only an exact path or a row the arrow keys reached.
       const key = mergeText.trim().toLowerCase();
       const exact = mergeItems.findIndex((m) => m.text.toLowerCase() === key);
-      const index = pickIndex(exact, mergeHighlight, mergeItems.length);
+      const index = pickExplicitIndex(exact, mergeHighlight, mergeItems.length, mergeNavigated);
       if (index !== null) mergeInto(index);
     }
   }
@@ -411,6 +462,7 @@
       open={creating !== null}
       title={creating?.parent ? `New tag under ${findNode(tree, creating.parent)?.path ?? ""}` : "New tag"}
       onclose={() => (creating = null)}
+      dirty={newName.trim() !== ""}
     >
       <form
         onsubmit={(e) => {
@@ -430,10 +482,15 @@
       {/snippet}
     </Modal>
 
-    <Modal open={merging} title={selected ? `Merge "${selected.path}" into...` : ""} onclose={() => (merging = false)}>
+    <Modal
+      open={merging}
+      title={selected ? `Merge "${selected.path}" into...` : ""}
+      onclose={() => (merging = false)}
+      dirty={mergeText.trim() !== ""}
+    >
       <p class="muted">
         Entries with this tag get the target instead, its child tags move under the target, and
-        this tag is removed. There is no undo.
+        this tag is removed. You confirm the target before anything moves, and there is no undo.
       </p>
       <!-- svelte-ignore a11y_autofocus -->
       <input
@@ -453,6 +510,17 @@
         <button onclick={() => (merging = false)}>Cancel</button>
       {/snippet}
     </Modal>
+
+    <ConfirmDialog
+      open={pendingMerge !== null}
+      title={pendingMerge
+        ? `Merge "${pendingMerge.source.path}" into "${pendingMerge.targetPath}"?`
+        : ""}
+      body={pendingMerge ? mergeBody(pendingMerge) : []}
+      confirmLabel="Merge"
+      onconfirm={confirmMerge}
+      oncancel={() => (pendingMerge = null)}
+    />
 
     <ConfirmDialog
       open={pendingDelete !== null}

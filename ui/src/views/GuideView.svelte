@@ -42,6 +42,15 @@
   let editing = $state(false);
   let nameDraft = $state("");
   let descriptionDraft = $state("");
+  /** The guide's tags as edited in the dialog; they apply on Save only. */
+  let tagsDraft = $state<string[]>([]);
+  const editDirty = $derived(
+    guide !== null &&
+      (nameDraft !== guide.name ||
+        descriptionDraft !== guide.description ||
+        tagsDraft.length !== guide.tag_ids.length ||
+        tagsDraft.some((id) => !guide!.tag_ids.includes(id))),
+  );
   let confirmingDelete = $state(false);
 
   /** The sidebar's state once it belongs to this guide. */
@@ -178,12 +187,14 @@
     if (!guide) return;
     nameDraft = guide.name;
     descriptionDraft = guide.description;
+    tagsDraft = [...guide.tag_ids];
     editing = true;
   }
 
   async function saveEdit() {
     if (!guide) return;
     try {
+      await setGuideTags(tagsDraft);
       guide = await api.updateGuide(guide.id, {
         name: nameDraft.trim(),
         description: descriptionDraft.trim(),
@@ -196,15 +207,12 @@
     }
   }
 
+  /** Applies the tag set; throws, so saveEdit reports a failure and keeps the dialog open. */
   async function setGuideTags(ids: string[]) {
     if (!guide) return;
     const current = new Set(guide.tag_ids);
-    try {
-      for (const id of ids) if (!current.has(id)) guide = await api.addGuideTag(guide.id, id);
-      for (const id of current) if (!ids.includes(id)) guide = await api.removeGuideTag(guide.id, id);
-    } catch (e) {
-      error = errorMessage(e);
-    }
+    for (const id of ids) if (!current.has(id)) guide = await api.addGuideTag(guide.id, id);
+    for (const id of current) if (!ids.includes(id)) guide = await api.removeGuideTag(guide.id, id);
   }
 
   async function deleteGuide() {
@@ -317,7 +325,7 @@
       </table>
     {/if}
 
-    <Modal open={editing} title="Edit guide" onclose={() => (editing = false)}>
+    <Modal open={editing} title="Edit guide" onclose={() => (editing = false)} dirty={editDirty}>
       <form
         class="edit"
         onsubmit={(e) => {
@@ -336,7 +344,9 @@
         </label>
         <div class="field">
           <span class="muted">Guide tags</span>
-          <TagPicker scope={null} selected={guide.tag_ids} onchange={setGuideTags} />
+          <TagPicker scope={null} selected={tagsDraft} onchange={(ids) => {
+              tagsDraft = ids;
+            }} />
         </div>
         <p class="muted">The cover is set by dropping or pasting an image onto the guide page.</p>
       </form>

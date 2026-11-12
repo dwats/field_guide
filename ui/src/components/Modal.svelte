@@ -15,8 +15,13 @@
     children: Snippet;
     /** Optional row of buttons; rendered right-aligned under the content. */
     actions?: Snippet;
+    /**
+     * True while the dialog holds changes or typed input. A click on the backdrop then does
+     * nothing, so a stray click cannot throw the work away; Escape and the buttons still close.
+     */
+    dirty?: boolean;
   }
-  let { open, title, onclose, children, actions }: Props = $props();
+  let { open, title, onclose, children, actions, dirty = false }: Props = $props();
 
   let dialog: HTMLDialogElement;
   let opener: HTMLElement | null = null;
@@ -50,8 +55,9 @@
 </script>
 
 {#if open}
-  <!-- A click outside closes, like Escape does; the backdrop itself is not a control. -->
-  <div class="backdrop" role="presentation" onclick={onclose}></div>
+  <!-- A click outside closes, like Escape does, unless the dialog is dirty; the backdrop itself
+       is not a control. -->
+  <div class="backdrop" role="presentation" onclick={() => !dirty && onclose()}></div>
 {/if}
 <dialog
   bind:this={dialog}

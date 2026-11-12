@@ -1,6 +1,20 @@
+<script lang="ts" module>
+  /**
+   * The last chosen tab and which folds are open, kept for the rest of the run so the next entry
+   * opens the same way (decided 2026-11-11). In memory only; a restart starts from the arrival
+   * rule with the folds closed.
+   */
+  const remembered = $state<{
+    chosen: "contents" | "relations" | null;
+    showMentions: boolean;
+    showUnresolved: boolean;
+  }>({ chosen: null, showMentions: false, showUnresolved: false });
+</script>
+
 <script lang="ts">
   // The right panel of an entry page (design section 5): two tabs, Contents and Relations, with
-  // Contents selected on arrival when the body has a heading. The relation line sits at the top
+  // Contents selected on arrival when the body has a heading, until a tab is chosen; the choice
+  // and the folds then hold for every entry while the app runs. The relation line sits at the top
   // of the Relations tab; Mentioned by and Unresolved links fold under the list. The panel folds
   // to a rail by choice, remembered, and while editing in Split unless a setting keeps it open.
   import { ChevronDown, ChevronRight, PanelRightClose, PanelRightOpen } from "@lucide/svelte";
@@ -31,18 +45,17 @@
     $props();
 
   type Tab = "contents" | "relations";
-  /** The tab chosen on this entry; null until chosen, so the arrival rule applies. */
-  let chosen = $state<Tab | null>(null);
-  let showMentions = $state(false);
-  let showUnresolved = $state(false);
+  /** The tab chosen last, on any entry; null until one is chosen, so the arrival rule applies. */
+  const chosen = $derived(remembered.chosen);
+  function choose(next: Tab) {
+    remembered.chosen = next;
+  }
   /** Opened by hand during an edit; cleared when the edit ends. */
   let editOverride = $state(false);
   let builder = $state<ReturnType<typeof RelationBuilder> | null>(null);
   let panelEl = $state<HTMLElement | null>(null);
   const uid = $props.id();
 
-  /** The id, not the object: a save replaces `entry` without changing which entry is shown. */
-  const entryId = $derived(entry.id);
   const headings = $derived(outline(rendered?.headings ?? []));
   const contentsAvailable = $derived(!session.prefs.hide_contents && headings.length > 0);
   const tab = $derived<Tab>(
@@ -58,14 +71,6 @@
 
   $effect(() => {
     if (mode === "read") editOverride = false;
-  });
-
-  // A new entry starts from the arrival rule with its folds closed.
-  $effect(() => {
-    void entryId;
-    chosen = null;
-    showMentions = false;
-    showUnresolved = false;
   });
 
   function expand() {
@@ -87,7 +92,7 @@
 
   /** Opens the Relations tab, unfolding the panel if needed, and puts the caret in the line. */
   export async function focusRelation() {
-    chosen = "relations";
+    choose("relations");
     if (!open) expand();
     await tick();
     builder?.focusLine();
@@ -98,7 +103,7 @@
     event.preventDefault();
     const next: Tab = tab === "contents" ? "relations" : "contents";
     if (next === "contents" && !contentsAvailable) return;
-    chosen = next;
+    choose(next);
     (event.currentTarget as HTMLElement)
       .querySelector<HTMLButtonElement>(`#${uid}-tab-${next}`)
       ?.focus();
@@ -136,7 +141,7 @@
             tabindex={tab === "contents" ? 0 : -1}
             disabled={headings.length === 0}
             title={headings.length === 0 ? "This entry has no headings" : undefined}
-            onclick={() => (chosen = "contents")}
+            onclick={() => choose("contents")}
           >
             Contents
           </button>
@@ -147,7 +152,7 @@
           aria-selected={tab === "relations"}
           aria-controls={`${uid}-relations`}
           tabindex={tab === "relations" ? 0 : -1}
-          onclick={() => (chosen = "relations")}
+          onclick={() => choose("relations")}
         >
           Relations
         </button>
@@ -183,13 +188,13 @@
           <RelationList entryId={entry.id} guideId={guide.id} {version} />
           {#if mentionedBy.length > 0}
             <section class="fold">
-              <button class="fold-head" aria-expanded={showMentions} onclick={() => (showMentions = !showMentions)}>
+              <button class="fold-head" aria-expanded={remembered.showMentions} onclick={() => (remembered.showMentions = !remembered.showMentions)}>
                 <span class="chev" aria-hidden="true">
-                  {#if showMentions}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                  {#if remembered.showMentions}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
                 </span>
                 Mentioned by ({mentionedBy.length})
               </button>
-              {#if showMentions}
+              {#if remembered.showMentions}
                 <ul>
                   {#each mentionedBy as m (m.id)}
                     <li><a href={routeHash({ view: "entry", entryId: m.id })}>{m.title}</a></li>
@@ -200,13 +205,13 @@
           {/if}
           {#if rendered && rendered.unresolved_links.length > 0}
             <section class="fold">
-              <button class="fold-head" aria-expanded={showUnresolved} onclick={() => (showUnresolved = !showUnresolved)}>
+              <button class="fold-head" aria-expanded={remembered.showUnresolved} onclick={() => (remembered.showUnresolved = !remembered.showUnresolved)}>
                 <span class="chev" aria-hidden="true">
-                  {#if showUnresolved}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+                  {#if remembered.showUnresolved}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
                 </span>
                 Unresolved links ({rendered.unresolved_links.length})
               </button>
-              {#if showUnresolved}
+              {#if remembered.showUnresolved}
                 <ul>
                   {#each rendered.unresolved_links as target (target)}
                     <li class="row unresolved">

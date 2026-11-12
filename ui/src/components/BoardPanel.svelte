@@ -2,8 +2,9 @@
   // The board's right panel (design section 6): the picker, with the guide's search line, tag
   // chips, and Stubs only, listing the entries to add one at a time or all at once; above it,
   // the selected card with its relations, the selected note with its color, the selected image,
-  // or the selected string with its label and color. The picker's fields are saved with the board and come back
-  // when it opens. It folds to a rail like the entry panel.
+  // or the selected string with its label and color. The name of an entry already on the board
+  // selects its card and brings it into view. The picker's fields are saved with the board and
+  // come back when it opens. It folds to a rail like the entry panel.
   import { Check, PanelRightClose, PanelRightOpen, Plus, X } from "@lucide/svelte";
   import { untrack } from "svelte";
 
@@ -38,6 +39,8 @@
     onBoard: Set<string>;
     onadd: (ids: string[]) => void;
     onremove: (id: string) => void;
+    /** A row whose entry is on the board was chosen: select its card and bring it into view. */
+    onlocate: (id: string) => void;
     selected: BoardCard | null;
     onopen: (id: string) => void;
     selectedNote: BoardNote | null;
@@ -68,6 +71,7 @@
     onBoard,
     onadd,
     onremove,
+    onlocate,
     selected,
     onopen,
     selectedNote,
@@ -330,7 +334,17 @@
       <ul class="side-list results">
         {#each entries as e (e.id)}
           <li class="tree-line">
-            <span class="name" class:muted={onBoard.has(e.id)}>{e.title}</span>
+            {#if onBoard.has(e.id)}
+              <button
+                class="link name locate"
+                title="Show on the board"
+                onclick={() => onlocate(e.id)}
+              >
+                {e.title}
+              </button>
+            {:else}
+              <span class="name">{e.title}</span>
+            {/if}
             {#if e.is_stub}<span class="chip">stub</span>{/if}
             {#if onBoard.has(e.id)}
               <span class="on muted" title="On this board"><Check size={14} /></span>
@@ -469,6 +483,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* An on-board row's name is a link to its card; it sits where the plain name would. */
+  .locate {
+    padding: 0;
+    font: inherit;
+    text-align: left;
   }
   .on {
     display: inline-flex;

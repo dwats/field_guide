@@ -41,3 +41,17 @@ export function stepIndex(current: number, delta: number, length: number): numbe
   if (current < 0) return delta > 0 ? 0 : length - 1;
   return Math.min(length - 1, Math.max(0, current + delta));
 }
+
+/**
+ * Like `pickIndex`, for actions that cannot be undone: Enter takes an exact match or a row the
+ * arrow keys reached, and nothing otherwise (a partial or empty entry picks no row).
+ */
+export function pickExplicitIndex(
+  exactIndex: number,
+  highlight: number,
+  length: number,
+  navigated: boolean,
+): number | null {
+  if (exactIndex < 0 && !navigated) return null;
+  return pickIndex(exactIndex, highlight, length);
+}

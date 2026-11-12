@@ -125,6 +125,8 @@ fn main() -> anyhow::Result<()> {
             commands::create_relation,
             commands::get_relation,
             commands::delete_relation,
+            commands::restore_relation,
+            commands::open_web_link,
             commands::add_qualifier,
             commands::remove_qualifier,
             commands::replace_qualifiers,

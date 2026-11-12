@@ -18,7 +18,7 @@ pub struct Entry {
     pub guide_id: GuideId,
     pub title: String,
     pub body_md: String,
-    /// Created as a relation target and never described. Any body edit clears it.
+    /// Created with an empty body and never described. Any body edit clears it.
     pub is_stub: bool,
     /// Set while the entry is in the trash.
     pub deleted_at: Option<String>,
@@ -94,7 +94,33 @@ pub struct RenameRecord {
     pub rewritten_entry_ids: Vec<EntryId>,
 }
 
+/// Checks a web link from an entry body before the shell hands it to the system browser, and
+/// returns the address to open. Only `http://` and `https://` with a host after the scheme pass;
+/// whitespace and control characters inside the address are refused. Field Guide itself never makes
+/// the request (`CLAUDE.md`, no network access); the operating system opens the address.
+pub fn web_link(text: &str) -> Result<String> {
+    let address = text.trim();
+    let lower = address.to_ascii_lowercase();
+    let rest = ["https://", "http://"]
+        .iter()
+        .find_map(|scheme| lower.strip_prefix(scheme));
+    match rest {
+        Some(rest)
+            if !rest.is_empty()
+                && !rest.starts_with('/')
+                && !address.chars().any(|c| c.is_whitespace() || c.is_control()) =>
+        {
+            Ok(address.to_owned())
+        }
+        _ => Err(Error::Invalid(
+            "this kind of link cannot be opened".to_owned(),
+        )),
+    }
+}
+
 impl Vault {
+    /// Creates an entry. One created with an empty body starts as a stub, whatever created it, so
+    /// "stubs only" lists every entry nobody has described yet (decided 2026-11-11).
     pub fn create_entry(&mut self, new: NewEntry) -> Result<Entry> {
         let tx = self.savepoint()?;
         let id = insert_entry(
@@ -102,7 +128,7 @@ impl Vault {
             &new.guide_id,
             &new.title,
             &new.body_md,
-            false,
+            new.body_md.trim().is_empty(),
             &new.tag_ids,
         )?;
         tx.commit()?;

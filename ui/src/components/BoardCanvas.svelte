@@ -85,7 +85,8 @@
     onremove: (item: Item) => void;
     oneditnote: (id: string) => void;
     onsavenote: (id: string, body: string) => void;
-    oncanceledit: () => void;
+    /** A click on an unresolved wikilink in a note: the link's target title. */
+    oncreatelink: (title: string) => void;
     ontoggletask: (id: string, index: number) => void;
     ontying: (on: boolean) => void;
     onstring: (from: StringEnd, to: StringEnd) => void;
@@ -110,7 +111,7 @@
     onremove,
     oneditnote,
     onsavenote,
-    oncanceledit,
+    oncreatelink,
     ontoggletask,
     ontying,
     onstring,
@@ -149,7 +150,7 @@
   let pointerFocus = false;
   let draft = $state("");
   let editor = $state<HTMLTextAreaElement | null>(null);
-  /** Set once an edit is saved or canceled, so the blur that follows does not save it again. */
+  /** Set once an edit is saved, so the blur that follows does not save it again. */
   let finished = true;
   const uid = $props.id();
 
@@ -260,6 +261,11 @@
         `[data-item-kind="${item.kind}"][data-item-id="${CSS.escape(item.id)}"]`,
       )
       ?.focus({ preventScroll: true });
+  }
+
+  /** Pans the least needed to bring an item into view, for example one picked in the panel. */
+  export function revealItem(item: StringEnd) {
+    reveal(endKey(item));
   }
 
   // A new edit starts from the note's stored body, with the caret in the field.
@@ -594,27 +600,27 @@
     event.preventDefault();
   }
 
+  /**
+   * Ctrl+Enter and Escape save and end the edit, as a click elsewhere does. Escape goes no
+   * further, so it does not also clear the selection or stop tying.
+   */
   function editorKeys(event: KeyboardEvent) {
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      void finishEdit(true);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      void finishEdit(false);
-    }
+    const save = event.key === "Escape" || (event.key === "Enter" && (event.ctrlKey || event.metaKey));
+    if (!save) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void finishEdit();
   }
 
   /**
-   * Saves or drops the draft once. From the keyboard, focus goes back to the note; on a blur it
-   * stays where the user put it.
+   * Saves the draft once. From the keyboard, focus goes back to the note; on a blur it stays
+   * where the user put it. The blur that follows a keyboard save finds the edit finished.
    */
-  async function finishEdit(save: boolean, refocus = true) {
+  async function finishEdit(refocus = true) {
     const id = editingNote;
     if (finished || !id) return;
     finished = true;
-    if (save) onsavenote(id, draft);
-    else oncanceledit();
+    onsavenote(id, draft);
     if (!refocus) return;
     await tick();
     focusItem({ kind: "note", id });
@@ -862,7 +868,7 @@
             bind:value={draft}
             aria-label="Note text in Markdown"
             onkeydown={editorKeys}
-            onblur={() => void finishEdit(true, false)}
+            onblur={() => void finishEdit(false)}
           ></textarea>
         {:else}
           <div class="note-body">
@@ -873,7 +879,7 @@
                 html={item.html}
                 mediaDir={session.startup?.media_dir ?? null}
                 onnavigate={onopen}
-                oncreate={() => {}}
+                oncreate={oncreatelink}
               />
             {/if}
           </div>

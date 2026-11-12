@@ -2,7 +2,7 @@
   // CodeMirror 6 markdown editor. `value` flows in; every document change flows out through
   // `onchange`. Changes that originate here are not echoed back into the editor.
   import { onDestroy, onMount } from "svelte";
-  import { EditorState } from "@codemirror/state";
+  import { Compartment, EditorState } from "@codemirror/state";
   import {
     EditorView,
     drawSelection,
@@ -14,6 +14,7 @@
   import { syntaxHighlighting } from "@codemirror/language";
   import { markdown } from "@codemirror/lang-markdown";
 
+  import { session } from "../lib/session.svelte";
   import { editorHighlight, editorTheme } from "../lib/editorTheme";
   import { asOwnParagraph } from "../lib/insert";
 
@@ -26,6 +27,8 @@
 
   let host: HTMLDivElement;
   let view: EditorView | undefined;
+  // Line numbers follow the Settings switch without rebuilding the editor.
+  const gutter = new Compartment();
 
   onMount(() => {
     view = new EditorView({
@@ -33,7 +36,7 @@
       state: EditorState.create({
         doc: value,
         extensions: [
-          lineNumbers(),
+          gutter.of(session.prefs.editor_line_numbers ? lineNumbers() : []),
           history(),
           drawSelection(),
           highlightActiveLine(),
@@ -60,6 +63,11 @@
       }),
     });
     view.focus();
+  });
+
+  $effect(() => {
+    const on = session.prefs.editor_line_numbers;
+    view?.dispatch({ effects: gutter.reconfigure(on ? lineNumbers() : []) });
   });
 
   // An external change to `value` (undo rename rewrote links, for example) replaces the document.

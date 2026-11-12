@@ -4,6 +4,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
+import { sentenceCase } from "./sentence";
+
 export type Id = string;
 
 export interface AppError {
@@ -18,9 +20,9 @@ export function isAppError(e: unknown): e is AppError {
 }
 
 export function errorMessage(e: unknown): string {
-  if (isAppError(e)) return e.message;
-  if (e instanceof Error) return e.message;
-  return String(e);
+  if (isAppError(e)) return sentenceCase(e.message);
+  if (e instanceof Error) return sentenceCase(e.message);
+  return sentenceCase(String(e));
 }
 
 // ---- shell ----
@@ -54,6 +56,8 @@ export interface UiPrefs {
   theme: ThemePref;
   /** Lower the brightness of user pictures while the dark theme is in effect. */
   dim_images: boolean;
+  /** Show line numbers in the entry editor. */
+  editor_line_numbers: boolean;
   sidebar_collapsed: boolean;
   panel_collapsed: boolean;
   /** Keep the right panel open while editing in Split. */
@@ -623,6 +627,11 @@ export const api = {
   renderEntry: (id: Id) => invoke<Rendered>("render_entry", { id }),
   renderMarkdown: (guide_id: Id, body: string) =>
     invoke<Rendered>("render_markdown", { guide_id, body }),
+  /**
+   * Asks the operating system to open an http or https address in the default browser; the app
+   * makes no request. Any other scheme is refused with kind "invalid".
+   */
+  openWebLink: (url: string) => invoke<void>("open_web_link", { url }),
 
   suggestNames: (guide_id: Id, prefix: string, limit = 8) =>
     invoke<NameMatch[]>("suggest_names", { guide_id, prefix, limit }),
@@ -631,7 +640,10 @@ export const api = {
     invoke<RelationView[]>("relations_for_entry", { id, filter: { include_external } }),
   createRelation: (request: CreateRelation) =>
     invoke<Relation>("create_relation", { request }),
-  deleteRelation: (id: Id) => invoke<void>("delete_relation", { id }),
+  /** Returns the edge as it was, every qualifier included, for `restoreRelation`. */
+  deleteRelation: (id: Id) => invoke<Relation>("delete_relation", { id }),
+  /** Undo for `deleteRelation`: same id, direction, and qualifiers in order. */
+  restoreRelation: (relation: Relation) => invoke<Relation>("restore_relation", { relation }),
   replaceQualifiers: (id: Id, qualifiers: NewQualifier[]) =>
     invoke<Relation>("replace_qualifiers", { id, qualifiers }),
   suggestedStubTag: (verb_id: Id, direction: Direction) =>

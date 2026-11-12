@@ -33,6 +33,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Opening an entry from a wikilink moves the scope to the entry's first tag when the current scope does not hold it; opening one from the list keeps the scope.
 - [ ] The sidebar collapses to a rail and expands again; the width and the splitter position survive a restart.
 - [ ] Trash lists trashed entries with their deletion time and tags; Restore puts one back with its tags and relations and offers Undo; Purge and Empty trash ask first.
+- [ ] In Trash, Enter restores the focused row and Delete asks before deleting it for good, with focus on Cancel.
 - [ ] Breadcrumbs in the top bar read Guides / guide / page; Back and Forward work.
 - [ ] Edit guide opens a modal; Delete guide asks first.
 
@@ -52,6 +53,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Ctrl+N opens New entry inside a guide and New guide on the guides list; Ctrl+E toggles Read and Edit; Ctrl+R puts the caret in the relation line (opening the panel if folded); Ctrl+T opens Add tag; Ctrl+F focuses the sidebar search; Ctrl+, opens Settings; Alt+Left and Alt+Right go back and forward; F2 opens Rename outside a text field.
 - [ ] Guides list: the name filter and the global tags sit in the sidebar with guide counts; the toolbar holds the view toggle and New guide; "No guides match." offers Clear filter.
 - [ ] Tag editor: selecting a row fills the detail pane; Rename, Parent, and Color apply at once; Add child tag and New tag open a dialog; Merge into... lists target paths and merges on pick; Delete tag asks first; arrow keys, F2, and Delete work in the tree; a colored tag shows a dot in the sidebar, chips, and cards.
+- [ ] Tag editor, Merge into...: Enter with a partial path and no row chosen does nothing; picking a tag asks first, naming both tags and counting the entries and child tags that move, with focus on Cancel. The tree opens on the tag selected in the sidebar.
 - [ ] Settings: the sidebar lists the sections and marks the one in view; a click scrolls to it.
 
 ## Images
@@ -70,6 +72,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] A dropped file that is not an image is skipped with a notice; a drop on the guides list or Settings shows where drops go.
 - [ ] Tag editor: drag a tag onto another with the mouse to nest it, and onto the Top level bar to move it up; a click without movement only selects.
 - [ ] Settings, Media: the totals line counts files and unused bytes; Clean up unused media lists only files no body, gallery, or cover refers to; Remove asks first and removes exactly those; the threshold field changes when the start-up notice appears.
+- [ ] Settings, Media: each file in the cleanup list shows a thumbnail, and a click opens it in the image viewer.
 - [ ] At start, a notice appears when unused media exceeds the threshold, and another when the drive has under 1 GB free; each opens Settings.
 - [ ] Sidebar: with a tag row focused, Up and Down move between rows, Right opens a tag or enters its children, Left closes it or goes to its parent, Home and End jump, typing a letter goes to the next row that starts with it; the entry list takes Up and Down and letters too.
 
@@ -87,7 +90,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
 - [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.
 - [ ] Export and import a guide with a board: the board, its filters, the card positions, the notes, the strings, and the background survive the round trip.
-- [ ] The header's plus makes a square note at the middle of the window and opens it for editing; typing markdown with a task list and clicking elsewhere saves and shows the rendered note; double-click edits again; clicking a check box flips it and the change survives a reload; the panel's color swatches recolor the note; Delete removes it with Undo.
+- [ ] The header's plus makes a square note at the middle of the window and opens it for editing; typing markdown with a task list and clicking elsewhere saves and shows the rendered note; Escape saves too and focus returns to the note; double-click edits again; clicking a check box flips it and the change survives a reload; the panel's color swatches recolor the note; Delete removes it with Undo.
 - [ ] A note resizes from its corners on both axes and from its edges on one; Shift on a corner keeps the proportions; the size survives a reload; long content scrolls inside the note.
 - [ ] Drop an image file onto the board: it appears in a polaroid frame at the drop point, 200 wide; paste one: it lands at the middle; drag, corner-resize (proportions kept), tie a string to it, Delete with Undo; after a reload it is where it was; Settings, Media does not list its file as unused.
 - [ ] With a card or a note selected, dragging its pin onto another item ties a string drawn as a sagging curve above the relation lines; the panel's label and color apply to it; a click on the string selects it; Delete removes it with Undo; "Tie a string" in the panel does the same from the keyboard.
@@ -103,7 +106,10 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 
 ## Entries
 
-- [ ] Create an entry from the guide page and land on it.
+- [ ] Create an entry from the guide page and land on it; it shows the "stub" chip and is listed by Stubs only until its body is edited.
+- [ ] A click on a web link in a body asks first, showing the whole address with focus on Cancel; Open in browser opens the default browser; the app itself makes no request.
+- [ ] The right panel keeps the last chosen tab and the open folds from one entry to the next.
+- [ ] Line numbers are off in the editor; Settings, Editor turns them on at once.
 - [ ] Edit mode shows the editor and a live preview that updates while typing; "Saved" appears after a pause.
 - [ ] Leaving the page while unsaved saves the body.
 - [ ] A `[[Title]]` link to an existing entry renders as a link and navigates; a link to a missing entry renders dashed and offers to create it.
@@ -123,7 +129,8 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] From Cobblestone Block, type `dropped by` then `Stone Block` and save; no second edge appears on either page.
 - [ ] Backspace on the empty input removes the last staged item; Escape clears the line.
 - [ ] Qualifiers on an edge: add one, change a value, remove one; all three pages follow.
-- [ ] Delete an edge; it disappears from all three pages.
+- [ ] Delete an edge, by its button or the Delete key on the selected row; it disappears from all three pages without a question, and Undo in the notice brings it back with its qualifiers in order.
+- [ ] Edit qualifiers: the value field suggests entries, "Use as text", and "Create as a new entry"; a click on the backdrop after a change does not close the dialog.
 - [ ] The stub created for Cobblestone Block shows the "stub" chip until its body is edited.
 
 ## Tags

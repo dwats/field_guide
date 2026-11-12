@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BoardCard, BoardEdge, BoardFilters, BoardString } from "./api";
 import {
   CAPTION_H,
+  CARD_GAP,
   CARD_W,
   FRAME,
   MAX_ZOOM,
@@ -31,6 +32,7 @@ import {
   stringShown,
   toWorld,
   zoomAt,
+  type Rect,
 } from "./board";
 import { parseFilter } from "./filter";
 
@@ -165,6 +167,42 @@ describe("placing new cards", () => {
     for (const r of rects) expect(taken.some((t) => intersects(t, r))).toBe(false);
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) expect(intersects(rects[i], rects[j])).toBe(false);
+    }
+  });
+
+  /** True when two rects sit at least a label's gap apart across or down. */
+  function apart(a: Rect, b: Rect): boolean {
+    return (
+      b.x >= a.x + a.w + CARD_GAP.w ||
+      a.x >= b.x + b.w + CARD_GAP.w ||
+      b.y >= a.y + a.h + CARD_GAP.h ||
+      a.y >= b.y + b.h + CARD_GAP.h
+    );
+  }
+
+  it("leaves room for a line's label between neighbors", () => {
+    expect(CARD_GAP.w).toBeGreaterThanOrEqual(120);
+    expect(CARD_GAP.h).toBeGreaterThanOrEqual(140);
+    const points = placeNear({ x: 500, y: 300 }, 9, []);
+    const [first] = points;
+    // The nearest neighbors sit exactly one gap away.
+    expect(points).toContainEqual({ x: first.x + CARD_W + CARD_GAP.w, y: first.y });
+    expect(points).toContainEqual({ x: first.x, y: first.y + PLAIN_H + CARD_GAP.h });
+    const rects = points.map((p) => ({ ...p, w: CARD_W, h: PLAIN_H }));
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) expect(apart(rects[i], rects[j])).toBe(true);
+    }
+  });
+
+  it("keeps the gap from cards already on the board, tall ones included", () => {
+    const at = { x: 500, y: 300 };
+    const taken: Rect[] = [
+      { x: 410, y: 272, w: CARD_W, h: 260 },
+      { x: 700, y: 250, w: CARD_W, h: PLAIN_H },
+    ];
+    const rects = placeNear(at, 6, taken).map((p) => ({ ...p, w: CARD_W, h: PLAIN_H }));
+    for (const r of rects) {
+      for (const t of taken) expect(apart(r, t)).toBe(true);
     }
   });
 });

@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import Lightbox, { type LightboxImage } from "../components/Lightbox.svelte";
   import PrefCard from "../components/PrefCard.svelte";
   import {
     api,
@@ -14,7 +15,8 @@
     type MediaSummary,
     type ThemePref,
   } from "../lib/api";
-  import { formatBytes } from "../lib/media";
+  import { fileName as mediaFileName, formatBytes } from "../lib/media";
+  import { mediaSrc } from "../lib/mediaUrl";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
   import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
@@ -29,6 +31,14 @@
   let unused = $state<Media[] | null>(null);
   let confirmingCleanup = $state(false);
   let mediaError = $state("");
+  /** The unused file open in the image viewer, by position in `unused`. */
+  let viewing = $state<number | null>(null);
+  const viewerImages = $derived<LightboxImage[]>(
+    (unused ?? []).flatMap((m) => {
+      const src = mediaSrc(m);
+      return src ? [{ src, alt: shortName(m), name: mediaFileName(m) }] : [];
+    }),
+  );
   const warningMb = $derived(session.prefs.unreferenced_warning_mb ?? 250);
 
   const startup = $derived(session.startup);
@@ -192,6 +202,18 @@
   </span>
 {/snippet}
 
+{#snippet lineNumbersPicture(on: boolean)}
+  <svg viewBox="0 0 120 72">
+    <rect x="6" y="8" width="108" height="56" rx="2" fill="currentColor" opacity="0.35" />
+    {#each [0, 1, 2, 3] as row (row)}
+      {#if on}
+        <rect x="12" y={16 + row * 12} width="6" height="3" rx="1.5" fill="var(--accent)" />
+      {/if}
+      <rect x="24" y={16 + row * 12} width={row % 2 === 0 ? 70 : 52} height="3" rx="1.5" fill="currentColor" />
+    {/each}
+  </svg>
+{/snippet}
+
 {#snippet contentsPicture(hidden: boolean)}
   <svg viewBox="0 0 120 72">
     <rect x="6" y="8" width="18" height="56" rx="2" fill="currentColor" opacity="0.35" />
@@ -305,6 +327,23 @@
     </div>
   </section>
 
+  <section id={sectionElementId("editor")}>
+    <h2>Editor</h2>
+    <p class="muted">How the entry editor looks while you write.</p>
+    <div class="group">
+      <div class="cards">
+        <PrefCard
+          label="Line numbers"
+          description="Numbers the lines in the left margin of the editor. Off by default."
+          selected={session.prefs.editor_line_numbers}
+          onselect={(next) => void savePrefs({ editor_line_numbers: next })}
+        >
+          {#snippet picture(on)}{@render lineNumbersPicture(on)}{/snippet}
+        </PrefCard>
+      </div>
+    </div>
+  </section>
+
   {#if startup}
     <section id={sectionElementId("data")}>
       <h2>Data</h2>
@@ -410,10 +449,21 @@
           No entry body, gallery, or cover refers to these files. Removing them cannot be undone.
         </p>
         <table>
-          <thead><tr><th>File</th><th>Size</th><th>Dimensions</th><th>Added</th></tr></thead>
+          <thead><tr><th>Picture</th><th>File</th><th>Size</th><th>Dimensions</th><th>Added</th></tr></thead>
           <tbody>
-            {#each unused as media (media.id)}
+            {#each unused as media, i (media.id)}
               <tr>
+                <td>
+                  {#if mediaSrc(media)}
+                    <button
+                      class="thumb-button"
+                      aria-label={`View ${shortName(media)}`}
+                      onclick={() => (viewing = i)}
+                    >
+                      <img class="thumb" src={mediaSrc(media)} alt="" />
+                    </button>
+                  {/if}
+                </td>
                 <td><code>{shortName(media)}</code></td>
                 <td>{formatBytes(media.bytes)}</td>
                 <td class="muted">{media.width && media.height ? `${media.width} × ${media.height}` : ""}</td>
@@ -430,6 +480,15 @@
       {/if}
     {/if}
   </section>
+
+  {#if viewing !== null && viewerImages.length > 0}
+    <Lightbox
+      images={viewerImages}
+      index={Math.min(viewing, viewerImages.length - 1)}
+      onclose={() => (viewing = null)}
+      onindex={(i) => (viewing = i)}
+    />
+  {/if}
 
   <ConfirmDialog
     open={confirmingCleanup}
@@ -464,6 +523,18 @@
   .cards {
     display: grid;
     gap: var(--space-3);
+  }
+  .thumb-button {
+    padding: 0;
+    border: none;
+    background: none;
+    line-height: 0;
+  }
+  .thumb {
+    width: var(--space-7);
+    height: var(--space-7);
+    object-fit: cover;
+    border-radius: var(--radius-sm);
   }
   .threshold input {
     width: 6em;

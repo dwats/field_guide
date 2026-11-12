@@ -78,7 +78,8 @@
     </div>
     <p class="muted">
       A board is a cork board you fill by hand: pick entries from this guide, arrange the cards,
-      and the relations between them are drawn as lines.
+      and the relations between them are drawn as lines. Add notes and images, and tie them
+      together with strings.
     </p>
     {#if error}<p class="error">{error}</p>{/if}
     {#if boards.length === 0}

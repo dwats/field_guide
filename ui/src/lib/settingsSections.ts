@@ -3,6 +3,7 @@
 
 export const SECTIONS = [
   { id: "appearance", label: "Appearance" },
+  { id: "editor", label: "Editor" },
   { id: "data", label: "Data" },
   { id: "backups", label: "Backups" },
   { id: "media", label: "Media" },

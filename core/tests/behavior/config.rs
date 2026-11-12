@@ -102,6 +102,7 @@ fn ui_prefs_and_the_sync_warning_round_trip() {
     config.ui.density = Density::Compact;
     config.ui.theme = Theme::Dark;
     config.ui.dim_images = true;
+    config.ui.editor_line_numbers = true;
     config.ui.sidebar_collapsed = true;
     config.ui.panel_collapsed = true;
     config.ui.panel_open_in_edit = true;
@@ -127,6 +128,7 @@ fn a_config_from_before_ui_prefs_existed_still_loads() {
     assert_eq!(loaded.ui.density, Density::Roomy);
     assert_eq!(loaded.ui.theme, Theme::System);
     assert!(!loaded.ui.dim_images);
+    assert!(!loaded.ui.editor_line_numbers);
     assert!(loaded.ui.sidebar_width.is_none());
     assert!(loaded.sync_warning_shown_for.is_none());
 }
@@ -145,10 +147,12 @@ fn a_theme_written_by_hand_loads() {
 [ui]
 theme = \"light\"
 dim_images = true
+editor_line_numbers = true
 ",
     )
     .unwrap();
     let loaded = Config::load(&data).unwrap();
     assert_eq!(loaded.ui.theme, Theme::Light);
     assert!(loaded.ui.dim_images);
+    assert!(loaded.ui.editor_line_numbers);
 }

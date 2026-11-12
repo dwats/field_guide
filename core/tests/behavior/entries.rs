@@ -216,3 +216,60 @@ fn a_taken_name_says_which_entry_holds_it_and_how() {
         "\"Stone Block\" is already the title of \"Stone Block\" (in Trash)"
     );
 }
+
+#[test]
+fn an_entry_created_with_an_empty_body_starts_as_a_stub_until_its_first_body_edit() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stubs_only = fieldguide_core::entry::EntryQuery {
+        stubs_only: true,
+        ..Default::default()
+    };
+    // New entry, the palette, and a dashed link all create through `create_entry`.
+    let empty = v.create_entry(new_entry(&g, "Creeper")).unwrap();
+    assert!(empty.is_stub);
+    let described = entry(&mut v, &g, "Zombie", "Burns in daylight.");
+    assert!(!v.get_entry(&described).unwrap().is_stub);
+    assert_eq!(
+        titles(&v.list_entries(&g, &stubs_only).unwrap()),
+        ["Creeper"]
+    );
+
+    v.update_entry_body(&empty.id, "Explodes.").unwrap();
+    assert!(!v.get_entry(&empty.id).unwrap().is_stub);
+    // Emptying the body again does not make it a stub: it has been described once.
+    v.update_entry_body(&empty.id, "").unwrap();
+    assert!(!v.get_entry(&empty.id).unwrap().is_stub);
+    assert!(v.list_entries(&g, &stubs_only).unwrap().is_empty());
+}
+
+#[test]
+fn only_http_and_https_web_links_may_be_opened() {
+    use fieldguide_core::entry::web_link;
+    assert_eq!(
+        web_link("  https://example.com/speedrun?x=1#top ").unwrap(),
+        "https://example.com/speedrun?x=1#top"
+    );
+    assert_eq!(
+        web_link("HTTP://Example.com").unwrap(),
+        "HTTP://Example.com"
+    );
+    for refused in [
+        "file:///C:/Windows/System32/calc.exe",
+        "javascript:alert(1)",
+        "mailto:someone@example.com",
+        "ms-settings:display",
+        r"C:\Windows\notepad.exe",
+        "example.com",
+        "https://",
+        "https:///etc/passwd",
+        "https://example.com/a b",
+        "https://example.com/\n& calc",
+        "",
+    ] {
+        assert!(
+            matches!(web_link(refused), Err(Error::Invalid(_))),
+            "{refused:?} must be refused"
+        );
+    }
+}

@@ -97,6 +97,12 @@
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       selected = entries[stepIndex(index, event.key === "ArrowDown" ? 1 : -1, entries.length)].id;
+    } else if (event.key === "Enter" && selected) {
+      event.preventDefault();
+      void restore();
+    } else if (event.key === "Delete" && selected) {
+      event.preventDefault();
+      confirming = "purge";
     } else if (event.key === "Escape" && selected) {
       event.preventDefault();
       selected = null;

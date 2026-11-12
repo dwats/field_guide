@@ -272,15 +272,78 @@ impl Vault {
         load_relation(self.conn(), id)
     }
 
-    /// Removes an edge and its qualifiers.
-    pub fn delete_relation(&mut self, id: &RelationId) -> Result<()> {
-        let removed = self
-            .conn()
-            .execute("DELETE FROM relation WHERE id = ?1", params![id])?;
-        if removed == 0 {
-            return Err(not_found("relation", id));
+    /// Removes an edge and its qualifiers, and returns the edge as it was, every qualifier
+    /// included, so [`Vault::restore_relation`] can put it back.
+    pub fn delete_relation(&mut self, id: &RelationId) -> Result<Relation> {
+        let tx = self.savepoint()?;
+        let removed = load_relation(&tx, id)?;
+        tx.execute("DELETE FROM relation WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    /// Puts back an edge that [`Vault::delete_relation`] removed, from the snapshot it returned:
+    /// the same id, verb, direction, and creation time, and every qualifier with its id, label,
+    /// value, and place in the order. When the same edge was entered again in the meantime, the
+    /// snapshot's qualifiers merge into that edge as `create_relation` would merge them.
+    pub fn restore_relation(&mut self, snapshot: &Relation) -> Result<Relation> {
+        let tx = self.savepoint()?;
+        let gone = |what: String| {
+            Error::Invalid(format!(
+                "the relation cannot be restored: {what} no longer exists"
+            ))
+        };
+        if load_relation(&tx, &snapshot.id).is_ok() {
+            return Err(Error::Invalid(
+                "the relation cannot be restored: it is already there".to_owned(),
+            ));
         }
-        Ok(())
+        let verb = vocabulary::load_verb(&tx, &snapshot.verb.id)
+            .map_err(|_| gone(format!("the verb \"{}\"", verb_slot(&snapshot.verb.label))))?;
+        for end in [&snapshot.subject, &snapshot.object] {
+            load_entry_ref(&tx, &end.id).map_err(|_| gone(format!("\"{}\"", end.title)))?;
+        }
+        for q in &snapshot.qualifiers {
+            vocabulary::load_qualifier_label(&tx, &q.label.id)
+                .map_err(|_| gone(format!("the qualifier label \"{}\"", q.label.label)))?;
+            if let QualifierValueView::Entry(value) = &q.value {
+                load_entry_ref(&tx, &value.id).map_err(|_| gone(format!("\"{}\"", value.title)))?;
+            }
+        }
+        let existing = find_edge(
+            &tx,
+            &snapshot.subject.id,
+            &verb.id,
+            &snapshot.object.id,
+            verb.symmetric,
+        )?;
+        let relation_id = match existing {
+            Some(existing) => {
+                for q in &snapshot.qualifiers {
+                    put_qualifier(&tx, &existing, q, false)?;
+                }
+                existing
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO relation (id, subject_entry_id, verb_id, object_entry_id, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        snapshot.id,
+                        snapshot.subject.id,
+                        verb.id,
+                        snapshot.object.id,
+                        snapshot.created_at
+                    ],
+                )?;
+                for q in &snapshot.qualifiers {
+                    put_qualifier(&tx, &snapshot.id, q, true)?;
+                }
+                snapshot.id.clone()
+            }
+        };
+        tx.commit()?;
+        load_relation(self.conn(), &relation_id)
     }
 
     /// Appends a qualifier to an edge. An exact duplicate of an existing qualifier is ignored.
@@ -780,6 +843,48 @@ pub(crate) fn insert_qualifiers(
             params![QualifierId::generate(), relation_id, label.id, entry_id, text, number, sort],
         )?;
     }
+    Ok(())
+}
+
+/// Writes one qualifier from a deleted edge's snapshot. With `keep_place` it gets its old id and
+/// sort back; otherwise it is appended after the edge's qualifiers unless an exact duplicate is
+/// already there. A value entry in the trash is kept, as the deleted edge kept it.
+fn put_qualifier(
+    conn: &Connection,
+    relation_id: &RelationId,
+    q: &Qualifier,
+    keep_place: bool,
+) -> Result<()> {
+    let (entry_id, text, number) = match &q.value {
+        QualifierValueView::Entry(entry) => (Some(entry.id.clone()), None, None),
+        QualifierValueView::Text(text) => (None, Some(text.clone()), None),
+        QualifierValueView::Number(number) => (None, None, Some(*number)),
+    };
+    let (id, sort) = if keep_place {
+        (q.id.clone(), q.sort)
+    } else {
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM relation_qualifier
+                            WHERE relation_id = ?1 AND qualifier_label_id = ?2
+                              AND value_entry_id IS ?3 AND value_text IS ?4 AND value_num IS ?5)",
+            params![relation_id, q.label.id, entry_id, text, number],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Ok(());
+        }
+        let sort: i64 = conn.query_row(
+            "SELECT coalesce(max(sort) + 1, 0) FROM relation_qualifier WHERE relation_id = ?1",
+            params![relation_id],
+            |row| row.get(0),
+        )?;
+        (QualifierId::generate(), sort)
+    };
+    conn.execute(
+        "INSERT INTO relation_qualifier (id, relation_id, qualifier_label_id, value_entry_id, value_text, value_num, sort)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, relation_id, q.label.id, entry_id, text, number, sort],
+    )?;
     Ok(())
 }
 

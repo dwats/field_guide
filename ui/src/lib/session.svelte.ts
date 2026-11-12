@@ -51,6 +51,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   density: "roomy",
   theme: "system",
   dim_images: false,
+  editor_line_numbers: false,
   sidebar_collapsed: false,
   panel_collapsed: false,
   panel_open_in_edit: false,

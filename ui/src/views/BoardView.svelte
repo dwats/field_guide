@@ -58,7 +58,7 @@
   import { isImagePath } from "../lib/media";
   import { mediaSrc } from "../lib/mediaUrl";
   import { navigate, replace } from "../lib/router";
-  import { notify, savePrefs, session, setCurrent } from "../lib/session.svelte";
+  import { notify, savePrefs, session, setCurrent, touch } from "../lib/session.svelte";
 
   interface Props {
     boardId: string;
@@ -281,21 +281,79 @@
     }
   }
 
-  /** New cards land around the middle of the window, on free cells. */
+  /**
+   * New cards land around the middle of the window, on free cells. Adding several at once offers
+   * Undo, which takes exactly those cards off again; entries already on the board are not touched.
+   */
   async function addEntries(ids: string[]) {
     if (!board || ids.length === 0) return;
-    const points = placeNear(middle(), ids.length, cards.map(cardRect));
-    const nodes = ids.map((entry_id, i) => ({
+    const target = board.id;
+    const fresh = ids.filter((id) => !onBoard.has(id));
+    if (fresh.length === 0) return;
+    const points = placeNear(middle(), fresh.length, cards.map(cardRect));
+    const nodes = fresh.map((entry_id, i) => ({
       entry_id,
       x: Math.round(points[i].x),
       y: Math.round(points[i].y),
     }));
     try {
-      const added = await api.addBoardNodes(board.id, nodes);
+      const added = await api.addBoardNodes(target, nodes);
       await load();
-      select({ kind: "entry", id: ids[0] });
+      select({ kind: "entry", id: fresh[0] });
       version += 1;
-      if (ids.length > 1) notify(`Added ${added} ${added === 1 ? "entry" : "entries"} to the board.`);
+      if (ids.length > 1) {
+        notify(`Added ${added} ${added === 1 ? "entry" : "entries"} to the board.`, {
+          action: { label: "Undo", run: () => takeOff(target, fresh) },
+        });
+      }
+    } catch (e) {
+      notify(errorMessage(e), { kind: "error" });
+    }
+  }
+
+  /** Undo for a bulk add: takes those cards off the board, with any strings tied to them since. */
+  async function takeOff(target: string, ids: string[]) {
+    if (alive && board?.id === target) {
+      // A nudge still waiting must not be written after the removal and put a card back.
+      for (const id of ids) pending.delete(id);
+      await flushPositions();
+    }
+    for (const id of ids) {
+      try {
+        await api.removeBoardNode(target, id);
+      } catch {
+        // Already off the board.
+      }
+    }
+    if (alive && board?.id === target && selection?.kind === "entry" && ids.includes(selection.id)) {
+      select(null);
+    }
+    await reloadAfterUndo(target);
+  }
+
+  /** A picker row whose entry is on the board: selects that card and pans it into view. */
+  function locate(id: string) {
+    const item = { kind: "entry", id } as const;
+    select(item);
+    canvas?.revealItem(item);
+  }
+
+  /** A click on a dashed link in a note creates that entry, as on entry pages; no card is placed. */
+  async function createFromLink(title: string) {
+    if (!guide) return;
+    try {
+      const created = await api.createEntry(guide.id, title);
+      // The reload that follows renders the note again, so the link resolves.
+      touch();
+      notify(`Created the entry "${created.title}".`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await api.trashEntry(created.id);
+            touch();
+          },
+        },
+      });
     } catch (e) {
       notify(errorMessage(e), { kind: "error" });
     }
@@ -804,7 +862,7 @@
           onremove={removeItem}
           oneditnote={(id) => (editingNote = id)}
           onsavenote={(id, body) => void saveNote(id, body)}
-          oncanceledit={() => (editingNote = null)}
+          oncreatelink={(title) => void createFromLink(title)}
           ontoggletask={(id, index) => void toggleTask(id, index)}
           ontying={(on) => (tying = on && selection !== null && selection.kind !== "string")}
           onstring={(from, to) => void tieString(from, to)}
@@ -831,6 +889,7 @@
       {onBoard}
       onadd={(ids) => void addEntries(ids)}
       onremove={(id) => void removeCard(id)}
+      onlocate={locate}
       {selected}
       onopen={openEntry}
       {selectedNote}

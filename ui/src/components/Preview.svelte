@@ -3,7 +3,10 @@
   // protocol here, at render time only; the stored body never changes. Wikilink clicks are
   // reported to the parent, which decides where to go; a click or Enter on an image reports its
   // index so the parent can open the viewer; links to an anchor in the body scroll to it; a spoiler reveals
-  // on click or Enter. Other links stay inert in this phase.
+  // on click or Enter. A web link opens the system browser after a confirm that shows the whole
+  // address (`WebLinkDialog`, one per app); the shell checks the scheme again and asks the
+  // operating system to open it, so the app makes no request. Other links say they cannot open.
+  import { askToOpenLink } from "./WebLinkDialog.svelte";
   import { mediaUrl } from "../lib/mediaUrl";
 
   interface Props {
@@ -77,7 +80,10 @@
       container
         .querySelector<HTMLElement>(`[id="${CSS.escape(href.slice(1))}"]`)
         ?.scrollIntoView({ block: "start" });
+      return;
     }
+    if (!href) return;
+    askToOpenLink(href);
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -96,3 +102,4 @@
 <div class="preview" bind:this={container}>
   {@html html}
 </div>
+

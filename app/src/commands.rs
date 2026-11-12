@@ -356,8 +356,25 @@ pub fn get_relation(state: S<'_>, id: RelationId) -> CmdResult<Relation> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn delete_relation(state: S<'_>, id: RelationId) -> CmdResult<()> {
+pub fn delete_relation(state: S<'_>, id: RelationId) -> CmdResult<Relation> {
     state.with_vault(|v| v.delete_relation(&id))
+}
+
+/// Asks the operating system to open a web link from an entry body in the default browser. The
+/// app makes no request itself. Core refuses anything but `http://` and `https://` (kind
+/// `invalid`); the address goes to ShellExecuteW (or the platform's opener) as one argument and is
+/// never part of a shell command line.
+#[tauri::command(rename_all = "snake_case")]
+pub fn open_web_link(url: String) -> CmdResult<()> {
+    let address = fieldguide_core::entry::web_link(&url)?;
+    tauri_plugin_opener::open_url(&address, None::<&str>)
+        .map_err(|e| AppError::new("io", format!("the browser could not be opened: {e}")))
+}
+
+/// Undo for `delete_relation`: takes the edge it returned.
+#[tauri::command(rename_all = "snake_case")]
+pub fn restore_relation(state: S<'_>, relation: Relation) -> CmdResult<Relation> {
+    state.with_vault(|v| v.restore_relation(&relation))
 }
 
 #[tauri::command(rename_all = "snake_case")]

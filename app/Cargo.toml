@@ -22,6 +22,10 @@ serde_json = { workspace = true }
 # Pinned to the minor: `webview2-com` below must stay the version this Tauri's wry uses, and a
 # minor Tauri release may move it.
 tauri = { version = "2.11", features = ["protocol-asset"] }
+# Hands a web link from an entry body to the system browser (ShellExecuteW on Windows, no command
+# line). Called from Rust only: the plugin is not registered, so the webview gets none of its
+# commands and none of its link-click script.
+tauri-plugin-opener = "2"
 # A second launch focuses the running window instead of opening a second writer.
 tauri-plugin-single-instance = "2"
 

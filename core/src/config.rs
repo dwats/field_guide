@@ -39,6 +39,9 @@ pub struct UiPrefs {
     /// Lower the brightness of the user's pictures while the dark theme is in effect.
     #[serde(default)]
     pub dim_images: bool,
+    /// Show line numbers in the entry editor.
+    #[serde(default)]
+    pub editor_line_numbers: bool,
     #[serde(default)]
     pub sidebar_collapsed: bool,
     #[serde(default)]

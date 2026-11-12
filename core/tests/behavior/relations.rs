@@ -273,7 +273,7 @@ fn a_missing_target_becomes_a_stub_with_the_suggested_tag() {
     let mobs = v.ensure_tag_path(Some(&g), "Mobs").unwrap();
     let loot = v.ensure_tag_path(Some(&g), "Items/Drops").unwrap();
     let blocks = v.ensure_tag_path(Some(&g), "Blocks").unwrap();
-    let zombie = entry(&mut v, &g, "Zombie", "");
+    let zombie = entry(&mut v, &g, "Zombie", "Burns in daylight.");
     let drops = v
         .create_verb(
             &g,
@@ -706,4 +706,116 @@ fn display_segments_mark_the_verb_slot_and_link_the_titles() {
         .unwrap();
     assert_eq!(from_cobble[0].segments[0].text, "DROPPED BY ");
     assert!(from_cobble[0].segments[0].verb_slot);
+}
+
+#[test]
+fn a_deleted_relation_is_restored_with_its_verb_direction_and_qualifiers_in_order() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone", "x");
+    let cobble = entry(&mut v, &g, "Cobblestone", "x");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "x");
+    let drill = entry(&mut v, &g, "Drill", "x");
+    verb(&mut v, &g, "DROPS", Some("DROPPED BY"));
+    let mined_with = qualifier_label(&mut v, &g, "mined with", Some("mines"));
+    let below = qualifier_label(&mut v, &g, "below depth", None);
+    let note = qualifier_label(&mut v, &g, "note", None);
+    // Entered from the object's side, so the stored direction is not the origin's.
+    let matched = v.lookup_verb(&g, "dropped by").unwrap().unwrap();
+    let edge = v
+        .create_relation(CreateRelation {
+            origin: cobble.clone(),
+            verb: VerbSpec::Existing {
+                id: matched.verb.id,
+            },
+            direction: matched.direction,
+            target: Target::Entry { id: stone.clone() },
+            qualifiers: vec![
+                q_entry(&mined_with, &pickaxe),
+                q_num(&below, 12.0),
+                q_entry(&mined_with, &drill),
+                q_text(&note, "silk touch gives stone"),
+            ],
+        })
+        .unwrap();
+    // A removed qualifier leaves a gap in the sort order, which restore must keep.
+    let edge = v.remove_qualifier(&edge.qualifiers[1].id).unwrap();
+    // A trashed value is hidden from readers but still part of the edge.
+    v.trash_entry(&drill).unwrap();
+    let edge = v.get_relation(&edge.id).unwrap();
+    let before_stone = views(&v, &stone);
+    let before_cobble = views(&v, &cobble);
+    let before_pickaxe = views(&v, &pickaxe);
+
+    let removed = v.delete_relation(&edge.id).unwrap();
+    assert_eq!(removed, edge);
+    assert!(views(&v, &stone).is_empty());
+    assert!(views(&v, &pickaxe).is_empty());
+
+    let restored = v.restore_relation(&removed).unwrap();
+    assert_eq!(
+        restored, edge,
+        "same id, ends, verb, qualifiers, sorts, and time"
+    );
+    assert_eq!(views(&v, &stone), before_stone);
+    assert_eq!(views(&v, &cobble), before_cobble);
+    assert_eq!(views(&v, &pickaxe), before_pickaxe);
+    v.restore_entry(&drill).unwrap();
+    assert_eq!(
+        views(&v, &stone),
+        ["DROPS Cobblestone · mined with Pickaxe · mined with Drill · note silk touch gives stone"]
+    );
+
+    // Restoring twice is refused rather than duplicating the edge.
+    assert!(matches!(
+        v.restore_relation(&removed),
+        Err(Error::Invalid(_))
+    ));
+}
+
+#[test]
+fn restoring_a_relation_entered_again_meanwhile_merges_into_it() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone", "x");
+    let cobble = entry(&mut v, &g, "Cobblestone", "x");
+    let pickaxe = entry(&mut v, &g, "Pickaxe", "x");
+    let drops = verb(&mut v, &g, "DROPS", None);
+    let mined_with = qualifier_label(&mut v, &g, "mined with", None);
+    let below = qualifier_label(&mut v, &g, "below depth", None);
+    let edge = relate_with(
+        &mut v,
+        &stone,
+        &drops,
+        &cobble,
+        vec![q_entry(&mined_with, &pickaxe), q_num(&below, 12.0)],
+    );
+    let removed = v.delete_relation(&edge.id).unwrap();
+    let again = relate_with(&mut v, &stone, &drops, &cobble, vec![q_num(&below, 12.0)]);
+
+    let merged = v.restore_relation(&removed).unwrap();
+    assert_eq!(merged.id, again.id);
+    assert_eq!(
+        views(&v, &stone),
+        ["DROPS Cobblestone · below depth 12 · mined with Pickaxe"],
+        "the existing qualifier first, the duplicate skipped"
+    );
+}
+
+#[test]
+fn a_relation_cannot_be_restored_once_an_end_is_purged() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let stone = entry(&mut v, &g, "Stone", "x");
+    let cobble = entry(&mut v, &g, "Cobblestone", "x");
+    let drops = verb(&mut v, &g, "DROPS", None);
+    let edge = relate(&mut v, &stone, &drops, &cobble);
+    let removed = v.delete_relation(&edge.id).unwrap();
+    v.trash_entry(&cobble).unwrap();
+    v.purge_entry(&cobble).unwrap();
+    assert!(matches!(
+        v.restore_relation(&removed),
+        Err(Error::Invalid(message)) if message.contains("Cobblestone")
+    ));
+    assert!(views(&v, &stone).is_empty());
 }
