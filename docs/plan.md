@@ -136,6 +136,12 @@ Done when:
 - In portable mode, a Process Monitor capture of a full session (every view, a paste, an export) shows no writes to AppData, the registry, or the user profile.
 - The macOS build from Actions launches after right-click Open and finds its data directory next to the `.app` when `portable` is present.
 
+## Dark mode and tokens
+
+Decided 2026-11-11 after the second UX and UI design reviews. A Theme setting (System, Light, Dark) and a "Dim images in dark" setting; the shell applies the window theme before the first paint; a completed dark palette; the editor's colors from tokens; board colors in `ui/src/app.css`; three border strengths; raised layers; elevation tokens. The type, space, radius, control, and icon scales are defined in `ui/src/app.css`, and component styles move onto them in a following step.
+
+Done when: the config tests and `theme.test.ts` pass, and the Theme section of `docs/checklist.md` passes in both schemes.
+
 ## Later
 
 Markdown extensions, markdown syntax first (decided 2026-11-08; alerts, footnotes, spoilers, and anchors shipped with Phase 6): collapsible sections (proposed `:::details Title` to `:::`), highlight (proposed `==text==`), superscript (proposed `^text^`), subscript (syntax open; a single `~` is strikethrough), icons from a bundled set (proposed `:name:`), LaTeX (`$...$` and `$$...$$`, rendered offline by a bundled library, a size decision).
@@ -144,5 +150,5 @@ Not scheduled. Candidates that need their own decision before they get a phase.
 
 - Video: drag-and-drop of `.webm` into entries, playback in the preview. The renderer already turns `media/*.webm` into a video element, so an archive that carries one plays. Without transcoding, which the binary cannot carry, every clip is stored as recorded, so this may not be worth its weight.
 - Lossy WebP as a setting beside the lossless default (`docs/design.md` section 11).
-- Board decorations beyond Phase 7b (raised 2026-11-08): dropped images positioned by hand with a thin white border so they read as photographs, icon push pins (arrows, checks, crosses, key, lock, skull, and more), and drawings.
+- Board decorations beyond Phase 7b (raised 2026-11-08; dropped images shipped with Phase 7b): icon push pins (arrows, checks, crosses, key, lock, skull, and more), and drawings.
 - Drawing tool (raised 2026-11-08). A simple, fast canvas for a map, a cross section, or a room layout: layers, bucket fill, shapes (circle, square, triangle, line), and the usual paint-tool key combinations for snapping angles and keeping symmetry. Output is an image stored as media, so it drops into entries and boards like any other picture.

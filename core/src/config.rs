@@ -35,6 +35,11 @@ pub struct UiPrefs {
     #[serde(default)]
     pub density: Density,
     #[serde(default)]
+    pub theme: Theme,
+    /// Lower the brightness of the user's pictures while the dark theme is in effect.
+    #[serde(default)]
+    pub dim_images: bool,
+    #[serde(default)]
     pub sidebar_collapsed: bool,
     #[serde(default)]
     pub panel_collapsed: bool,
@@ -72,6 +77,16 @@ pub enum Density {
     Compact,
     #[default]
     Roomy,
+}
+
+/// Color scheme (design section 5, "Theme"). System follows the OS setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

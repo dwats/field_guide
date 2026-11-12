@@ -47,7 +47,8 @@
     list-style: none;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--bg);
+    background: var(--raised);
+    box-shadow: var(--e2);
     max-height: 260px;
     overflow: auto;
   }
@@ -64,6 +65,6 @@
   }
   .suggestions button.on,
   .suggestions button:hover {
-    background: var(--chip-bg);
+    background: var(--raised-hover);
   }
 </style>

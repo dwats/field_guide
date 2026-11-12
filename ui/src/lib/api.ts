@@ -46,10 +46,14 @@ export interface Startup {
 
 export type GuideView = "cards" | "table";
 export type Density = "compact" | "roomy";
+export type ThemePref = "system" | "light" | "dark";
 
 export interface UiPrefs {
   guide_view: GuideView;
   density: Density;
+  theme: ThemePref;
+  /** Lower the brightness of user pictures while the dark theme is in effect. */
+  dim_images: boolean;
   sidebar_collapsed: boolean;
   panel_collapsed: boolean;
   /** Keep the right panel open while editing in Split. */

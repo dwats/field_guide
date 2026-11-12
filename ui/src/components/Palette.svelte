@@ -117,6 +117,9 @@
     list.push(
       { action: "density-compact", label: "Density: Compact" },
       { action: "density-roomy", label: "Density: Roomy" },
+      { action: "theme-system", label: "Theme: System" },
+      { action: "theme-light", label: "Theme: Light" },
+      { action: "theme-dark", label: "Theme: Dark" },
     );
     return list;
   }
@@ -251,7 +254,7 @@
     position: fixed;
     inset: 0;
     z-index: 30;
-    background: rgb(0 0 0 / 0.2);
+    background: var(--backdrop);
   }
   .palette {
     position: fixed;
@@ -265,8 +268,8 @@
     padding: var(--space-2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--bg);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.2);
+    background: var(--raised);
+    box-shadow: var(--e3);
   }
   .palette input {
     width: 100%;
@@ -304,7 +307,7 @@
   }
   li.on button,
   li[role="option"] button:hover {
-    background: var(--chip-bg);
+    background: var(--raised-hover);
   }
   .text {
     flex: 1;

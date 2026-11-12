@@ -6,9 +6,12 @@
 mod commands;
 mod error;
 mod state;
+mod theme;
 
-use fieldguide_core::config::WindowState;
-use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
+use fieldguide_core::config::{Theme, WindowState};
+use tauri::{
+    Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 
 use crate::state::AppState;
 
@@ -30,22 +33,36 @@ fn main() -> anyhow::Result<()> {
                 app.asset_protocol_scope()
                     .allow_directory(media_dir, true)?;
             }
-            if let Some(window) = app.get_webview_window("main") {
-                let saved = state
-                    .config
-                    .lock()
-                    .ok()
-                    .and_then(|c| c.as_ref().and_then(|c| c.window.clone()));
-                if let Some(saved) = saved {
-                    apply_window_state(&window, &saved);
-                }
-                // A keyboard preference must never stop the app from starting.
-                if let Err(e) = disable_browser_accelerator_keys(&window) {
-                    eprintln!("could not turn off the webview's accelerator keys: {e}");
-                }
-                // The window starts hidden so it appears where it was, not at the default spot.
-                let _ = window.show();
+            let (saved, theme) = state
+                .config
+                .lock()
+                .ok()
+                .and_then(|c| c.as_ref().map(|c| (c.window.clone(), c.ui.theme)))
+                .unwrap_or((None, Theme::System));
+            // Built here, not from the config file's `create`, so the window starts with the saved
+            // theme and the first paint already matches it.
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("tauri.conf.json defines no window"))?;
+            let window = WebviewWindowBuilder::from_config(app.handle(), window_config)?
+                .theme(theme::native(theme))
+                .build()?;
+            // A title bar color must never stop the app from starting.
+            if let Err(e) = theme::apply(&window, theme) {
+                eprintln!("could not apply the window theme: {e}");
             }
+            if let Some(saved) = saved {
+                apply_window_state(&window, &saved);
+            }
+            // A keyboard preference must never stop the app from starting.
+            if let Err(e) = disable_browser_accelerator_keys(&window) {
+                eprintln!("could not turn off the webview's accelerator keys: {e}");
+            }
+            // The window starts hidden so it appears where it was, not at the default spot.
+            let _ = window.show();
             Ok(())
         })
         .on_window_event(|window, event| {

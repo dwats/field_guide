@@ -38,7 +38,7 @@
     max-width: 34em;
     padding: var(--space-3);
     text-align: left;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     background: var(--bg);
   }

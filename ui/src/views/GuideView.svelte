@@ -392,7 +392,7 @@
     height: 144px;
     padding: 0;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     background: var(--surface);
   }

@@ -167,7 +167,10 @@
     return () => clearTimeout(timer);
   });
 
-  /** Puts the caret in the search field; the board's Add entries button calls this. */
+  /**
+   * Puts the caret in the search field. Nothing calls it at present: the header's plus makes a
+   * new note, and entries are added from this panel's own buttons.
+   */
   export function focusSearch() {
     searchInput?.focus();
     searchInput?.select();
@@ -410,7 +413,7 @@
     height: 24px;
     min-height: 0;
     padding: 0;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 50%;
   }
   .swatch[aria-pressed="true"] {

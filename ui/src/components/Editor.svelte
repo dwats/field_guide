@@ -11,9 +11,10 @@
     lineNumbers,
   } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-  import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+  import { syntaxHighlighting } from "@codemirror/language";
   import { markdown } from "@codemirror/lang-markdown";
 
+  import { editorHighlight, editorTheme } from "../lib/editorTheme";
   import { asOwnParagraph } from "../lib/insert";
 
   interface Props {
@@ -38,7 +39,8 @@
           highlightActiveLine(),
           EditorView.lineWrapping,
           markdown(),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          syntaxHighlighting(editorHighlight),
+          editorTheme,
           keymap.of([
             {
               key: "Mod-s",

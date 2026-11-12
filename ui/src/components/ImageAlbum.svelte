@@ -28,7 +28,7 @@
         {@const primary = image.name !== null && image.name === primaryName}
         <li>
           <button class="thumb" class:primary onclick={() => onopen(i)} title={image.alt || "Open"}>
-            <img src={image.src} alt={image.alt} draggable="false" />
+            <img class="user-image" src={image.src} alt={image.alt} draggable="false" />
             {#if primary}<span class="badge">Primary</span>{/if}
           </button>
           <div class="caption" title={image.alt}>{image.alt || "No caption"}</div>
@@ -60,7 +60,7 @@
     height: 140px;
     padding: 0;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius);
     background: var(--surface);
   }

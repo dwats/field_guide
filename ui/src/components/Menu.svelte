@@ -96,8 +96,8 @@
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--bg);
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
+    background: var(--raised);
+    box-shadow: var(--e2);
   }
   .menu :global(button[role^="menuitem"]) {
     text-align: left;
@@ -108,7 +108,7 @@
   }
   .menu :global(button[role^="menuitem"]:hover),
   .menu :global(button[role^="menuitem"]:focus-visible) {
-    background: var(--chip-bg);
+    background: var(--raised-hover);
   }
   .menu :global(.separator) {
     height: 1px;

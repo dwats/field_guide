@@ -21,6 +21,7 @@
   import { formatBytes } from "./lib/media";
   import { HOME, navigate, parseRoute, routeHash, type Route } from "./lib/router";
   import { DEFAULT_PREFS, dismiss, notify, savePrefs, session } from "./lib/session.svelte";
+  import { themeAttribute } from "./lib/theme";
   import BoardView from "./views/BoardView.svelte";
   import BoardsView from "./views/BoardsView.svelte";
   import EntryView from "./views/EntryView.svelte";
@@ -60,6 +61,21 @@
   // The density preset is an attribute on <html>, so every size token follows it.
   $effect(() => {
     document.documentElement.dataset.density = session.prefs.density;
+  });
+
+  // The theme is an attribute on <html>; without one, color-scheme follows the OS (app.css).
+  $effect(() => {
+    const value = themeAttribute(session.prefs.theme);
+    const root = document.documentElement;
+    if (value) root.dataset.theme = value;
+    else delete root.dataset.theme;
+  });
+
+  // Dimming user pictures in dark is an attribute too; app.css applies it only while dark holds.
+  $effect(() => {
+    const root = document.documentElement;
+    if (session.prefs.dim_images) root.dataset.dimImages = "";
+    else delete root.dataset.dimImages;
   });
 
   // The New dialogs live here, so Mod+N and Mod+Shift+N work on every page.
@@ -174,6 +190,15 @@
         return;
       case "density-roomy":
         void savePrefs({ density: "roomy" });
+        return;
+      case "theme-system":
+        void savePrefs({ theme: "system" });
+        return;
+      case "theme-light":
+        void savePrefs({ theme: "light" });
+        return;
+      case "theme-dark":
+        void savePrefs({ theme: "dark" });
         return;
       case "dismiss-notice":
         if (current) dismiss(current.id);

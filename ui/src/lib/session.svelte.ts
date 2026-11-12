@@ -49,6 +49,8 @@ export interface SidebarState {
 export const DEFAULT_PREFS: UiPrefs = {
   guide_view: "cards",
   density: "roomy",
+  theme: "system",
+  dim_images: false,
   sidebar_collapsed: false,
   panel_collapsed: false,
   panel_open_in_edit: false,

@@ -1,7 +1,7 @@
 use std::fs;
 
 use fieldguide_core::Error;
-use fieldguide_core::config::{Config, Density, GuideView, WindowState};
+use fieldguide_core::config::{Config, Density, GuideView, Theme, WindowState};
 use fieldguide_core::datadir::{DataDir, Mode};
 use tempfile::tempdir;
 
@@ -100,6 +100,8 @@ fn ui_prefs_and_the_sync_warning_round_trip() {
     let mut config = Config::default_for(&data);
     config.ui.guide_view = GuideView::Table;
     config.ui.density = Density::Compact;
+    config.ui.theme = Theme::Dark;
+    config.ui.dim_images = true;
     config.ui.sidebar_collapsed = true;
     config.ui.panel_collapsed = true;
     config.ui.panel_open_in_edit = true;
@@ -123,6 +125,30 @@ fn a_config_from_before_ui_prefs_existed_still_loads() {
     let loaded = Config::load(&data).unwrap();
     assert_eq!(loaded.ui.guide_view, GuideView::Cards);
     assert_eq!(loaded.ui.density, Density::Roomy);
+    assert_eq!(loaded.ui.theme, Theme::System);
+    assert!(!loaded.ui.dim_images);
     assert!(loaded.ui.sidebar_width.is_none());
     assert!(loaded.sync_warning_shown_for.is_none());
+}
+
+#[test]
+fn a_theme_written_by_hand_loads() {
+    let tmp = tempdir().unwrap();
+    let data = DataDir {
+        root: tmp.path().to_path_buf(),
+        mode: Mode::Default,
+    };
+    fs::write(
+        data.config_path(),
+        "vault = \"vault\"
+
+[ui]
+theme = \"light\"
+dim_images = true
+",
+    )
+    .unwrap();
+    let loaded = Config::load(&data).unwrap();
+    assert_eq!(loaded.ui.theme, Theme::Light);
+    assert!(loaded.ui.dim_images);
 }

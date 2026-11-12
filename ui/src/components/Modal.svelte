@@ -78,7 +78,7 @@
     position: fixed;
     inset: 0;
     z-index: 20;
-    background: rgb(0 0 0 / 0.35);
+    background: var(--backdrop);
   }
   dialog {
     position: fixed;
@@ -88,7 +88,8 @@
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: var(--bg);
+    background: var(--raised);
+    box-shadow: var(--e3);
     color: var(--fg);
     min-width: min(480px, 90vw);
     max-width: 90vw;

@@ -5,7 +5,15 @@
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import PrefCard from "../components/PrefCard.svelte";
-  import { api, errorMessage, type BackupInfo, type Density, type Media, type MediaSummary } from "../lib/api";
+  import {
+    api,
+    errorMessage,
+    type BackupInfo,
+    type Density,
+    type Media,
+    type MediaSummary,
+    type ThemePref,
+  } from "../lib/api";
   import { formatBytes } from "../lib/media";
   import { navigate } from "../lib/router";
   import { when } from "../lib/format";
@@ -115,6 +123,10 @@
     void savePrefs({ density });
   }
 
+  function setTheme(theme: ThemePref) {
+    void savePrefs({ theme });
+  }
+
   function fileName(path: string): string {
     return path.split(/[\\/]/).pop() ?? path;
   }
@@ -144,6 +156,42 @@
   </svg>
 {/snippet}
 
+<!-- Theme pictures: a small window drawn with the real tokens. Setting color-scheme on a part
+     makes every light-dark() token under it resolve to that scheme, so no color is copied here. -->
+{#snippet miniWindow(scheme: "light" | "dark")}
+  <span class="mini-window" style="color-scheme: {scheme}">
+    <span class="mini-side"></span>
+    <span class="mini-main">
+      <span class="mini-line"></span>
+      <span class="mini-line short"></span>
+    </span>
+  </span>
+{/snippet}
+
+{#snippet themePicture(scheme: "light" | "dark" | "split")}
+  <span class="mini">
+    {#if scheme === "split"}
+      <span class="mini-half left">{@render miniWindow("light")}</span>
+      <span class="mini-half right">{@render miniWindow("dark")}</span>
+    {:else}
+      {@render miniWindow(scheme)}
+    {/if}
+  </span>
+{/snippet}
+
+<!-- A dark window holding a picture; the picture keeps its light colors, as a photo would, and
+     is dimmed when the switch is on. -->
+{#snippet dimPicture(on: boolean)}
+  <span class="mini">
+    <span class="mini-window" style="color-scheme: dark">
+      <span class="mini-photo" class:dimmed={on} style="color-scheme: light">
+        <span class="photo-sun"></span>
+        <span class="photo-ground"></span>
+      </span>
+    </span>
+  </span>
+{/snippet}
+
 {#snippet contentsPicture(hidden: boolean)}
   <svg viewBox="0 0 120 72">
     <rect x="6" y="8" width="18" height="56" rx="2" fill="currentColor" opacity="0.35" />
@@ -167,6 +215,50 @@
   <section id={sectionElementId("appearance")}>
     <h2>Appearance</h2>
     <p class="muted">Each choice shows what it changes. Nothing here touches your data.</p>
+    <div class="group" role="radiogroup" aria-label="Theme">
+      <h3>Theme</h3>
+      <div class="cards">
+        <PrefCard
+          label="System"
+          description="Follows the Windows light or dark setting."
+          role="radio"
+          selected={session.prefs.theme === "system"}
+          onselect={() => setTheme("system")}
+        >
+          {#snippet picture()}{@render themePicture("split")}{/snippet}
+        </PrefCard>
+        <PrefCard
+          label="Light"
+          description="Dark text on a light page."
+          role="radio"
+          selected={session.prefs.theme === "light"}
+          onselect={() => setTheme("light")}
+        >
+          {#snippet picture()}{@render themePicture("light")}{/snippet}
+        </PrefCard>
+        <PrefCard
+          label="Dark"
+          description="Light text on a dark page. Easier on the eyes at night."
+          role="radio"
+          selected={session.prefs.theme === "dark"}
+          onselect={() => setTheme("dark")}
+        >
+          {#snippet picture()}{@render themePicture("dark")}{/snippet}
+        </PrefCard>
+      </div>
+    </div>
+    <div class="group">
+      <div class="cards">
+        <PrefCard
+          label="Dim images in dark"
+          description="Lowers the brightness of your pictures while the dark theme is on. The image viewer is never dimmed."
+          selected={session.prefs.dim_images}
+          onselect={(next) => void savePrefs({ dim_images: next })}
+        >
+          {#snippet picture(on)}{@render dimPicture(on)}{/snippet}
+        </PrefCard>
+      </div>
+    </div>
     <div class="group" role="radiogroup" aria-label="Density">
       <h3>Density</h3>
       <div class="cards">
@@ -375,6 +467,91 @@
   }
   .threshold input {
     width: 6em;
+  }
+  /* Theme and dimming pictures, built from spans so color-scheme decides every token. */
+  .mini {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 8px 6px;
+  }
+  .mini-half {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  /* The two halves join into one window: each shows its own side of it. */
+  .mini-half.left .mini-window {
+    border-right: none;
+    border-radius: 3px 0 0 3px;
+  }
+  .mini-half.right .mini-window {
+    border-left: none;
+    border-radius: 0 3px 3px 0;
+  }
+  .mini-half.right .mini-side {
+    display: none;
+  }
+  .mini-window {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+  }
+  .mini-side {
+    flex: none;
+    width: 22px;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .mini-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 8px;
+  }
+  .mini-line {
+    display: block;
+    height: 3px;
+    border-radius: 1.5px;
+    background: var(--accent);
+  }
+  .mini-line.short {
+    width: 60%;
+  }
+  .mini-photo {
+    position: relative;
+    flex: 1;
+    margin: 8px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--tag-blue);
+  }
+  .mini-photo.dimmed {
+    filter: brightness(0.85);
+  }
+  .photo-sun {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--tag-yellow);
+  }
+  .photo-ground {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 40%;
+    background: var(--tag-green);
   }
   .actions {
     margin-top: var(--space-3);

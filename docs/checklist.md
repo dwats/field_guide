@@ -82,7 +82,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] An entry from another guide added to the board shows only with Other guides on, with a dashed frame and the edge in the accent color; the count in the header says how many are hidden.
 - [ ] Dragging a card moves it and the lines follow; after a restart the card is where it was left. The wheel zooms around the pointer, dragging the background pans, Fit shows every card, and clicking the zoom readout returns to 100%.
 - [ ] A card takes focus: Enter or Space opens the entry, Delete removes the card with Undo in the notice and focus moves to the canvas, arrows nudge it, Escape clears the selection; Tab to a card off the edge pans it into view; with the canvas focused, arrows pan and plus and minus zoom; a second click on a card opens the entry.
-- [ ] Hide panel on the board folds it to a rail and the choice survives a restart, shared with the entry page's panel; the plus button opens the panel if it was folded and puts the caret in its search.
+- [ ] Hide panel on the board folds it to a rail and the choice survives a restart, shared with the entry page's panel; the panel's own fold button opens and closes it, and the header's plus does not.
 - [ ] The selected card shows in the panel with its relations, Open entry, and Remove from board; a card with a gallery shows its first image as the picture, proportions following the image; one without shows the title alone.
 - [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
 - [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.
@@ -139,3 +139,21 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Restore the oldest backup through the in-app confirm dialog; it replaces the vault after taking one more backup; the guides list reflects the restored state.
 - [ ] Notices show one at a time with "1 of n" and Next when several are queued; a warning stays until dismissed; an info notice is replaced by the next one.
 - [ ] "Check for updates" is present and looks disabled.
+
+## Theme
+
+- [ ] Settings, Appearance shows Theme first, with System, Light, and Dark pictured. The pictures show a light, a dark, and a split window in either scheme.
+- [ ] Dark with Windows in light mode: the page, the sidebars, the panel, and the title bar turn dark at once, with no reload.
+- [ ] Restart with Dark saved: no white frame appears before the first paint, and the title bar is dark from the start.
+- [ ] System: switching Windows between light and dark changes the app while it runs.
+- [ ] Light with Windows in dark mode: the app is light, and so is the title bar.
+- [ ] The palette rows "Theme: System", "Theme: Light", and "Theme: Dark" work, and Settings reflects them.
+- [ ] Editor in dark: the caret is visible, the selection is readable, the gutter is dark, links are blue, and markup marks are muted.
+- [ ] An entry using every markdown feature reads in dark; a hidden spoiler is a gray block, not a bright one.
+- [ ] Menus, the palette, and every dialog stand out from the page in dark.
+- [ ] Text fields and selects have an edge that is easy to see in both schemes; buttons have a lighter one; dividers are the faintest.
+- [ ] Board in dark on each of the four backgrounds: cards, five note colors, text and links in notes, polaroids (warm off-white), relation and mention edges, all four string colors including black, pins, and handles.
+- [ ] Image viewer: the stage is black in both schemes and the bottom bar follows the theme.
+- [ ] "Dim images in dark" on: pictures in entries, galleries, covers, and boards are slightly darker in dark and unchanged in light; the image viewer shows them at full brightness.
+- [ ] Check boxes, the crop zoom slider, selects, and the number field look native and dark.
+- [ ] An old `config.toml` without `theme` opens as System with dimming off.

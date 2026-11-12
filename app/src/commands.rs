@@ -51,11 +51,16 @@ pub fn get_prefs(state: S<'_>) -> CmdResult<UiPrefs> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn set_prefs(state: S<'_>, prefs: UiPrefs) -> CmdResult<UiPrefs> {
-    state.with_config(|c| {
+pub fn set_prefs(state: S<'_>, window: tauri::WebviewWindow, prefs: UiPrefs) -> CmdResult<UiPrefs> {
+    let saved = state.with_config(|c| {
         c.ui = prefs;
         (c.ui.clone(), true)
-    })
+    })?;
+    // A title bar color must never block a save.
+    if let Err(e) = crate::theme::apply(&window, saved.theme) {
+        eprintln!("could not apply the window theme: {e}");
+    }
+    Ok(saved)
 }
 
 // ---- guides ----

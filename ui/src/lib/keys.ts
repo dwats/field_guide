@@ -20,7 +20,10 @@ export type Action =
   | "boards"
   | "dismiss-notice"
   | "density-compact"
-  | "density-roomy";
+  | "density-roomy"
+  | "theme-system"
+  | "theme-light"
+  | "theme-dark";
 
 export interface Shortcut {
   action: Action;

@@ -796,7 +796,7 @@
         onfocus={() => focused(key)}
       >
         {#if url}
-          <img src={url} alt="" style:height="{rect.h - FRAME - CAPTION_H}px" draggable="false" />
+          <img class="user-image" src={url} alt="" style:height="{rect.h - FRAME - CAPTION_H}px" draggable="false" />
         {/if}
         <div class="caption">
           <span class="title">{card.entry.title}</span>
@@ -827,7 +827,7 @@
         onkeydown={(event) => itemKeys(event, { kind: "image", id: image.id })}
         onfocus={() => focused(key)}
       >
-        {#if url}<img src={url} alt="" draggable="false" />{/if}
+        {#if url}<img class="user-image" src={url} alt="" draggable="false" />{/if}
       </div>
     {/each}
     {#each notes as item (item.note.id)}
@@ -933,9 +933,6 @@
     background-position: var(--pan-x) var(--pan-y);
     cursor: grab;
     touch-action: none;
-    --card-bg: light-dark(#fdfcf9, #353230);
-    --card-edge: light-dark(#d9d4c7, #4a4641);
-    --twine: light-dark(#8a6d3b, #c9a86a);
   }
   .canvas.tying {
     cursor: crosshair;
@@ -947,14 +944,11 @@
   }
   .bg-grid {
     background-image:
-      linear-gradient(to right, light-dark(#e6e6e6, #2e2e2e) 1px, transparent 1px),
-      linear-gradient(to bottom, light-dark(#e6e6e6, #2e2e2e) 1px, transparent 1px);
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
     background-size: var(--cell) var(--cell);
   }
   .bg-cork {
-    --cork: light-dark(#c9a36b, #4a3a27);
-    --cork-dark: light-dark(rgba(110, 72, 30, 0.45), rgba(0, 0, 0, 0.45));
-    --cork-light: light-dark(rgba(255, 235, 200, 0.5), rgba(160, 120, 70, 0.3));
     background-color: var(--cork);
     background-image:
       radial-gradient(circle at 30% 40%, var(--cork-dark) 0.8px, transparent 1.6px),
@@ -1085,23 +1079,23 @@
     position: absolute;
     box-sizing: border-box;
     color: var(--fg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 3px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.6));
     cursor: grab;
   }
   .card {
     display: flex;
     flex-direction: column;
     padding: 8px;
-    border: 1px solid var(--card-edge);
+    border: 1px solid var(--paper-edge);
     border-radius: 3px;
-    background: var(--card-bg);
+    background: var(--paper);
     user-select: none;
   }
   .card.dragging,
   .note.dragging,
   .photo.dragging {
     cursor: grabbing;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.7));
     z-index: 1;
   }
   .card.selected,
@@ -1138,12 +1132,12 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  /* A polaroid: white in both schemes, a deeper band at the bottom. */
+  /* A polaroid: white in light, off-white in dark, a deeper band at the bottom. */
   .photo {
     padding: 8px 8px 28px;
     border-radius: 2px;
-    background: #ffffff;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    background: var(--photo-paper);
+    box-shadow: 0 1px 4px light-dark(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.6));
     user-select: none;
   }
   .photo img {
@@ -1151,11 +1145,15 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    background: #eeeeee;
+    background: var(--photo-empty);
     pointer-events: none;
   }
   /* The note keeps its stored size; a longer body scrolls inside it. */
   .note {
+    /* Muted text and links on the tinted slips: the page values fall under 4.5:1 on some note
+       colors in dark, so notes carry lighter ones. Light keeps the page values. */
+    --muted: light-dark(#5c5f63, #c2c2c2);
+    --accent: light-dark(#0b57d0, #a8c7fa);
     overflow: hidden;
     border-radius: 2px;
     background: var(--note-yellow);
@@ -1174,7 +1172,7 @@
   }
   .note-white {
     background: var(--note-white);
-    border: 1px solid var(--card-edge);
+    border: 1px solid var(--paper-edge);
   }
   .note.editing {
     cursor: default;
@@ -1247,7 +1245,7 @@
     border-radius: 50%;
     border: 2px solid var(--bg);
     background: var(--accent);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.7));
     cursor: crosshair;
     z-index: 3;
   }
@@ -1264,7 +1262,8 @@
     padding: 4px 10px;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: var(--bg);
+    background: var(--raised);
+    box-shadow: var(--e2);
     font-size: var(--small);
     pointer-events: none;
   }

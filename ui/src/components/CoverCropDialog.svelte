@@ -137,7 +137,7 @@
     overflow: hidden;
     padding: 0;
     min-height: 0;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     background: var(--surface);
     cursor: grab;

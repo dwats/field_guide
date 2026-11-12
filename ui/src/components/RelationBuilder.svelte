@@ -501,7 +501,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--field-border);
     border-radius: 6px;
     background: var(--bg);
   }

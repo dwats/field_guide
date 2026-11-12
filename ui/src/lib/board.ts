@@ -29,7 +29,7 @@ export interface Rect extends Point, Size {}
 
 /** Every card is this wide; the height follows the picture. */
 export const CARD_W = 180;
-/** The white frame around the picture. */
+/** The paper frame around the picture, in pixels. */
 export const FRAME = 8;
 /** The caption band along the bottom edge, bottom frame included. */
 export const CAPTION_H = 36;

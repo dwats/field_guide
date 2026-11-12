@@ -13,7 +13,7 @@
 </script>
 
 <div class="cover-frame">
-  <img {src} {alt} style={cropStyle(crop)} draggable="false" />
+  <img class="user-image" {src} {alt} style={cropStyle(crop)} draggable="false" />
 </div>
 
 <style>
