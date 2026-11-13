@@ -273,7 +273,8 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** todo (decisions 5 to 11 answered (a) on 2026-11-12)
+- **Status:** in progress (plan approved 2026-11-13; decisions 5 to 11 and 17
+  to 20 answered (a); progress is the list at the end of the plan file)
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -308,6 +309,8 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
 - **Notes:** The design's named tests are the starting list for the tests
   AGENTS.md asks for first. `empty_trash` changes its return type, so the UI
   and its tests change in the same batch.
+  - Plan: `.claude/work/trash-boards-guides/plan.md`. It lists what differs
+    from the design, the tests per batch, and a Progress list.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -409,6 +412,10 @@ decision to docs/design.md with its reason, or to Decisions below.
 14. T1, Theme line "Dark with Windows in light mode", marked passed although I listed it as not judged: (a) keep it passed, since Windows was already in light mode; (b) mark it not judged. **Answer:** (a)
 15. T1, Theme line "no white frame at startup", marked passed from captures 30 ms apart: (a) mark it not judged and I check it by eye; (b) accept the pass with the limit as written. **Answer:** a pass; I looked and saw no white frame
 16. Walkthrough scripts refuse to start when no `portable` file sits beside `-Exe`: (a) add it as a small follow-up to T1; (b) Inbox line only. **Answer:** (b)
+17. T2: the plan in `.claude/work/trash-boards-guides/plan.md`: (a) approved; (b) change it. **Answer:** (a)
+18. T2: `add_board_nodes` returning ids and a new `remove_board_nodes`, both in the design: (a) leave them out, since Add all with Undo is already built in the UI; (b) build them. **Answer:** (a)
+19. T2: approval of the core tests: (a) once per core batch, three stops; (b) once for all core tests, one stop. **Answer:** (a)
+20. T2: how a new core test fails first: (a) tests committed with stubs (signatures, fields, error variants; each new function returns an error), so old tests pass and new ones fail when run; (b) tests alone, nothing compiles until the code exists. **Answer:** (a), in the Rust book's way: see Decisions, 2026-11-13
 
 ## Inbox
 
@@ -416,6 +423,10 @@ Anything discovered or thought of mid-task, by either of us. The agent appends
 and keeps working; I triage between tasks.
 
 Format: `- [date] [agent|me] idea or problem — where it came up`
+
+**CI/CD**
+- [2026-11-12] [Eric] Enhancement: Setup CI/CD pipeline through github actions. Should test code, run security audits and if both succeed build releases in parallel if possible for windows, mac and linux. All releases should be bundled into a single github release with notes derived from commits.
+
 
 **Defects** (for a defect pass, run as its own session task)
 
@@ -476,4 +487,6 @@ Format: `- [date] decision — reason`
 - [2026-11-13] The Inbox is grouped (Defects; Questions and unconfirmed guesses; Board enhancements; Walkthrough scripts) — I said to group as the agent sees fit; the agent chose the groups.
 - [2026-11-13] Double click on a board note is a defect, not an enhancement: I tried it fast and slow and it did not open the note. The line moved to Defects — my answer (a).
 - [2026-11-13] The agent's guesses in T1's closing report stand for now: the web link line sits under Defects for triage; the agent's sticker suggestions stay on the icon pins line; the Entries and Boards checklist lines that hold the browser launch and Escape in a note stay unchecked; the four Inbox group names — my answer.
+- [2026-11-13] T2 plan approved (decision 17). `add_board_nodes` and `remove_board_nodes` are left out of T2, because Add all with Undo is already built in the UI (decision 18). Core tests are approved once per core batch (decision 19) — my answers (a).
+- [2026-11-13] A new core test is committed with stubs, the way the Rust book does it (chapter 12.4, listings 12-15 and 12-16, https://doc.rust-lang.org/book/ch12-04-testing-the-librarys-functionality.html): just enough code that the test compiles and does not panic inside the new function, so it fails at its own assertion. A stub returns an empty or unchanged value; it never calls `unimplemented!` or `todo!` — my answer (a) to decision 20, with the page I pointed at. "Fails at its own assertion" is the agent's reading of the page.
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
