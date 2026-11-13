@@ -12,7 +12,9 @@ Which controls the scripts no longer find, and what no script covers yet, is tra
 
 ## The run folder
 
-`run/` is ignored by git. It holds a copy of the app, an empty file named `portable`, and the test vault the scripts expect (a guide with Stone Block, Oak Log, and related entries, boards, and media). With `portable` beside the executable, everything the app writes stays in `run/`, and the real data directory is never touched.
+`run/` is ignored by git. It holds a copy of the app and an empty file named `portable`. With `portable` beside the executable, everything the app writes stays in `run/`, and the real data directory is never touched.
+
+The scripts need no existing data. `drive.ps1` makes a guide named "Minecraft" if there is none; `board.ps1` and `notes.ps1` each make a guide named with the time of the run. An empty `run/` with the app and `portable` is enough to start. The vault in `run/` is what earlier runs left behind, one guide per run.
 
 `run/shots-19b8dae/` holds the screenshots of the last clean runs, at commit 19b8dae.
 

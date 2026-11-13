@@ -28,6 +28,7 @@ core/     Rust crate. Data model, SQLite, relations, search, markdown, export/im
 app/      Tauri 2 crate. Window, menus, single-instance guard, commands that forward to core. Thin.
 ui/       Svelte 5 + TypeScript + Vite. Presentation only.
 docs/     Design and plan. Update them when behavior changes.
+tools/    Walkthrough scripts that drive a release build. Not part of the build or the gates.
 ```
 
 Business rules live in `core`. If a rule can be tested without a window, it belongs there.

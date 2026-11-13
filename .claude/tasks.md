@@ -50,9 +50,10 @@ Things that were only in the conversation.
   `portable`, so the test vault lives beside the exe and never touches the
   real data directory.
 - Where it is now: `tools/walkthrough/run/` in the repository, ignored by
-  git (moved 2026-11-12). It holds a build of ce8a1cc and the test vault
-  the scripts expect (a guide with Stone Block, Oak Log, and related
-  entries, boards, and media). It exists on this machine only.
+  git (moved 2026-11-12). It holds a build of ce8a1cc and the vault that
+  earlier runs left behind (19 guides, one per run). The scripts do not
+  need it: each makes its own guide, so an empty run folder with the app
+  and `portable` is enough.
 - Screenshots of the last clean runs, at 19b8dae, are in
   `tools/walkthrough/run/shots-19b8dae/` (`drive`, `board`, `notes`,
   `paste`).
