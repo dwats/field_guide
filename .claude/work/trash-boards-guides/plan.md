@@ -1,6 +1,6 @@
 # T2 plan: Trash for boards and guides
 
-Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up, is decided and not started. The Progress list at the end says where the work stands.
+Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up: part A is built (e4dc7c8); the tests for parts B, C, and D are written with their stubs, not committed, and wait for the owner's approval (decision 28). The Progress list at the end says where the work stands.
 
 The design is `.claude/work/trash-boards-guides/design.md`. This plan does not repeat it. It says what is built in what order, what differs from the design, and which tests gate each batch.
 
@@ -162,6 +162,8 @@ Part A, decision 24: every page inside a trashed guide says so.
 - Suggested shape: one small component, `ui/src/components/TrashedGuide.svelte`, with the heading, the muted line, and Restore, which calls `api.restoreGuide` and then `touch()`. Each view renders it when its loaded guide has `deleted_at`. Do not decide in `App.svelte` from `session.current` alone: the entry and board routes carry no guide id, and a stale `session.current` would block the next page from loading.
 - Open detail, list under Guesses: what the sidebar column shows on such a page. Suggested: the guides sidebar, since every view has the sidebar column.
 - No Vitest test fits; add one line to `docs/checklist.md` and report it as not judged.
+- Built 2026-11-13 (e4dc7c8). `TrashedGuide.svelte` holds the heading, the muted line, and Restore. The seven views render it when the guide they loaded has `deleted_at`. The Tag editor, Vocabulary, and the entry page do not follow `session.revision`, so they pass `onrestored` and reload themselves. `App.svelte` uses `session.current` for the sidebar column only.
+- Guesses made while building, reported to the owner: the sidebar column shows the guides list's sidebar; the entry page shows the same message as the others (it no longer names the entry or links to `#/trash`); on a board in the Trash inside a guide in the Trash, the guide's message comes first (decision 11); the palette lists no entries of a trashed guide and offers no "create entry" row; New (Mod+N) opens New guide there; the breadcrumbs still name the guide and the page.
 
 Part B, decision 25: the purge dialog names what a guide purge removes from other guides.
 
@@ -182,6 +184,23 @@ Part D, decision 27: two small gaps in core.
 
 - `relation::insert_qualifiers` with `LabelSpec::New` creates a qualifier label without `guide::ensure_guide_live`, so `add_qualifier` and `replace_qualifiers` on a relation of a trashed guide create one. Test first: `a_new_qualifier_label_cannot_be_created_through_a_relation_of_a_trashed_guide`, expecting `Error::InTrash { kind: "guide", .. }`.
 - `verb_usage` counts "in trash" from the ends' own `deleted_at` (`core/src/vocabulary.rs`, near the `coalesce(sum(...))`), so a relation into a trashed guide is counted as in use with no Trash note, and Delete is refused with no reason shown. Use `entry::hidden_sql`. Check `qualifier_label_usage` for the same. Test first: `verb_usage_counts_a_relation_into_a_trashed_guide_as_in_trash`.
+- Checked 2026-11-13: `QualifierLabelUsage` has no "in trash" count at all, for trashed entries or trashed guides, so there is nothing to make consistent there. A stub value (`QualifierValue::Stub`) on a relation of a trashed guide is already refused, through `entry::insert_entry`.
+
+The tests of parts B, C, and D as written 2026-11-13 (not committed; decision 28):
+
+| Test | File | Part | Fails with the stubs at |
+|---|---|---|---|
+| `guide_contents_counts_what_purge_removes_from_other_guides` | `trash.rs` | B | the first struct comparison: both new counts are 0, expected 2 and 3 |
+| `guide_trash_contents_counts_every_trashed_guide_together_and_each_row_once` | `trash.rs` | C | the struct comparison: the stub returns all zeros |
+| `a_new_qualifier_label_cannot_be_created_through_a_relation_of_a_trashed_guide` | `trash.rs` | D | `add_qualifier` returns `Ok`, expected `InTrash` |
+| `verb_usage_counts_a_relation_into_a_trashed_guide_as_in_trash` | `vocabulary.rs` | D | `in_trash` is 0, expected 1 |
+
+The stub layer: `GuideContents` gains `values_in_other_guides` and `strings_on_other_boards`, both set to 0 in `guide_contents`; `guide_trash_contents` returns `GuideContents::default()`. The approved test `guide_contents_counts_what_purge_removes` gains the two fields at 0 in its two struct literals and changes in nothing else (decision 25). Helpers added to `trash.rs`: `note_end`, `tie`.
+
+Build notes for after approval:
+
+- Part D, label: check `guide::ensure_guide_live` only when a label would really be created. A `LabelSpec::New` whose text names a label that already exists is an edit, which core allows by the rule in `docs/design.md` section 3. Report as a guess.
+- Parts B and C, dialog copy, to report as guesses: "N qualifiers on relations in other guides name these entries and are removed." and "N strings tied to those cards go with them." For several guides the empty line reads "The guides are empty."
 
 After Batch 5: every gate, the `reviewer` on the diff from 0286726, the wrap-up of T2 in `.claude/tasks.md` (status, done criteria, the list of not judged checks), commit, push.
 
@@ -249,8 +268,9 @@ The migration is not part of the stub layer. It is code.
 - [x] Batch 4 built, gates pass, reviewer run, committed (2026-11-13, ca94215). Gates: 31 unit, 176 behavior, 176 UI tests, clippy clean, format clean, svelte-check clean.
 - [x] Review findings that needed no decision: fixed and pushed (2026-11-13, 0286726).
 - [x] Decisions 24 to 27 answered (a) (2026-11-13). Decision 24 is recorded in `docs/design.md` section 3.
-- [ ] Batch 5, part A: pages inside a trashed guide (UI)
-- [ ] Batch 5, parts B, C, D: tests with stubs shown, approved, committed
+- [x] Batch 5, part A: pages inside a trashed guide (UI). Built and committed 2026-11-13 (e4dc7c8). svelte-check clean, 176 UI tests pass. Not seen in a window; one unchecked line in `docs/checklist.md`.
+- [x] Batch 5, parts B, C, D: tests with stubs written and shown (2026-11-13). The 4 new tests fail at their own assertions; the 176 other behavior tests and 31 unit tests pass; clippy and format are clean.
+- [ ] Batch 5, parts B, C, D: tests approved (decision 28) and committed
 - [ ] Batch 5, parts B, C, D: built, gates pass, committed
 - [ ] Reviewer run on the diff from 0286726
 - [ ] T2 wrapped up in `.claude/tasks.md`: status, done criteria, not judged checks; pushed

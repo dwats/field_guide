@@ -42,6 +42,11 @@ ce8a1cc, so `tools/walkthrough/run/t1/` holds a build without the Trash for
 boards and guides. For the current head, run `git log --oneline -5`; this
 file cannot name the commit that holds it.
 
+After e4dc7c8 (T2 batch 5, part A, UI only): 176 UI tests, svelte-check
+clean. The working tree also holds the Batch 5 core tests with stubs, not
+committed: with them, 4 new behavior tests fail as intended and 176 pass;
+clippy and format are clean.
+
 T2 is in progress: see its Status and Notes.
 
 ## Carry-over from the long session
@@ -275,9 +280,11 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** in progress. Batches 1 to 4 are built, reviewed, and pushed
-  (2026-11-13). The review follow-up, decisions 24 to 27, is decided and not
-  built: it is "Batch 5" in the plan file, and the next session starts there.
+- **Status:** in progress, waiting on decision 28. Batches 1 to 4 are
+  built, reviewed, and pushed (2026-11-13). Batch 5, the review follow-up:
+  part A (decision 24) is built and committed, e4dc7c8. The core tests for
+  parts B, C, and D (decisions 25 to 27) are written with stubs and are not
+  committed; nothing of B, C, or D is built.
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -330,10 +337,21 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   - `docs/design.md` section 3 already states the rule of decision 24. The
     code does not follow it yet: only the guide page and the entry page of
     a trashed guide say so today.
-  - For the next session: read the plan's "Batch 5" first. Its core parts
-    need tests first, with stubs, shown to me before they are committed
-    (Decisions, 2026-11-13). After Batch 5: all gates, the `reviewer` on
-    the diff from 0286726, this entry, and the list of not judged checks.
+  - Batch 5, part A, built 2026-11-13 (e4dc7c8): one component,
+    `TrashedGuide.svelte`, shown by the seven pages inside a guide when the
+    guide they loaded is in the Trash; no guide sidebar there. UI only.
+    svelte-check clean, 176 UI tests pass. Not seen in a window: one new
+    unchecked line in `docs/checklist.md`, Guides section. Its guesses are
+    in the plan file under Part A.
+  - Batch 5, parts B, C, D: 4 new tests in `core/tests/behavior/trash.rs`
+    and `vocabulary.rs` with a stub layer in `core/src/guide.rs`. They are
+    in the working tree, not committed, until decision 28 is answered. With
+    the stubs the 4 fail at their own assertions and the 176 other behavior
+    tests pass. The plan file lists them and the build notes.
+  - For the next session: read decision 28. If approved: commit the tests,
+    then build parts B, C, and D without editing them (plan, "Batch 5").
+    After Batch 5: all gates, the `reviewer` on the diff from 0286726, this
+    entry, and the list of not judged checks.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -446,6 +464,7 @@ decision to docs/design.md with its reason, or to Decisions below.
 25. T2 review: purging a guide removes two things from other, live guides that the dialog does not name: qualifier values that point at its entries, and strings tied to its cards on other guides' boards: (a) `guide_contents` gains a count for each and the dialog a line for each; the approved test `guide_contents_counts_what_purge_removes` changes to name the two new fields; (b) leave the dialog, and record the gap in `docs/design.md`. **Answer:** (a)
 26. T2 review: Empty trash on the guides list adds up the per-guide counts, so one relation between two trashed guides is counted twice: (a) core counts all trashed guides together in one new function, test first; (b) the dialog lists each guide with its entry count and says everything in them is removed, with no summed counts; (c) keep the sums. **Answer:** (a)
 27. T2 review, two small gaps in core: a new qualifier label can still be created through a relation of a trashed guide (no page reaches it); the Vocabulary page's "in Trash" count ignores relations into a trashed guide, so Delete is refused with no reason shown: (a) a failing test for each, shown to me, then the fix; (b) Inbox lines only. **Answer:** (a)
+28. T2: the Batch 5 tests (4 new tests: 3 in `core/tests/behavior/trash.rs`, 1 in `vocabulary.rs`; the stub layer is two new `GuideContents` fields at 0 and `guide_trash_contents` returning zeros; the approved test `guide_contents_counts_what_purge_removes` gains the two fields at 0 and nothing else; not committed). All 4 fail at their own assertions: (a) approved, commit them and build parts B, C, and D; (b) change them. **Answer:**
 
 ## Inbox
 
