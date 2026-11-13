@@ -25,7 +25,7 @@ use crate::media::inline_media_hashes;
 use crate::relation::{self, QualifierValueView, Relation};
 use crate::slug::SlugSet;
 use crate::tag::{self, TagNode};
-use crate::{EntryId, Error, GuideId, RelationId, Result, TagId, Vault, clock, fsutil};
+use crate::{EntryId, Error, GuideId, RelationId, Result, TagId, Vault, clock, entry, fsutil};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -112,7 +112,7 @@ impl Vault {
                 }
             }
             ExportScope::Guide { id } => {
-                self.get_guide(id)?;
+                self.exportable_guide(id)?;
                 guides.push(GuidePlan {
                     id: id.clone(),
                     entry_ids: self.live_entry_ids(id)?,
@@ -125,6 +125,7 @@ impl Vault {
                 let guide_id = tag.scope_guide_id.ok_or_else(|| {
                     Error::Invalid("a global tag is not an export scope".to_owned())
                 })?;
+                self.exportable_guide(&guide_id)?;
                 let subtree = self.descendant_tag_ids(id)?;
                 let entry_ids = self.live_entries_under(&guide_id, &subtree)?;
                 let mut tag_ids = self.tags_of_entries(&entry_ids)?;
@@ -144,6 +145,7 @@ impl Vault {
                         entry.title
                     )));
                 }
+                self.exportable_guide(&entry.guide_id)?;
                 let tag_ids = self.with_ancestors(entry.tag_ids.iter().cloned().collect())?;
                 guides.push(GuidePlan {
                     id: entry.guide_id,
@@ -162,6 +164,19 @@ impl Vault {
             entry_ids,
             partial,
         })
+    }
+
+    /// A guide in the Trash, and anything inside it, is not an export scope: trashed things stay
+    /// out of every archive (design section 7).
+    fn exportable_guide(&self, id: &GuideId) -> Result<()> {
+        let guide = self.get_guide(id)?;
+        if guide.deleted_at.is_some() {
+            return Err(Error::Invalid(format!(
+                "the guide \"{}\" is in the trash; restore it before exporting",
+                guide.name
+            )));
+        }
+        Ok(())
     }
 
     fn live_entry_ids(&self, guide_id: &GuideId) -> Result<Vec<EntryId>> {
@@ -364,12 +379,13 @@ impl Vault {
                 let mut boards = self.list_boards(&guide.id)?;
                 boards.sort_by(|a, b| a.id.cmp(&b.id));
                 for board in boards {
-                    // Members in the trash are left out, as trashed entries are (design section 7).
+                    // Members in the trash, and members whose guide is, are left out, as
+                    // trashed entries are (design section 7).
                     let nodes = self
                         .board_layout(&board.id)?
                         .into_iter()
                         .filter(|n| {
-                            self.get_entry(&n.entry_id)
+                            relation::load_entry_ref(self.conn(), &n.entry_id)
                                 .map(|e| e.deleted_at.is_none())
                                 .unwrap_or(false)
                         })
@@ -564,20 +580,22 @@ impl Vault {
     }
 
     /// Edges owned by the guide's vocabulary that touch an exported entry, with both endpoints
-    /// live. Edges into the trash are left out entirely.
+    /// live. Edges into the trash, or into a guide that is in the trash, are left out entirely.
     fn relations_to_export(
         &self,
         guide_id: &GuideId,
         exported: &BTreeSet<EntryId>,
     ) -> Result<Vec<Relation>> {
-        let mut stmt = self.conn().prepare(
+        let mut stmt = self.conn().prepare(&format!(
             "SELECT r.id FROM relation r
              JOIN verb v ON v.id = r.verb_id
              JOIN entry s ON s.id = r.subject_entry_id
              JOIN entry o ON o.id = r.object_entry_id
-             WHERE v.guide_id = ?1 AND s.deleted_at IS NULL AND o.deleted_at IS NULL
+             WHERE v.guide_id = ?1 AND NOT {hidden_s} AND NOT {hidden_o}
              ORDER BY r.id",
-        )?;
+            hidden_s = entry::hidden_sql("s"),
+            hidden_o = entry::hidden_sql("o")
+        ))?;
         let ids: Vec<RelationId> = stmt
             .query_map(params![guide_id], |row| row.get(0))?
             .collect::<rusqlite::Result<_>>()?;

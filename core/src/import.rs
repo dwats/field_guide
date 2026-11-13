@@ -22,7 +22,7 @@ use crate::board::{
 };
 use crate::entry;
 use crate::frontmatter;
-use crate::guide::NewGuide;
+use crate::guide::{self, NewGuide};
 use crate::media::{self, NewMedia};
 use crate::names::normalize;
 use crate::relation::{self, LabelSpec, NewQualifier, QualifierValue};
@@ -492,6 +492,13 @@ impl Vault {
         plan: &ImportPlan,
         options: &ImportOptions,
     ) -> Result<ImportReport> {
+        // A guide in the Trash takes no import. Checked before a file is staged or a row is
+        // written.
+        for mapping in &plan.guides {
+            if let GuideTarget::Existing { id } = &mapping.target {
+                guide::ensure_guide_live(self.conn(), id)?;
+            }
+        }
         let mut staging = self.stage_media(archive)?;
         let result = self.atomically(|v| {
             let mut report = ImportReport::default();
@@ -653,6 +660,9 @@ fn reading_direction(local: &Verb, archive_label: &str) -> Direction {
     }
 }
 
+/// The report's reason for an endpoint whose entry is hidden with its guide.
+const IN_TRASHED_GUIDE: &str = "the entry's guide is in the trash";
+
 /// What an archive endpoint became.
 enum Resolved {
     Found(EntryId),
@@ -738,10 +748,12 @@ impl Vault {
         Ok(context)
     }
 
+    /// A guide in the Trash keeps its name, so the free name counts those too.
     fn free_guide_name(&self, wanted: &str) -> Result<String> {
         let taken: Vec<String> = self
             .list_guides(&Default::default())?
             .into_iter()
+            .chain(self.list_trashed_guides()?)
             .map(|g| normalize(&g.name))
             .collect();
         Ok(free_name(wanted, |candidate| {
@@ -1200,7 +1212,8 @@ impl Vault {
     }
 
     /// By id when the entry exists (through the archive's id map first), then by guide name and
-    /// title, then as a stub when asked.
+    /// title, then as a stub when asked. An endpoint that resolves to an entry of a guide in the
+    /// Trash is missing, and no stub stands in for it: the entry is hidden, not gone.
     fn resolve_endpoint(
         &mut self,
         endpoint: &Endpoint,
@@ -1211,18 +1224,34 @@ impl Vault {
     ) -> Result<Resolved> {
         if let Some(id) = &endpoint.id {
             let id = ids.get(id).cloned().unwrap_or_else(|| EntryId(id.clone()));
-            if let Ok(entry) = self.get_entry(&id)
-                && entry.deleted_at.is_none()
-            {
-                return Ok(Resolved::Found(id));
+            if let Ok(entry) = self.get_entry(&id) {
+                if guide::in_trash(self.conn(), &entry.guide_id)? {
+                    return Ok(Resolved::Missing(IN_TRASHED_GUIDE));
+                }
+                if entry.deleted_at.is_none() {
+                    return Ok(Resolved::Found(id));
+                }
             }
         }
         let guide_id = match &endpoint.guide {
-            Some(name) => self
-                .list_guides(&Default::default())?
-                .into_iter()
-                .find(|g| normalize(&g.name) == normalize(name))
-                .map(|g| g.id),
+            Some(name) => {
+                let key = normalize(name);
+                let live = self
+                    .list_guides(&Default::default())?
+                    .into_iter()
+                    .find(|g| normalize(&g.name) == key)
+                    .map(|g| g.id);
+                if live.is_none()
+                    && let Some(trashed) = self
+                        .list_trashed_guides()?
+                        .into_iter()
+                        .find(|g| normalize(&g.name) == key)
+                    && self.lookup_entry(&trashed.id, &endpoint.title)?.is_some()
+                {
+                    return Ok(Resolved::Missing(IN_TRASHED_GUIDE));
+                }
+                live
+            }
             None => Some(context.guide_id.clone()),
         };
         if let Some(guide_id) = &guide_id
@@ -1255,9 +1284,11 @@ impl Vault {
     ) -> Result<()> {
         for file in &ag.boards {
             // A board is identified by its name within the guide: importing again replaces the
-            // saved filters, positions, notes, images, and strings instead of adding a copy.
-            let existing = self
-                .list_boards(&context.guide_id)?
+            // saved filters, positions, notes, images, and strings instead of adding a copy. A
+            // board in the Trash is never matched and never changed.
+            let live = self.list_boards(&context.guide_id)?;
+            let mut taken: Vec<String> = live.iter().map(|b| normalize(&b.name)).collect();
+            let existing = live
                 .into_iter()
                 .find(|b| normalize(&b.name) == normalize(&file.name));
             let board = match existing {
@@ -1281,8 +1312,24 @@ impl Vault {
                     board
                 }
                 None => {
+                    // A board in the Trash keeps its name, so the incoming board takes a free
+                    // one, as an entry whose title is taken does.
+                    taken.extend(
+                        self.list_trashed_boards(&context.guide_id)?
+                            .iter()
+                            .map(|b| normalize(&b.name)),
+                    );
+                    let name = free_name(&file.name, |candidate| {
+                        taken.contains(&normalize(candidate))
+                    });
+                    if name != file.name {
+                        report.boards_renamed.push(RenamedBoard {
+                            from: file.name.clone(),
+                            to: name.clone(),
+                        });
+                    }
                     report.boards_created += 1;
-                    self.create_board(&context.guide_id, &file.name)?
+                    self.create_board(&context.guide_id, &name)?
                 }
             };
             let filters = BoardFilters {

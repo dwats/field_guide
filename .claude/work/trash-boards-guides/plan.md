@@ -210,6 +210,6 @@ The migration is not part of the stub layer. It is code.
 - [x] Batch 2 tests approved and committed (2026-11-13, decision 22). With the stub layer, the 8 new tests fail at their assertions and the 161 other behavior tests pass. The stub layer changes `empty_trash` to return `TrashEmptied`, so `app/src/commands.rs`, `ui/src/lib/api.ts`, and one line of `ui/src/views/TrashView.svelte` are in it.
 - [x] Batch 2 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 169 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
 - [x] Batch 3 tests approved and committed (2026-11-13, decision 23). The stub layer is one report field, `ImportReport.boards_renamed`. 7 new tests fail for the expected reason; `a_guide_with_a_trashed_board_round_trips_without_it` passes already and stays as a pin.
-- [ ] Batch 3 built, gates pass, committed
+- [x] Batch 3 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 177 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
 - [ ] Batch 4 built, gates pass, reviewer run, committed
 - [ ] `.claude/tasks.md` and docs updated
