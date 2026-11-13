@@ -85,7 +85,7 @@
   async function empty() {
     confirming = null;
     try {
-      const n = await api.emptyTrash(guideId);
+      const n = (await api.emptyTrash(guideId)).entries;
       touch();
       await load();
       notify(`Emptied the Trash: ${n} ${n === 1 ? "entry" : "entries"} purged.`);

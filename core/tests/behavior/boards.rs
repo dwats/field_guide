@@ -1,11 +1,14 @@
 use fieldguide_core::Error;
 use fieldguide_core::board::{
-    Background, BoardFilters, BoardImageUpdate, BoardNode, BoardNoteUpdate, BoardStringUpdate,
-    EdgeKind, EndKind, IMAGE_MIN_SIZE, NOTE_DEFAULT_SIZE, NOTE_MIN_SIZE, StringEnd,
+    Background, Board, BoardContents, BoardFilters, BoardImageUpdate, BoardNode, BoardNoteUpdate,
+    BoardStringUpdate, EdgeKind, EndKind, IMAGE_MIN_SIZE, NOTE_DEFAULT_SIZE, NOTE_MIN_SIZE,
+    StringEnd,
 };
 use fieldguide_core::media::MediaDimensions;
 use fieldguide_core::vocabulary::NewVerb;
-use fieldguide_core::{BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, MediaId, Vault};
+use fieldguide_core::{
+    BoardId, BoardImageId, BoardNoteId, BoardStringId, EntryId, GuideId, MediaId, Vault,
+};
 use tempfile::tempdir;
 
 use crate::common::*;
@@ -20,7 +23,7 @@ fn boards_are_named_per_guide_and_keep_their_filters() {
     assert_eq!(crafting.filters, BoardFilters::default());
     assert!(matches!(
         v.create_board(&g, "crafting"),
-        Err(Error::BoardNameTaken(_))
+        Err(Error::BoardNameTaken { .. })
     ));
     assert!(matches!(
         v.create_board(&g, "  "),
@@ -47,7 +50,7 @@ fn boards_are_named_per_guide_and_keep_their_filters() {
     assert_eq!(renamed.filters, filters, "renaming keeps the filters");
     assert!(matches!(
         v.rename_board(&renamed.id, "BIOMES"),
-        Err(Error::BoardNameTaken(_))
+        Err(Error::BoardNameTaken { .. })
     ));
     let names: Vec<String> = v
         .list_boards(&g)
@@ -991,5 +994,371 @@ fn a_trashed_entry_cannot_join_a_board_but_a_placed_one_keeps_its_position() {
         v.add_board_nodes(&board, &[node(&stone, 1.0, 1.0), node(&trashed, 2.0, 2.0)])
             .unwrap(),
         2
+    );
+}
+
+// ---- Boards in the Trash (design section 3) ----
+
+fn board_names(boards: &[Board]) -> Vec<String> {
+    boards.iter().map(|b| b.name.clone()).collect()
+}
+
+/// A board named "Puzzle" in the guide "Minecraft" with two cards, a note with a check box, an
+/// image, and two strings.
+struct Filled {
+    v: Vault,
+    g: GuideId,
+    board: BoardId,
+    stone: EntryId,
+    ore: EntryId,
+    note: BoardNoteId,
+    image: BoardImageId,
+    string: BoardStringId,
+    picture: MediaId,
+}
+
+fn filled() -> Filled {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let stone = entry(&mut v, &g, "Stone", "");
+    let ore = entry(&mut v, &g, "Ore", "");
+    v.add_board_nodes(&board, &[node(&stone, 0.0, 0.0), node(&ore, 300.0, 0.0)])
+        .unwrap();
+    let note = v
+        .create_board_note(&board, "- [ ] find the ore", 0.0, 300.0)
+        .unwrap()
+        .id;
+    let picture = media(&mut v, 0x41);
+    let image = v
+        .create_board_image(&board, &picture, 300.0, 300.0, 200.0, 150.0)
+        .unwrap()
+        .id;
+    let string = v
+        .create_board_string(&board, &card_end(&stone), &note_end(&note), "clue")
+        .unwrap()
+        .id;
+    v.create_board_string(&board, &note_end(&note), &image_end(&image), "")
+        .unwrap();
+    Filled {
+        v,
+        g,
+        board,
+        stone,
+        ore,
+        note,
+        image,
+        string,
+        picture,
+    }
+}
+
+#[test]
+fn a_trashed_board_keeps_notes_images_and_strings_and_restore_returns_them() {
+    let mut f = filled();
+    let map = f.v.create_board(&f.g, "Map").unwrap().id;
+    let before = f.v.board_view(&f.board).unwrap();
+    assert_eq!(f.v.entry_counts(&f.g).unwrap().trashed_boards, 0);
+
+    let trashed = f.v.trash_board(&f.board).unwrap();
+    assert!(trashed.deleted_at.is_some());
+    assert_eq!(board_names(&f.v.list_boards(&f.g).unwrap()), ["Map"]);
+    assert_eq!(
+        board_names(&f.v.list_trashed_boards(&f.g).unwrap()),
+        ["Puzzle"]
+    );
+    assert_eq!(f.v.entry_counts(&f.g).unwrap().trashed_boards, 1);
+
+    // It still answers by id, with everything on it.
+    assert!(f.v.get_board(&f.board).unwrap().deleted_at.is_some());
+    let view = f.v.board_view(&f.board).unwrap();
+    assert!(view.board.deleted_at.is_some());
+    assert_eq!(
+        (
+            view.cards.len(),
+            view.notes.len(),
+            view.images.len(),
+            view.strings.len()
+        ),
+        (2, 1, 1, 2)
+    );
+
+    // Trashing it again changes nothing.
+    fieldguide_core::clock::advance_for_tests(2);
+    assert_eq!(
+        f.v.trash_board(&f.board).unwrap().deleted_at,
+        trashed.deleted_at
+    );
+
+    let restored = f.v.restore_board(&f.board).unwrap();
+    assert!(restored.deleted_at.is_none());
+    assert_eq!(f.v.board_view(&f.board).unwrap(), before);
+    assert_eq!(
+        board_names(&f.v.list_boards(&f.g).unwrap()),
+        ["Map", "Puzzle"]
+    );
+    assert!(f.v.list_trashed_boards(&f.g).unwrap().is_empty());
+    assert_eq!(f.v.entry_counts(&f.g).unwrap().trashed_boards, 0);
+    assert!(matches!(
+        f.v.restore_board(&f.board),
+        Err(Error::NotTrashed { kind: "board" })
+    ));
+    assert!(matches!(
+        f.v.trash_board(&BoardId::generate()),
+        Err(Error::NotFound { .. })
+    ));
+
+    // Purging an entry takes its card off a board in the Trash too.
+    f.v.trash_board(&f.board).unwrap();
+    f.v.trash_entry(&f.ore).unwrap();
+    f.v.purge_entry(&f.ore).unwrap();
+    // The Trash lists the most recently trashed board first.
+    fieldguide_core::clock::advance_for_tests(2);
+    f.v.trash_board(&map).unwrap();
+    assert_eq!(
+        board_names(&f.v.list_trashed_boards(&f.g).unwrap()),
+        ["Map", "Puzzle"]
+    );
+    f.v.restore_board(&f.board).unwrap();
+    let cards: Vec<String> =
+        f.v.board_view(&f.board)
+            .unwrap()
+            .cards
+            .into_iter()
+            .map(|c| c.entry.title)
+            .collect();
+    assert_eq!(cards, ["Stone"]);
+}
+
+#[test]
+fn a_trashed_board_keeps_its_name_in_the_guide_and_purge_frees_it() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let h = guide(&mut v, "Terraria");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let map = v.create_board(&g, "Map").unwrap().id;
+    v.trash_board(&board).unwrap();
+
+    // A new board of the guide cannot take the name, and the error says where its holder is.
+    let err = v.create_board(&g, "puzzle").unwrap_err();
+    match &err {
+        Error::BoardNameTaken { name, in_trash } => {
+            assert_eq!(name, "puzzle");
+            assert!(in_trash, "the holder is in the Trash");
+        }
+        unexpected => panic!("expected BoardNameTaken, got {unexpected:?}"),
+    }
+    assert!(err.to_string().contains("Trash"), "{err}");
+    // Neither can a rename.
+    assert!(matches!(
+        v.rename_board(&map, "PUZZLE"),
+        Err(Error::BoardNameTaken { in_trash: true, .. })
+    ));
+    // A live holder is reported as before, and another guide is free to use the name.
+    assert!(matches!(
+        v.create_board(&g, "map"),
+        Err(Error::BoardNameTaken {
+            in_trash: false,
+            ..
+        })
+    ));
+    v.create_board(&h, "Puzzle").unwrap();
+
+    // Restore meets no taken name; purge frees it.
+    assert_eq!(v.restore_board(&board).unwrap().name, "Puzzle");
+    v.trash_board(&board).unwrap();
+    v.purge_board(&board).unwrap();
+    let fresh = v.create_board(&g, "Puzzle").unwrap().id;
+    assert_ne!(fresh, board);
+}
+
+#[test]
+fn writes_to_a_trashed_board_are_refused() {
+    let mut f = filled();
+    let gravel = entry(&mut f.v, &f.g, "Gravel", "");
+    let before = f.v.board_view(&f.board).unwrap();
+    f.v.trash_board(&f.board).unwrap();
+
+    match f.v.rename_board(&f.board, "Riddle") {
+        Err(Error::InTrash { kind, name }) => {
+            assert_eq!((kind, name.as_str()), ("board", "Puzzle"));
+        }
+        result => panic!("expected InTrash, got {result:?}"),
+    }
+    let refused = |what: &str, result: Result<(), Error>| {
+        assert!(
+            matches!(result, Err(Error::InTrash { kind: "board", .. })),
+            "{what}: {result:?}"
+        );
+    };
+    let shown = BoardFilters {
+        show_external: true,
+        ..BoardFilters::default()
+    };
+    refused(
+        "filters",
+        f.v.set_board_filters(&f.board, &shown).map(|_| ()),
+    );
+    refused(
+        "a new card",
+        f.v.add_board_nodes(&f.board, &[node(&gravel, 9.0, 9.0)])
+            .map(|_| ()),
+    );
+    refused(
+        "a moved card",
+        f.v.set_board_position(&f.board, &f.stone, 5.0, 5.0),
+    );
+    refused(
+        "moved cards",
+        f.v.set_board_positions(&f.board, &[node(&f.ore, 6.0, 6.0)]),
+    );
+    refused("a removed card", f.v.remove_board_node(&f.board, &f.stone));
+    refused(
+        "a new note",
+        f.v.create_board_note(&f.board, "new", 0.0, 0.0).map(|_| ()),
+    );
+    let edited = BoardNoteUpdate {
+        body_md: Some("changed".to_owned()),
+        ..BoardNoteUpdate::default()
+    };
+    refused(
+        "an edited note",
+        f.v.update_board_note(&f.note, &edited).map(|_| ()),
+    );
+    refused(
+        "a ticked check box",
+        f.v.toggle_note_task(&f.note, 0).map(|_| ()),
+    );
+    refused("a deleted note", f.v.delete_board_note(&f.note));
+    refused(
+        "a new image",
+        f.v.create_board_image(&f.board, &f.picture, 0.0, 0.0, 100.0, 100.0)
+            .map(|_| ()),
+    );
+    let moved = BoardImageUpdate {
+        x: Some(1.0),
+        ..BoardImageUpdate::default()
+    };
+    refused(
+        "a moved image",
+        f.v.update_board_image(&f.image, &moved).map(|_| ()),
+    );
+    refused("a deleted image", f.v.delete_board_image(&f.image));
+    refused(
+        "a new string",
+        f.v.create_board_string(&f.board, &card_end(&f.ore), &note_end(&f.note), "")
+            .map(|_| ()),
+    );
+    let relabeled = BoardStringUpdate {
+        label: Some("hint".to_owned()),
+        ..BoardStringUpdate::default()
+    };
+    refused(
+        "a relabeled string",
+        f.v.update_board_string(&f.string, &relabeled).map(|_| ()),
+    );
+    refused("a deleted string", f.v.delete_board_string(&f.string));
+
+    // Nothing was written: the board comes back as it went.
+    f.v.restore_board(&f.board).unwrap();
+    assert_eq!(f.v.board_view(&f.board).unwrap(), before);
+}
+
+#[test]
+fn purging_a_board_requires_the_trash_and_board_contents_counts_what_goes() {
+    let mut f = filled();
+    let other = f.v.create_board(&f.g, "Map").unwrap().id;
+    f.v.add_board_nodes(&other, &[node(&f.stone, 0.0, 0.0)])
+        .unwrap();
+    f.v.create_board_note(&other, "kept", 0.0, 0.0).unwrap();
+    let contents = BoardContents {
+        cards: 2,
+        notes: 1,
+        images: 1,
+        strings: 2,
+    };
+    assert_eq!(f.v.board_contents(&f.board).unwrap(), contents);
+
+    // Purge is a Trash action; a live board must be trashed first.
+    assert!(matches!(
+        f.v.purge_board(&f.board),
+        Err(Error::NotTrashed { kind: "board" })
+    ));
+    assert_eq!(f.v.get_board(&f.board).unwrap().name, "Puzzle");
+
+    // The purge dialog asks about a board in the Trash, and gets the same counts.
+    f.v.trash_board(&f.board).unwrap();
+    assert_eq!(f.v.board_contents(&f.board).unwrap(), contents);
+    f.v.purge_board(&f.board).unwrap();
+    assert!(matches!(
+        f.v.get_board(&f.board),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        f.v.board_contents(&f.board),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        f.v.update_board_note(&f.note, &BoardNoteUpdate::default()),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(matches!(
+        f.v.purge_board(&f.board),
+        Err(Error::NotFound { .. })
+    ));
+    assert!(f.v.list_trashed_boards(&f.g).unwrap().is_empty());
+
+    // The entries, the stored picture, and the guide's other board are untouched.
+    assert_eq!(browse(&f.v, &f.g), ["Ore", "Stone"]);
+    assert!(f.v.get_media(&f.picture).is_ok());
+    assert_eq!(
+        f.v.board_contents(&other).unwrap(),
+        BoardContents {
+            cards: 1,
+            notes: 1,
+            images: 0,
+            strings: 0,
+        }
+    );
+}
+
+#[test]
+fn an_entry_in_a_trashed_guide_cannot_join_a_board() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let h = guide(&mut v, "Terraria");
+    let board = v.create_board(&g, "Overview").unwrap().id;
+    let placed = entry(&mut v, &h, "Copper Ore", "");
+    let bar = entry(&mut v, &h, "Copper Bar", "");
+    v.set_board_position(&board, &placed, 10.0, 20.0).unwrap();
+    v.trash_guide(&h).unwrap();
+
+    // Adding an entry of a guide in the Trash is refused, as adding an entry in the Trash is.
+    assert!(matches!(
+        v.add_board_nodes(&board, &[node(&bar, 0.0, 0.0)]),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        v.set_board_position(&board, &bar, 0.0, 0.0),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(
+        v.board_layout(&board).unwrap().len(),
+        1,
+        "nothing was added"
+    );
+
+    // A card placed before its guide went keeps its position, and a write to it is allowed.
+    v.set_board_position(&board, &placed, 11.0, 21.0).unwrap();
+    assert!(v.board_view(&board).unwrap().cards.is_empty());
+    v.restore_guide(&h).unwrap();
+    let view = v.board_view(&board).unwrap();
+    assert_eq!(view.cards.len(), 1);
+    assert_eq!((view.cards[0].x, view.cards[0].y), (11.0, 21.0));
+
+    // Restored, the refused entry can join.
+    assert_eq!(
+        v.add_board_nodes(&board, &[node(&bar, 0.0, 0.0)]).unwrap(),
+        1
     );
 }

@@ -12,7 +12,9 @@ use fieldguide_core::board::{
     BoardString, BoardStringUpdate, BoardView, StringEnd,
 };
 use fieldguide_core::config::UiPrefs;
-use fieldguide_core::entry::{Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord};
+use fieldguide_core::entry::{
+    Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord, TrashEmptied,
+};
 use fieldguide_core::export::{ExportReport, ExportScope};
 use fieldguide_core::guide::{CoverCrop, Guide, GuideFilter, GuideUpdate, NewGuide};
 use fieldguide_core::import::{
@@ -319,7 +321,7 @@ pub fn entry_counts(state: S<'_>, guide_id: GuideId) -> CmdResult<EntryCounts> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn empty_trash(state: S<'_>, guide_id: GuideId) -> CmdResult<usize> {
+pub fn empty_trash(state: S<'_>, guide_id: GuideId) -> CmdResult<TrashEmptied> {
     state.with_vault(|v| v.empty_trash(&guide_id))
 }
 

@@ -68,7 +68,7 @@ impl From<CoreError> for AppError {
             CoreError::NameTaken { .. } => "name_taken",
             CoreError::GuideNameTaken { .. } => "guide_name_taken",
             CoreError::TagNameTaken(_) => "tag_name_taken",
-            CoreError::BoardNameTaken(_) => "board_name_taken",
+            CoreError::BoardNameTaken { .. } => "board_name_taken",
             CoreError::TagCycle => "tag_cycle",
             CoreError::LabelTaken { .. } => "label_taken",
             CoreError::InUse { .. } => "in_use",

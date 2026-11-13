@@ -144,3 +144,39 @@ fn an_image_used_only_in_a_board_note_is_a_reference() {
     assert!(note_path.exists(), "the note's image stays");
     assert!(v.get_media(&in_note).is_ok());
 }
+
+#[test]
+fn board_images_on_a_trashed_board_are_kept_by_media_cleanup() {
+    use std::collections::HashSet;
+
+    let dir = tempdir().unwrap();
+    let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
+    let g = guide(&mut v, "G");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let placed = stored(&mut v, 1, 10);
+    let in_note = stored(&mut v, 2, 20);
+    v.create_board_image(&board, &placed, 0.0, 0.0, 200.0, 200.0)
+        .unwrap();
+    let sha = v.get_media(&in_note).unwrap().sha256;
+    v.create_board_note(&board, &format!("![clue](media/{sha}.png)"), 0.0, 300.0)
+        .unwrap();
+    assert!(v.unreferenced_media().unwrap().is_empty());
+
+    // In the Trash the board still holds its pictures: cleanup lists nothing and removes nothing.
+    assert!(v.trash_board(&board).unwrap().deleted_at.is_some());
+    assert!(v.unreferenced_media().unwrap().is_empty());
+    let report = v.purge_media(&[placed.clone(), in_note.clone()]).unwrap();
+    assert_eq!(report.removed, 0);
+    let path = v.media_file_path(&v.get_media(&placed).unwrap()).unwrap();
+    assert!(path.exists());
+
+    // Purged, nothing refers to them, and cleanup lists both.
+    v.purge_board(&board).unwrap();
+    let unused: HashSet<MediaId> = v
+        .unreferenced_media()
+        .unwrap()
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    assert_eq!(unused, HashSet::from([placed, in_note]));
+}

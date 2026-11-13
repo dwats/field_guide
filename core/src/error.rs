@@ -100,8 +100,10 @@ pub enum Error {
     #[error("a tag named \"{0}\" already exists at that level")]
     TagNameTaken(String),
 
-    #[error("a board named \"{0}\" already exists in this guide")]
-    BoardNameTaken(String),
+    /// Board names are unique per guide, and a board in the Trash keeps its name until it is
+    /// purged.
+    #[error("a board named \"{name}\" {}", board_holder(.in_trash))]
+    BoardNameTaken { name: String, in_trash: bool },
 
     #[error("a tag cannot be moved or merged into itself or one of its descendants")]
     TagCycle,
@@ -145,6 +147,14 @@ fn held_as(alias: &bool) -> &'static str {
 
 fn in_trash(trashed: &bool) -> &'static str {
     if *trashed { " (in Trash)" } else { "" }
+}
+
+fn board_holder(in_trash: &bool) -> &'static str {
+    if *in_trash {
+        "is in this guide's Trash; restore it or purge it first"
+    } else {
+        "already exists in this guide"
+    }
 }
 
 fn guide_holder(in_trash: &bool) -> &'static str {

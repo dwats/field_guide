@@ -67,6 +67,13 @@ pub struct EntryQuery {
     pub untagged: bool,
 }
 
+/// What emptying a guide's Trash removed for good.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrashEmptied {
+    pub entries: usize,
+    pub boards: usize,
+}
+
 /// A title or alias that starts with what the user typed, for autocomplete.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NameMatch {
@@ -484,12 +491,14 @@ impl Vault {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// Purges every trashed entry in the guide. Returns how many went.
-    pub fn empty_trash(&mut self, guide_id: &GuideId) -> Result<usize> {
-        Ok(self.conn().execute(
+    /// Purges everything in the guide's Trash, entries and boards. Returns how many of each went.
+    pub fn empty_trash(&mut self, guide_id: &GuideId) -> Result<TrashEmptied> {
+        // Stub for the tests of T2 batch 2: boards are not purged yet.
+        let entries = self.conn().execute(
             "DELETE FROM entry WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
             params![guide_id],
-        )?)
+        )?;
+        Ok(TrashEmptied { entries, boards: 0 })
     }
 }
 

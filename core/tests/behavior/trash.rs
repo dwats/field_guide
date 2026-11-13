@@ -1,7 +1,7 @@
 use std::slice::from_ref;
 
 use fieldguide_core::board::{BoardNode, EndKind, StringEnd};
-use fieldguide_core::entry::{EntryQuery, NewEntry};
+use fieldguide_core::entry::{EntryQuery, NewEntry, TrashEmptied};
 use fieldguide_core::guide::{Guide, GuideContents, GuideFilter};
 use fieldguide_core::relation::{CreateRelation, RelationFilter, Target, VerbSpec};
 use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb};
@@ -130,7 +130,13 @@ fn empty_trash_purges_only_the_guides_trashed_entries() {
     v.trash_entry(&b).unwrap();
     v.trash_entry(&other).unwrap();
 
-    assert_eq!(v.empty_trash(&g).unwrap(), 2);
+    assert_eq!(
+        v.empty_trash(&g).unwrap(),
+        TrashEmptied {
+            entries: 2,
+            boards: 0
+        }
+    );
     assert!(v.list_trash(&g).unwrap().is_empty());
     assert_eq!(browse(&v, &g), ["C"]);
     assert_eq!(titles(&v.list_trash(&h).unwrap()), ["A"]);
@@ -842,4 +848,85 @@ fn no_read_of_a_live_guide_returns_anything_from_a_trashed_guide() {
         v.restore_guide(&trashed.guide).unwrap();
         assert_eq!(reads(&v, live, trashed), before);
     }
+}
+
+// ---- Boards in a guide's Trash (design section 3) ----
+
+fn live_boards(v: &Vault, guide_id: &GuideId) -> Vec<String> {
+    v.list_boards(guide_id)
+        .unwrap()
+        .into_iter()
+        .map(|b| b.name)
+        .collect()
+}
+
+fn trashed_boards(v: &Vault, guide_id: &GuideId) -> Vec<String> {
+    v.list_trashed_boards(guide_id)
+        .unwrap()
+        .into_iter()
+        .map(|b| b.name)
+        .collect()
+}
+
+#[test]
+fn empty_trash_purges_trashed_boards_and_entries() {
+    let mut v = vault();
+    let g = guide(&mut v, "G");
+    let h = guide(&mut v, "H");
+    let a = entry(&mut v, &g, "A", "");
+    let b = entry(&mut v, &g, "B", "");
+    entry(&mut v, &g, "C", "");
+    let old = v.create_board(&g, "Old").unwrap().id;
+    v.create_board_note(&old, "kept until purge", 0.0, 0.0)
+        .unwrap();
+    v.create_board(&g, "Keep").unwrap();
+    let other_entry = entry(&mut v, &h, "A", "");
+    let other_board = v.create_board(&h, "Old").unwrap().id;
+    v.trash_entry(&a).unwrap();
+    v.trash_entry(&b).unwrap();
+    v.trash_board(&old).unwrap();
+    v.trash_entry(&other_entry).unwrap();
+    v.trash_board(&other_board).unwrap();
+
+    assert_eq!(
+        v.empty_trash(&g).unwrap(),
+        TrashEmptied {
+            entries: 2,
+            boards: 1
+        }
+    );
+    assert!(v.list_trash(&g).unwrap().is_empty());
+    assert!(trashed_boards(&v, &g).is_empty());
+    assert!(matches!(v.get_board(&old), Err(Error::NotFound { .. })));
+    assert_eq!(browse(&v, &g), ["C"]);
+    assert_eq!(live_boards(&v, &g), ["Keep"]);
+
+    // The other guide's Trash is untouched, and an empty Trash gives nothing up.
+    assert_eq!(titles(&v.list_trash(&h).unwrap()), ["A"]);
+    assert_eq!(trashed_boards(&v, &h), ["Old"]);
+    assert_eq!(v.empty_trash(&g).unwrap(), TrashEmptied::default());
+}
+
+#[test]
+fn restoring_a_board_is_refused_while_its_guide_is_in_the_trash() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    v.trash_board(&board).unwrap();
+    v.trash_guide(&g).unwrap();
+
+    match v.restore_board(&board) {
+        Err(Error::InTrash { kind, name }) => {
+            assert_eq!((kind, name.as_str()), ("guide", "Minecraft"));
+        }
+        result => panic!("expected InTrash, got {result:?}"),
+    }
+    assert!(v.get_board(&board).unwrap().deleted_at.is_some());
+
+    // A board trashed before its guide is still in the Trash when the guide comes back.
+    v.restore_guide(&g).unwrap();
+    assert!(live_boards(&v, &g).is_empty());
+    assert_eq!(trashed_boards(&v, &g), ["Puzzle"]);
+    v.restore_board(&board).unwrap();
+    assert_eq!(live_boards(&v, &g), ["Puzzle"]);
 }

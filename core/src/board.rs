@@ -88,8 +88,21 @@ pub struct Board {
     pub guide_id: GuideId,
     pub name: String,
     pub filters: BoardFilters,
+    /// Set while the board is in the Trash.
+    pub deleted_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// What a board holds, counted by core for the purge dialog. The notes, images, and strings are
+/// removed for good; the cards come off and their entries stay.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardContents {
+    /// Entries placed on the board, those in the Trash included.
+    pub cards: usize,
+    pub notes: usize,
+    pub images: usize,
+    pub strings: usize,
 }
 
 /// An entry's saved position on a board.
@@ -332,6 +345,39 @@ impl Vault {
             return Err(not_found("board", id));
         }
         load_board(self.conn(), id)
+    }
+
+    /// Moves a board to the Trash with everything on it. Trashing a board that is already there
+    /// changes nothing.
+    pub fn trash_board(&mut self, id: &BoardId) -> Result<Board> {
+        // Stub for the tests of T2 batch 2: not built yet.
+        load_board(self.conn(), id)
+    }
+
+    /// Takes a board out of the Trash as it was. Refused while its guide is in the Trash.
+    pub fn restore_board(&mut self, id: &BoardId) -> Result<Board> {
+        // Stub for the tests of T2 batch 2: not built yet.
+        load_board(self.conn(), id)
+    }
+
+    /// Removes a board in the Trash for good, with its notes, images, strings, and positions.
+    /// Entries and stored media are untouched.
+    pub fn purge_board(&mut self, id: &BoardId) -> Result<()> {
+        // Stub for the tests of T2 batch 2: not built yet.
+        load_board(self.conn(), id).map(|_| ())
+    }
+
+    /// A guide's boards in the Trash, the most recently trashed first.
+    pub fn list_trashed_boards(&self, guide_id: &GuideId) -> Result<Vec<Board>> {
+        // Stub for the tests of T2 batch 2: not built yet.
+        guide::ensure_guide_exists(self.conn(), guide_id)?;
+        Ok(Vec::new())
+    }
+
+    /// What the board holds, live or in the Trash: the counts a purge dialog states.
+    pub fn board_contents(&self, id: &BoardId) -> Result<BoardContents> {
+        // Stub for the tests of T2 batch 2: not built yet.
+        load_board(self.conn(), id).map(|_| BoardContents::default())
     }
 
     /// Deletes a board and its positions. Entries are untouched.
@@ -1224,6 +1270,7 @@ fn board_from_raw(raw: RawBoard) -> Result<Board> {
         guide_id: raw.guide_id,
         name: raw.name,
         filters: serde_json::from_str(&raw.filters_json)?,
+        deleted_at: None,
         created_at: raw.created_at,
         updated_at: raw.updated_at,
     })
@@ -1255,7 +1302,10 @@ fn ensure_name_free(
         )
         .optional()?;
     match holder {
-        Some(_) => Err(Error::BoardNameTaken(name.to_owned())),
+        Some(_) => Err(Error::BoardNameTaken {
+            name: name.to_owned(),
+            in_trash: false,
+        }),
         None => Ok(()),
     }
 }

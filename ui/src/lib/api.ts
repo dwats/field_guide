@@ -130,6 +130,12 @@ export interface EntryCounts {
   by_tag: TagCount[];
 }
 
+/** What emptying a guide's Trash removed for good. */
+export interface TrashEmptied {
+  entries: number;
+  boards: number;
+}
+
 // ---- entries ----
 
 export interface Entry {
@@ -595,7 +601,7 @@ export const api = {
   purgeEntry: (id: Id) => invoke<void>("purge_entry", { id }),
   listTrash: (guide_id: Id) => invoke<EntrySummary[]>("list_trash", { guide_id }),
   entryCounts: (guide_id: Id) => invoke<EntryCounts>("entry_counts", { guide_id }),
-  emptyTrash: (guide_id: Id) => invoke<number>("empty_trash", { guide_id }),
+  emptyTrash: (guide_id: Id) => invoke<TrashEmptied>("empty_trash", { guide_id }),
 
   getMedia: (id: Id) => invoke<Media>("get_media", { id }),
   mediaByHash: (sha256: string) => invoke<Media | null>("media_by_hash", { sha256 }),

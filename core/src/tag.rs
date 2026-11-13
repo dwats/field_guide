@@ -42,6 +42,8 @@ pub struct EntryCounts {
     pub total: usize,
     pub untagged: usize,
     pub trashed: usize,
+    /// The guide's boards in the Trash, which the sidebar's Trash count includes.
+    pub trashed_boards: usize,
     pub by_tag: Vec<TagCount>,
 }
 
@@ -287,6 +289,7 @@ impl Vault {
             total,
             untagged,
             trashed,
+            trashed_boards: 0,
             by_tag,
         })
     }

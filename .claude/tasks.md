@@ -417,6 +417,7 @@ decision to docs/design.md with its reason, or to Decisions below.
 19. T2: approval of the core tests: (a) once per core batch, three stops; (b) once for all core tests, one stop. **Answer:** (a)
 20. T2: how a new core test fails first: (a) tests committed with stubs (signatures, fields, error variants; each new function returns an error), so old tests pass and new ones fail when run; (b) tests alone, nothing compiles until the code exists. **Answer:** (a), in the Rust book's way: see Decisions, 2026-11-13
 21. T2: the batch 1 tests (10 new tests in `core/tests/behavior/trash.rs`, `guides.rs`, and `schema.rs`, with the stub layer; not committed): (a) approved, commit them and build batch 1; (b) change them. **Answer:** (a)
+22. T2: the batch 2 tests (8 new tests in `core/tests/behavior/boards.rs`, `trash.rs`, and `media_cleanup.rs`, with the stub layer; not committed): (a) approved, commit them and build batch 2; (b) change them. **Answer:** (a)
 
 ## Inbox
 
@@ -491,4 +492,5 @@ Format: `- [date] decision — reason`
 - [2026-11-13] T2 plan approved (decision 17). `add_board_nodes` and `remove_board_nodes` are left out of T2, because Add all with Undo is already built in the UI (decision 18). Core tests are approved once per core batch (decision 19) — my answers (a).
 - [2026-11-13] A new core test is committed with stubs, the way the Rust book does it (chapter 12.4, listings 12-15 and 12-16, https://doc.rust-lang.org/book/ch12-04-testing-the-librarys-functionality.html): just enough code that the test compiles and does not panic inside the new function, so it fails at its own assertion. A stub returns an empty or unchanged value; it never calls `unimplemented!` or `todo!` — my answer (a) to decision 20, with the page I pointed at. "Fails at its own assertion" is the agent's reading of the page.
 - [2026-11-13] T2: the batch 1 tests are approved as written (decision 21). They are not edited while batch 1 is built; if one looks wrong, the agent stops and asks — my answer (a).
+- [2026-11-13] T2: the batch 2 tests are approved as written (decision 22) — my answer (a).
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
