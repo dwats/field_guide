@@ -308,14 +308,16 @@ impl Vault {
         load_board(self.conn(), &id)
     }
 
+    /// The board, live or in the Trash; `deleted_at` says which.
     pub fn get_board(&self, id: &BoardId) -> Result<Board> {
         load_board(self.conn(), id)
     }
 
-    /// A guide's boards, ordered by name.
+    /// A guide's boards, ordered by name. Boards in the Trash are left out.
     pub fn list_boards(&self, guide_id: &GuideId) -> Result<Vec<Board>> {
         let mut stmt = self.conn().prepare(&format!(
-            "SELECT {COLUMNS} FROM board WHERE guide_id = ?1 ORDER BY name_norm, id"
+            "SELECT {COLUMNS} FROM board WHERE guide_id = ?1 AND deleted_at IS NULL
+             ORDER BY name_norm, id"
         ))?;
         let rows = stmt.query_map(params![guide_id], board_from_row)?;
         rows.map(|row| row.map_err(Error::from).and_then(board_from_raw))
@@ -325,7 +327,7 @@ impl Vault {
     pub fn rename_board(&mut self, id: &BoardId, name: &str) -> Result<Board> {
         let name = names::clean_label("board name", name)?;
         let tx = self.savepoint()?;
-        let board = load_board(&tx, id)?;
+        let board = ensure_board_live(&tx, id)?;
         ensure_name_free(&tx, &board.guide_id, &name, Some(id))?;
         tx.execute(
             "UPDATE board SET name = ?2, name_norm = ?3, updated_at = ?4 WHERE id = ?1",
@@ -337,6 +339,7 @@ impl Vault {
 
     pub fn set_board_filters(&mut self, id: &BoardId, filters: &BoardFilters) -> Result<Board> {
         let json = serde_json::to_string(filters)?;
+        ensure_board_live(self.conn(), id)?;
         let changed = self.conn().execute(
             "UPDATE board SET filters_json = ?2, updated_at = ?3 WHERE id = ?1",
             params![id, json, clock::now()],
@@ -350,34 +353,70 @@ impl Vault {
     /// Moves a board to the Trash with everything on it. Trashing a board that is already there
     /// changes nothing.
     pub fn trash_board(&mut self, id: &BoardId) -> Result<Board> {
-        // Stub for the tests of T2 batch 2: not built yet.
+        self.conn().execute(
+            "UPDATE board SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+            params![id, clock::now()],
+        )?;
         load_board(self.conn(), id)
     }
 
     /// Takes a board out of the Trash as it was. Refused while its guide is in the Trash.
     pub fn restore_board(&mut self, id: &BoardId) -> Result<Board> {
-        // Stub for the tests of T2 batch 2: not built yet.
+        let board = load_board(self.conn(), id)?;
+        if board.deleted_at.is_none() {
+            return Err(Error::NotTrashed { kind: "board" });
+        }
+        // The board is not reachable until its guide is back, so a restore now would look like
+        // a failure.
+        guide::ensure_guide_live(self.conn(), &board.guide_id)?;
+        self.conn().execute(
+            "UPDATE board SET deleted_at = NULL WHERE id = ?1",
+            params![id],
+        )?;
         load_board(self.conn(), id)
     }
 
     /// Removes a board in the Trash for good, with its notes, images, strings, and positions.
     /// Entries and stored media are untouched.
     pub fn purge_board(&mut self, id: &BoardId) -> Result<()> {
-        // Stub for the tests of T2 batch 2: not built yet.
-        load_board(self.conn(), id).map(|_| ())
+        if load_board(self.conn(), id)?.deleted_at.is_none() {
+            return Err(Error::NotTrashed { kind: "board" });
+        }
+        self.conn()
+            .execute("DELETE FROM board WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     /// A guide's boards in the Trash, the most recently trashed first.
     pub fn list_trashed_boards(&self, guide_id: &GuideId) -> Result<Vec<Board>> {
-        // Stub for the tests of T2 batch 2: not built yet.
         guide::ensure_guide_exists(self.conn(), guide_id)?;
-        Ok(Vec::new())
+        let mut stmt = self.conn().prepare(&format!(
+            "SELECT {COLUMNS} FROM board WHERE guide_id = ?1 AND deleted_at IS NOT NULL
+             ORDER BY deleted_at DESC, name_norm, id"
+        ))?;
+        let rows = stmt.query_map(params![guide_id], board_from_row)?;
+        rows.map(|row| row.map_err(Error::from).and_then(board_from_raw))
+            .collect()
     }
 
     /// What the board holds, live or in the Trash: the counts a purge dialog states.
     pub fn board_contents(&self, id: &BoardId) -> Result<BoardContents> {
-        // Stub for the tests of T2 batch 2: not built yet.
-        load_board(self.conn(), id).map(|_| BoardContents::default())
+        let conn = self.conn();
+        load_board(conn, id)?;
+        let count = |table: &str| -> Result<usize> {
+            let n: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM {table} WHERE board_id = ?1"),
+                params![id],
+                |row| row.get(0),
+            )?;
+            Ok(usize::try_from(n).unwrap_or(0))
+        };
+        Ok(BoardContents {
+            cards: count("board_node")?,
+            notes: count("board_note")?,
+            images: count("board_image")?,
+            strings: count("board_string")?,
+        })
     }
 
     /// Deletes a board and its positions. Entries are untouched.
@@ -587,7 +626,7 @@ impl Vault {
     /// were added.
     pub fn add_board_nodes(&mut self, id: &BoardId, nodes: &[BoardNode]) -> Result<usize> {
         let tx = self.savepoint()?;
-        load_board(&tx, id)?;
+        ensure_board_live(&tx, id)?;
         let mut added = 0;
         for node in nodes {
             check_position(node)?;
@@ -651,7 +690,7 @@ impl Vault {
         admit_trashed: bool,
     ) -> Result<()> {
         let tx = self.savepoint()?;
-        load_board(&tx, id)?;
+        ensure_board_live(&tx, id)?;
         for node in nodes {
             check_position(node)?;
             // A member trashed after it was placed keeps its position for restore (design
@@ -682,6 +721,7 @@ impl Vault {
 
     /// Takes an entry off a board. The entry itself is untouched.
     pub fn remove_board_node(&mut self, id: &BoardId, entry_id: &EntryId) -> Result<()> {
+        ensure_board_live(self.conn(), id)?;
         let removed = self.conn().execute(
             "DELETE FROM board_node WHERE board_id = ?1 AND entry_id = ?2",
             params![id, entry_id],
@@ -702,7 +742,7 @@ impl Vault {
     ) -> Result<BoardNote> {
         check_finite(x, y)?;
         let tx = self.savepoint()?;
-        load_board(&tx, board_id)?;
+        ensure_board_live(&tx, board_id)?;
         let now = clock::now();
         let note = BoardNote {
             id: BoardNoteId::generate(),
@@ -729,6 +769,7 @@ impl Vault {
     ) -> Result<BoardNote> {
         let tx = self.savepoint()?;
         let mut note = load_note(&tx, id)?;
+        ensure_board_live(&tx, &note.board_id)?;
         if let Some(body) = &update.body_md {
             note.body_md = body.clone();
         }
@@ -754,6 +795,7 @@ impl Vault {
     pub fn delete_board_note(&mut self, id: &BoardNoteId) -> Result<()> {
         let tx = self.savepoint()?;
         let note = load_note(&tx, id)?;
+        ensure_board_live(&tx, &note.board_id)?;
         tx.execute("DELETE FROM board_note WHERE id = ?1", params![id])?;
         touch_board(&tx, &note.board_id)?;
         tx.commit()?;
@@ -764,6 +806,7 @@ impl Vault {
     pub fn toggle_note_task(&mut self, id: &BoardNoteId, index: usize) -> Result<BoardNote> {
         let tx = self.savepoint()?;
         let mut note = load_note(&tx, id)?;
+        ensure_board_live(&tx, &note.board_id)?;
         note.body_md = markdown::toggle_task(&note.body_md, index).ok_or_else(|| {
             Error::Invalid(format!(
                 "the note has {} check box(es); there is no number {}",
@@ -791,7 +834,7 @@ impl Vault {
         let w = check_size("board image", "width", w, IMAGE_MIN_SIZE)?;
         let h = check_size("board image", "height", h, IMAGE_MIN_SIZE)?;
         let tx = self.savepoint()?;
-        load_board(&tx, board_id)?;
+        ensure_board_live(&tx, board_id)?;
         let media = media::load_media(&tx, media_id)?;
         let image = BoardImage {
             id: BoardImageId::generate(),
@@ -816,6 +859,7 @@ impl Vault {
     ) -> Result<BoardImage> {
         let tx = self.savepoint()?;
         let mut image = load_image(&tx, id)?;
+        ensure_board_live(&tx, &image.board_id)?;
         image.x = update.x.unwrap_or(image.x);
         image.y = update.y.unwrap_or(image.y);
         check_finite(image.x, image.y)?;
@@ -839,6 +883,7 @@ impl Vault {
     pub fn delete_board_image(&mut self, id: &BoardImageId) -> Result<()> {
         let tx = self.savepoint()?;
         let image = load_image(&tx, id)?;
+        ensure_board_live(&tx, &image.board_id)?;
         tx.execute("DELETE FROM board_image WHERE id = ?1", params![id])?;
         touch_board(&tx, &image.board_id)?;
         tx.commit()?;
@@ -860,7 +905,7 @@ impl Vault {
             ));
         }
         let tx = self.savepoint()?;
-        load_board(&tx, board_id)?;
+        ensure_board_live(&tx, board_id)?;
         check_end(&tx, board_id, from)?;
         check_end(&tx, board_id, to)?;
         let string = BoardString {
@@ -885,6 +930,7 @@ impl Vault {
     ) -> Result<BoardString> {
         let tx = self.savepoint()?;
         let mut string = load_string(&tx, id)?;
+        ensure_board_live(&tx, &string.board_id)?;
         if let Some(label) = &update.label {
             string.label = label.trim().to_owned();
         }
@@ -903,6 +949,7 @@ impl Vault {
     pub fn delete_board_string(&mut self, id: &BoardStringId) -> Result<()> {
         let tx = self.savepoint()?;
         let string = load_string(&tx, id)?;
+        ensure_board_live(&tx, &string.board_id)?;
         tx.execute("DELETE FROM board_string WHERE id = ?1", params![id])?;
         touch_board(&tx, &string.board_id)?;
         tx.commit()?;
@@ -1228,8 +1275,9 @@ fn check_position(node: &BoardNode) -> Result<()> {
     check_finite(node.x, node.y)
 }
 
-/// An entry may join a board only while it exists and is out of the trash, as an entry may only
-/// then be the end of a new relation (design section 4).
+/// An entry may join a board only while it exists and is not hidden: out of the trash, in a
+/// guide that is out of the trash. An entry may only then be the end of a new relation too
+/// (design section 4).
 fn check_joinable(conn: &Connection, entry_id: &EntryId) -> Result<()> {
     let entry = entry::load_summary(conn, entry_id)?;
     if entry.deleted_at.is_some() {
@@ -1238,10 +1286,16 @@ fn check_joinable(conn: &Connection, entry_id: &EntryId) -> Result<()> {
             entry.title
         )));
     }
+    if guide::in_trash(conn, &entry.guide_id)? {
+        return Err(Error::Invalid(format!(
+            "the guide of \"{}\" is in the trash; restore the guide first",
+            entry.title
+        )));
+    }
     Ok(())
 }
 
-const COLUMNS: &str = "id, guide_id, name, filters_json, created_at, updated_at";
+const COLUMNS: &str = "id, guide_id, name, filters_json, created_at, updated_at, deleted_at";
 
 /// A board row before its filters are parsed.
 struct RawBoard {
@@ -1251,6 +1305,7 @@ struct RawBoard {
     filters_json: String,
     created_at: String,
     updated_at: String,
+    deleted_at: Option<String>,
 }
 
 fn board_from_row(row: &Row<'_>) -> rusqlite::Result<RawBoard> {
@@ -1261,6 +1316,7 @@ fn board_from_row(row: &Row<'_>) -> rusqlite::Result<RawBoard> {
         filters_json: row.get(3)?,
         created_at: row.get(4)?,
         updated_at: row.get(5)?,
+        deleted_at: row.get(6)?,
     })
 }
 
@@ -1270,7 +1326,7 @@ fn board_from_raw(raw: RawBoard) -> Result<Board> {
         guide_id: raw.guide_id,
         name: raw.name,
         filters: serde_json::from_str(&raw.filters_json)?,
-        deleted_at: None,
+        deleted_at: raw.deleted_at,
         created_at: raw.created_at,
         updated_at: raw.updated_at,
     })
@@ -1288,23 +1344,38 @@ pub(crate) fn load_board(conn: &Connection, id: &BoardId) -> Result<Board> {
     board_from_raw(raw)
 }
 
+/// Every write to a board, or to a note, image, or string on it, needs the board out of the
+/// Trash. Returns the board.
+fn ensure_board_live(conn: &Connection, id: &BoardId) -> Result<Board> {
+    let board = load_board(conn, id)?;
+    if board.deleted_at.is_some() {
+        return Err(Error::InTrash {
+            kind: "board",
+            name: board.name,
+        });
+    }
+    Ok(board)
+}
+
+/// A board in the Trash keeps its name in its guide, so restore never meets a taken one.
 fn ensure_name_free(
     conn: &Connection,
     guide_id: &GuideId,
     name: &str,
     except: Option<&BoardId>,
 ) -> Result<()> {
-    let holder: Option<BoardId> = conn
+    let holder: Option<Option<String>> = conn
         .query_row(
-            "SELECT id FROM board WHERE guide_id = ?1 AND name_norm = ?2 AND id IS NOT ?3",
+            "SELECT deleted_at FROM board
+             WHERE guide_id = ?1 AND name_norm = ?2 AND id IS NOT ?3",
             params![guide_id, normalize(name), except],
             |row| row.get(0),
         )
         .optional()?;
     match holder {
-        Some(_) => Err(Error::BoardNameTaken {
+        Some(deleted_at) => Err(Error::BoardNameTaken {
             name: name.to_owned(),
-            in_trash: false,
+            in_trash: deleted_at.is_some(),
         }),
         None => Ok(()),
     }

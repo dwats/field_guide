@@ -493,12 +493,17 @@ impl Vault {
 
     /// Purges everything in the guide's Trash, entries and boards. Returns how many of each went.
     pub fn empty_trash(&mut self, guide_id: &GuideId) -> Result<TrashEmptied> {
-        // Stub for the tests of T2 batch 2: boards are not purged yet.
-        let entries = self.conn().execute(
+        let tx = self.savepoint()?;
+        let entries = tx.execute(
             "DELETE FROM entry WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
             params![guide_id],
         )?;
-        Ok(TrashEmptied { entries, boards: 0 })
+        let boards = tx.execute(
+            "DELETE FROM board WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
+            params![guide_id],
+        )?;
+        tx.commit()?;
+        Ok(TrashEmptied { entries, boards })
     }
 }
 

@@ -246,7 +246,8 @@ impl Vault {
     }
 
     /// Live entry counts for the sidebar: total, untagged, trashed, and per tag with and without
-    /// its subtree. One pass over the guide's tag assignments, no query per tag.
+    /// its subtree, plus the guide's boards in the Trash. One pass over the guide's tag
+    /// assignments, no query per tag.
     pub fn entry_counts(&self, guide_id: &GuideId) -> Result<EntryCounts> {
         self.get_guide(guide_id)?;
         let conn = self.conn();
@@ -263,6 +264,12 @@ impl Vault {
         let untagged = count(
             "n.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM entry_tag nt WHERE nt.entry_id = n.id)",
         )?;
+        let trashed_boards: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM board WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
+            params![guide_id],
+            |row| row.get(0),
+        )?;
+        let trashed_boards = usize::try_from(trashed_boards).unwrap_or(0);
 
         let mut direct: HashMap<TagId, HashSet<EntryId>> = HashMap::new();
         let mut stmt = conn.prepare(
@@ -289,7 +296,7 @@ impl Vault {
             total,
             untagged,
             trashed,
-            trashed_boards: 0,
+            trashed_boards,
             by_tag,
         })
     }

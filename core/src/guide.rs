@@ -430,6 +430,15 @@ pub(crate) fn ensure_guide_live(conn: &Connection, id: &GuideId) -> Result<()> {
     }
 }
 
+/// Whether the guide is in the Trash. A guide that does not exist is not.
+pub(crate) fn in_trash(conn: &Connection, id: &GuideId) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM guide WHERE id = ?1 AND deleted_at IS NOT NULL)",
+        params![id],
+        |row| row.get(0),
+    )?)
+}
+
 /// A guide in the Trash keeps its name, so restore never meets a taken one.
 fn ensure_name_free(conn: &Connection, name: &str, except: Option<&GuideId>) -> Result<()> {
     let holder: Option<(GuideId, Option<String>)> = conn
