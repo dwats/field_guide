@@ -12,7 +12,6 @@
   import BoardCanvas from "../components/BoardCanvas.svelte";
   import BoardNameDialog from "../components/BoardNameDialog.svelte";
   import BoardPanel from "../components/BoardPanel.svelte";
-  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import Menu from "../components/Menu.svelte";
   import { register } from "../lib/actions";
   import {
@@ -58,7 +57,7 @@
     type Selection,
     type Viewport,
   } from "../lib/board";
-  import { forgetView, recallView, rememberView } from "../lib/boardMemory";
+  import { recallView, rememberView } from "../lib/boardMemory";
   import { onDrop, onPaste, type DropPoint } from "../lib/drop";
   import { ingestFile, ingestPath } from "../lib/ingest";
   import { isImagePath } from "../lib/media";
@@ -97,7 +96,8 @@
   let panel = $state<ReturnType<typeof BoardPanel> | null>(null);
   let renaming = $state(false);
   let creating = $state(false);
-  let confirmingDelete = $state(false);
+  /** The board the route names when it is in the Trash: the page says so and offers Restore. */
+  let trashed = $state<Board | null>(null);
   /** Bumped after a change the panel should reload for. */
   let version = $state(0);
   /** Positions waiting to be written, coalesced so a held arrow key does not write per repeat. */
@@ -195,6 +195,17 @@
         if (!alive || mine !== request) return;
         guide = found;
       }
+      if (data.board.deleted_at) {
+        // A stale route, such as Back after Move to Trash: nothing is drawn and nothing is written.
+        trashed = data.board;
+        board = null;
+        select(null);
+        editingNote = null;
+        setCurrent(guide, null, null);
+        error = "";
+        return;
+      }
+      trashed = null;
       board = data.board;
       cards = data.cards;
       edges = data.edges;
@@ -779,18 +790,40 @@
     navigate({ view: "board", boardId: created.id });
   }
 
-  async function deleteBoard() {
+  /** Reversible, so no confirmation: the notice carries Undo, and Back does not return here. */
+  async function moveToTrash() {
     if (!board || !guide) return;
-    const name = board.name;
+    const { id, name } = board;
     try {
-      await api.deleteBoard(board.id);
-      forgetView(board.id);
-      confirmingDelete = false;
-      notify(`Deleted the board "${name}". Its entries are untouched.`);
+      // Positions still waiting are written first: a board in the Trash refuses every write.
+      await flushPositions();
+      await api.trashBoard(id);
+      touch();
       replace({ view: "boards", guideId: guide.id });
+      notify(`Moved the board "${name}" to Trash.`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await api.restoreBoard(id);
+            touch();
+            navigate({ view: "board", boardId: id });
+          },
+        },
+      });
     } catch (e) {
-      confirmingDelete = false;
       notify(errorMessage(e), { kind: "error" });
+    }
+  }
+
+  /** From the page a stale route shows for a board in the Trash. */
+  async function restoreFromTrash() {
+    if (!trashed) return;
+    try {
+      await api.restoreBoard(trashed.id);
+      touch();
+      await load();
+    } catch (e) {
+      error = errorMessage(e);
     }
   }
 
@@ -895,10 +928,10 @@
               class="danger"
               onclick={() => {
                 close();
-                confirmingDelete = true;
+                void moveToTrash();
               }}
             >
-              Delete board...
+              Move to Trash
             </button>
           {/snippet}
         </Menu>
@@ -965,6 +998,15 @@
           </button>
         </div>
       </div>
+    {:else if trashed}
+      <div class="page">
+        <h1>This board is in the Trash</h1>
+        <p class="muted">
+          "{trashed.name}" keeps its cards, notes, images, and strings until it is restored or purged.
+        </p>
+        <p><button class="primary" onclick={() => void restoreFromTrash()}>Restore</button></p>
+        {#if error}<p class="error">{error}</p>{/if}
+      </div>
     {:else if error}
       <p class="error page">{error}</p>
     {/if}
@@ -1016,14 +1058,6 @@
       confirmLabel="Create"
       onsubmit={createBoard}
       onclose={() => (creating = false)}
-    />
-    <ConfirmDialog
-      open={confirmingDelete}
-      title={`Delete the board "${board.name}"?`}
-      body={["The entries on it stay in the guide. This cannot be undone."]}
-      confirmLabel="Delete board"
-      onconfirm={deleteBoard}
-      oncancel={() => (confirmingDelete = false)}
     />
   {/if}
 </div>

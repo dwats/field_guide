@@ -2,6 +2,8 @@
 
 export type Route =
   | { view: "guides" }
+  /** The Trash of the guides list: guides waiting to be restored or purged. */
+  | { view: "guides-trash" }
   | { view: "guide"; guideId: string }
   | { view: "tags"; guideId: string }
   | { view: "vocabulary"; guideId: string }
@@ -19,6 +21,7 @@ export function parseRoute(hash: string): Route {
   const parts = path.split("/").filter((p) => p.length > 0).map(decodeURIComponent);
   if (parts.length === 0 || parts[0] === "guides") return HOME;
   if (parts[0] === "settings") return { view: "settings" };
+  if (parts[0] === "trash") return { view: "guides-trash" };
   if (parts[0] === "guide" && parts[1]) {
     if (parts[2] === "tags") return { view: "tags", guideId: parts[1] };
     if (parts[2] === "vocabulary") return { view: "vocabulary", guideId: parts[1] };
@@ -35,6 +38,8 @@ export function routeHash(route: Route): string {
   switch (route.view) {
     case "guides":
       return "#/guides";
+    case "guides-trash":
+      return "#/trash";
     case "guide":
       return `#/guide/${encodeURIComponent(route.guideId)}`;
     case "tags":

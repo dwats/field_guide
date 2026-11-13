@@ -188,23 +188,6 @@ fn a_trashed_guide_keeps_its_name_and_purge_frees_it() {
 }
 
 #[test]
-fn deleting_a_guide_removes_its_entries_and_tags_and_nothing_else() {
-    let mut v = vault();
-    let g = guide(&mut v, "Minecraft");
-    let keep = guide(&mut v, "Keep");
-    let t = v.ensure_tag_path(Some(&g), "Blocks").unwrap();
-    let n = entry(&mut v, &g, "Stone", "");
-    let kept = entry(&mut v, &keep, "Stone", "");
-    v.add_entry_tag(&n, &t.id).unwrap();
-    v.delete_guide(&g).unwrap();
-    assert!(matches!(v.get_guide(&g), Err(Error::NotFound { .. })));
-    assert!(matches!(v.get_entry(&n), Err(Error::NotFound { .. })));
-    assert!(matches!(v.get_tag(&t.id), Err(Error::NotFound { .. })));
-    assert_eq!(v.get_entry(&kept).unwrap().title, "Stone");
-    assert!(matches!(v.delete_guide(&g), Err(Error::NotFound { .. })));
-}
-
-#[test]
 fn a_cover_keeps_its_crop_and_loses_it_with_the_cover() {
     let mut v = vault();
     let g = guide(&mut v, "G");

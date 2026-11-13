@@ -517,7 +517,7 @@
               <TreeRow
                 id={ROW_TRASH}
                 name="Trash"
-                count={counts?.trashed ?? 0}
+                count={(counts?.trashed ?? 0) + (counts?.trashed_boards ?? 0)}
                 selected={route.view === "trash"}
                 href={routeHash({ view: "trash", guideId })}
                 tabindex={treeStop === ROW_TRASH ? 0 : -1}

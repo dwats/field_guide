@@ -90,8 +90,31 @@ export interface Guide {
   cover_media_id: Id | null;
   cover_crop: CoverCrop | null;
   tag_ids: Id[];
+  /** Set while the guide is in the Trash. */
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** What a guide holds, counted by core for the purge dialog. */
+export interface GuideContents {
+  /** Entries that are not in the Trash themselves. */
+  entries: number;
+  entries_in_trash: number;
+  tags: number;
+  verbs: number;
+  qualifier_labels: number;
+  /** Relations with at least one end in the guide. */
+  relations: number;
+  /** Of `relations`, those whose other end is in another guide. */
+  relations_with_other_guides: number;
+  /** The guide's boards, those in the Trash included. */
+  boards: number;
+  notes: number;
+  images: number;
+  strings: number;
+  /** Cards of this guide's entries on boards of other guides. */
+  cards_on_other_boards: number;
 }
 
 export interface GuideFilter {
@@ -127,6 +150,8 @@ export interface EntryCounts {
   total: number;
   untagged: number;
   trashed: number;
+  /** The guide's boards in the Trash; the sidebar's Trash count includes them. */
+  trashed_boards: number;
   by_tag: TagCount[];
 }
 
@@ -259,8 +284,18 @@ export interface Board {
   guide_id: Id;
   name: string;
   filters: BoardFilters;
+  /** Set while the board is in the Trash. */
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** What a board holds, counted by core for the purge dialog. */
+export interface BoardContents {
+  cards: number;
+  notes: number;
+  images: number;
+  strings: number;
 }
 
 export interface BoardNode {
@@ -549,7 +584,15 @@ export const api = {
       id,
       update: { name: update.name ?? null, description: update.description ?? null },
     }),
-  deleteGuide: (id: Id) => invoke<void>("delete_guide", { id }),
+  /** Moves the guide to the Trash; `restoreGuide` brings it back as it was. */
+  trashGuide: (id: Id) => invoke<Guide>("trash_guide", { id }),
+  restoreGuide: (id: Id) => invoke<Guide>("restore_guide", { id }),
+  /** Removes a guide in the Trash for good. */
+  purgeGuide: (id: Id) => invoke<void>("purge_guide", { id }),
+  listTrashedGuides: () => invoke<Guide[]>("list_trashed_guides"),
+  /** Purges every guide in the Trash; returns how many went. */
+  emptyGuideTrash: () => invoke<number>("empty_guide_trash"),
+  guideContents: (id: Id) => invoke<GuideContents>("guide_contents", { id }),
   addGuideTag: (id: Id, tag_id: Id) => invoke<Guide>("add_guide_tag", { id, tag_id }),
   removeGuideTag: (id: Id, tag_id: Id) => invoke<Guide>("remove_guide_tag", { id, tag_id }),
 
@@ -628,7 +671,13 @@ export const api = {
   renameBoard: (id: Id, name: string) => invoke<Board>("rename_board", { id, name }),
   setBoardFilters: (id: Id, filters: BoardFilters) =>
     invoke<Board>("set_board_filters", { id, filters }),
-  deleteBoard: (id: Id) => invoke<void>("delete_board", { id }),
+  /** Moves the board to the Trash; `restoreBoard` brings it back as it was. */
+  trashBoard: (id: Id) => invoke<Board>("trash_board", { id }),
+  restoreBoard: (id: Id) => invoke<Board>("restore_board", { id }),
+  /** Removes a board in the Trash for good. */
+  purgeBoard: (id: Id) => invoke<void>("purge_board", { id }),
+  listTrashedBoards: (guide_id: Id) => invoke<Board[]>("list_trashed_boards", { guide_id }),
+  boardContents: (id: Id) => invoke<BoardContents>("board_contents", { id }),
   boardView: (id: Id) => invoke<BoardView>("board_view", { id }),
   /** Puts entries on the board; the ones already there keep their place. Returns how many were added. */
   addBoardNodes: (id: Id, nodes: BoardNode[]) => invoke<number>("add_board_nodes", { id, nodes }),

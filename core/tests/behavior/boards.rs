@@ -60,7 +60,8 @@ fn boards_are_named_per_guide_and_keep_their_filters() {
         .collect();
     assert_eq!(names, ["Biomes", "Recipes"]);
 
-    v.delete_board(&renamed.id).unwrap();
+    v.trash_board(&renamed.id).unwrap();
+    v.purge_board(&renamed.id).unwrap();
     assert!(matches!(
         v.get_board(&renamed.id),
         Err(Error::NotFound { .. })
@@ -136,8 +137,9 @@ fn positions_persist_and_follow_their_entries() {
         Err(Error::Invalid(_))
     ));
 
-    // Deleting the guide removes its boards and positions.
-    v.delete_guide(&g).unwrap();
+    // Purging the guide removes its boards and positions.
+    v.trash_guide(&g).unwrap();
+    v.purge_guide(&g).unwrap();
     assert!(matches!(
         v.board_layout(&board),
         Err(Error::NotFound { .. })
@@ -734,7 +736,8 @@ fn notes_and_strings_go_with_their_board() {
         .create_board_string(&board, &card_end(&stone), &note_end(&note.id), "")
         .unwrap();
 
-    v.delete_board(&board).unwrap();
+    v.trash_board(&board).unwrap();
+    v.purge_board(&board).unwrap();
     assert!(matches!(
         v.toggle_note_task(&note.id, 0),
         Err(Error::NotFound { .. })
@@ -851,7 +854,8 @@ fn images_are_placed_moved_resized_and_deleted_with_their_sizes_checked() {
         "removing an image from a board keeps the stored media"
     );
 
-    v.delete_board(&board).unwrap();
+    v.trash_board(&board).unwrap();
+    v.purge_board(&board).unwrap();
     assert!(matches!(
         v.delete_board_image(&second.id),
         Err(Error::NotFound { .. })

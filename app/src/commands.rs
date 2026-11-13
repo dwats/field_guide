@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 
 use fieldguide_core::backup::{self, BACKUPS_TO_KEEP, BackupInfo};
 use fieldguide_core::board::{
-    Board, BoardFilters, BoardImage, BoardImageUpdate, BoardNode, BoardNote, BoardNoteUpdate,
-    BoardString, BoardStringUpdate, BoardView, StringEnd,
+    Board, BoardContents, BoardFilters, BoardImage, BoardImageUpdate, BoardNode, BoardNote,
+    BoardNoteUpdate, BoardString, BoardStringUpdate, BoardView, StringEnd,
 };
 use fieldguide_core::config::UiPrefs;
 use fieldguide_core::entry::{
     Entry, EntryQuery, EntrySummary, NameMatch, NewEntry, RenameRecord, TrashEmptied,
 };
 use fieldguide_core::export::{ExportReport, ExportScope};
-use fieldguide_core::guide::{CoverCrop, Guide, GuideFilter, GuideUpdate, NewGuide};
+use fieldguide_core::guide::{CoverCrop, Guide, GuideContents, GuideFilter, GuideUpdate, NewGuide};
 use fieldguide_core::import::{
     self, ArchiveSummary, GuideChoice, ImportOptions, ImportPlan, ImportReport,
 };
@@ -104,8 +104,33 @@ pub fn set_guide_cover(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn delete_guide(state: S<'_>, id: GuideId) -> CmdResult<()> {
-    state.with_vault(|v| v.delete_guide(&id))
+pub fn trash_guide(state: S<'_>, id: GuideId) -> CmdResult<Guide> {
+    state.with_vault(|v| v.trash_guide(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn restore_guide(state: S<'_>, id: GuideId) -> CmdResult<Guide> {
+    state.with_vault(|v| v.restore_guide(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn purge_guide(state: S<'_>, id: GuideId) -> CmdResult<()> {
+    state.with_vault(|v| v.purge_guide(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_trashed_guides(state: S<'_>) -> CmdResult<Vec<Guide>> {
+    state.with_vault(|v| v.list_trashed_guides())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn empty_guide_trash(state: S<'_>) -> CmdResult<usize> {
+    state.with_vault(|v| v.empty_guide_trash())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn guide_contents(state: S<'_>, id: GuideId) -> CmdResult<GuideContents> {
+    state.with_vault(|v| v.guide_contents(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -559,8 +584,28 @@ pub fn set_board_filters(state: S<'_>, id: BoardId, filters: BoardFilters) -> Cm
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn delete_board(state: S<'_>, id: BoardId) -> CmdResult<()> {
-    state.with_vault(|v| v.delete_board(&id))
+pub fn trash_board(state: S<'_>, id: BoardId) -> CmdResult<Board> {
+    state.with_vault(|v| v.trash_board(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn restore_board(state: S<'_>, id: BoardId) -> CmdResult<Board> {
+    state.with_vault(|v| v.restore_board(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn purge_board(state: S<'_>, id: BoardId) -> CmdResult<()> {
+    state.with_vault(|v| v.purge_board(&id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_trashed_boards(state: S<'_>, guide_id: GuideId) -> CmdResult<Vec<Board>> {
+    state.with_vault(|v| v.list_trashed_boards(&guide_id))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn board_contents(state: S<'_>, id: BoardId) -> CmdResult<BoardContents> {
+    state.with_vault(|v| v.board_contents(&id))
 }
 
 #[tauri::command(rename_all = "snake_case")]

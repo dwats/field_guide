@@ -94,7 +94,7 @@ describe("scopeLabel and subtreeCount", () => {
     expect(scopeLabel({ kind: "untagged" }, tags)).toBe("Untagged");
     expect(scopeLabel({ kind: "tag", id: "ore" }, tags)).toBe("Blocks/Ore");
     expect(scopeLabel({ kind: "tag", id: "gone" }, tags)).toBe("Tag");
-    const counts = { total: 3, untagged: 1, trashed: 0, by_tag: [{ tag_id: "ore", direct: 1, subtree: 2 }] };
+    const counts = { total: 3, untagged: 1, trashed: 0, trashed_boards: 0, by_tag: [{ tag_id: "ore", direct: 1, subtree: 2 }] };
     expect(subtreeCount(counts, "ore")).toBe(2);
     expect(subtreeCount(counts, "blocks")).toBe(0);
     expect(subtreeCount(null, "ore")).toBe(0);

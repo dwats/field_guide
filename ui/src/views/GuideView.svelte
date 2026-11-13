@@ -9,7 +9,6 @@
   import { BookOpen, ImagePlus, Plus } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
-  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import CoverCropDialog from "../components/CoverCropDialog.svelte";
   import CoverImage from "../components/CoverImage.svelte";
   import EmptyState from "../components/EmptyState.svelte";
@@ -30,7 +29,7 @@
   import { mediaSrc } from "../lib/mediaUrl";
   import { titleFromImages } from "../lib/pasteEntry";
   import { navigate, routeHash } from "../lib/router";
-  import { freshSidebar, notify, session, setCurrent } from "../lib/session.svelte";
+  import { freshSidebar, notify, session, setCurrent, touch } from "../lib/session.svelte";
   import { scopeLabel, summaryLine } from "../lib/sidebar";
   import { colorVar, flattenTags, type TagOption } from "../lib/tags";
 
@@ -70,7 +69,6 @@
         tagsDraft.length !== guide.tag_ids.length ||
         tagsDraft.some((id) => !guide!.tag_ids.includes(id))),
   );
-  let confirmingDelete = $state(false);
 
   /** The sidebar's state once it belongs to this guide. */
   const sidebar = $derived(session.sidebar.guideId === guideId ? session.sidebar : null);
@@ -152,7 +150,9 @@
   /** Opens New entry for images; more images while it is open join the same entry. */
   function startEntry(images: ImageSource[]) {
     // Another dialog or the viewer owns the page; the paste is not for this page then.
-    if (images.length === 0 || editing || cropping || confirmingDelete || viewing) return;
+    if (images.length === 0 || editing || cropping || viewing) return;
+    // A guide in the Trash takes nothing new.
+    if (!guide || guide.deleted_at) return;
     if (pasted) {
       pasted.images = [...pasted.images, ...images];
       return;
@@ -175,7 +175,7 @@
 
   /** Stores the image, makes it the cover, and opens the crop box; Undo puts the old cover back. */
   async function setCover(ingest: () => Promise<Media>) {
-    if (!guide) return;
+    if (!guide || guide.deleted_at) return;
     // The guide is captured: the page may show another one by the time the work, or Undo, lands.
     const id = guide.id;
     const previous = { media: guide.cover_media_id, crop: guide.cover_crop };
@@ -283,14 +283,35 @@
     for (const id of current) if (!ids.includes(id)) guide = await api.removeGuideTag(guide.id, id);
   }
 
-  async function deleteGuide() {
-    confirmingDelete = false;
+  /** Reversible, so no confirmation: the notice carries Undo, which opens the guide again. */
+  async function moveToTrash() {
     if (!guide) return;
-    const name = guide.name;
+    const { id, name } = guide;
     try {
-      await api.deleteGuide(guide.id);
+      await api.trashGuide(id);
+      // No reload here: this page is on its way out, and the guides list loads fresh.
       navigate({ view: "guides" });
-      notify(`Deleted the guide "${name}".`);
+      notify(`Moved the guide "${name}" to Trash.`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await api.restoreGuide(id);
+            touch();
+            navigate({ view: "guide", guideId: id });
+          },
+        },
+      });
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
+  /** From the page a stale route shows for a guide in the Trash. The page reloads through `touch`. */
+  async function restoreFromTrash() {
+    if (!guide) return;
+    try {
+      await api.restoreGuide(guide.id);
+      touch();
     } catch (e) {
       error = errorMessage(e);
     }
@@ -329,8 +350,15 @@
   }
 </script>
 
-<div class="page" class:drop-target={session.dropActive}>
-  {#if guide}
+<div class="page" class:drop-target={session.dropActive && !guide?.deleted_at}>
+  {#if guide?.deleted_at}
+    <h1>This guide is in the Trash</h1>
+    <p class="muted">
+      "{guide.name}" keeps its entries, tags, relations, and boards until it is restored or purged.
+    </p>
+    <p><button class="primary" onclick={() => void restoreFromTrash()}>Restore</button></p>
+    {#if error}<p class="error">{error}</p>{/if}
+  {:else if guide}
     <header class="page-header guide-head">
       <div class="cover-slot" bind:this={coverSlot}>
         {#if coverUrl}
@@ -408,10 +436,10 @@
               class="danger"
               onclick={() => {
                 close();
-                confirmingDelete = true;
+                void moveToTrash();
               }}
             >
-              Delete guide...
+              Move guide to Trash
             </button>
           {/snippet}
         </Menu>
@@ -531,17 +559,6 @@
         <button class="primary" onclick={saveEdit} disabled={!nameDraft.trim()}>Save</button>
       {/snippet}
     </Modal>
-
-    <ConfirmDialog
-      open={confirmingDelete}
-      title={`Delete the guide "${guide.name}"?`}
-      body={[
-        "Every entry, tag, relation, and board in it is removed for good. Export the guide first to keep a copy.",
-      ]}
-      confirmLabel="Delete guide"
-      onconfirm={deleteGuide}
-      oncancel={() => (confirmingDelete = false)}
-    />
 
     {#if cover && coverUrl}
       <CoverCropDialog

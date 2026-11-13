@@ -479,8 +479,9 @@ fn cross_guide_edges_are_external_and_use_the_origin_guides_verb() {
         Err(Error::Invalid(_))
     ));
 
-    // Deleting the other guide takes the edge with it and leaves the verb.
-    v.delete_guide(&h).unwrap();
+    // Purging the other guide takes the edge with it and leaves the verb.
+    v.trash_guide(&h).unwrap();
+    v.purge_guide(&h).unwrap();
     assert!(matches!(
         v.get_relation(&edge.id),
         Err(Error::NotFound { .. })

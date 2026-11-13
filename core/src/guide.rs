@@ -237,8 +237,9 @@ impl Vault {
         load_guide(self.conn(), id)
     }
 
-    /// Removes a guide in the Trash for good, with everything in it. Media rows are vault-scoped
-    /// and stay.
+    /// Removes a guide in the Trash for good, with everything in it: entries, tags, aliases,
+    /// mentions, gallery rows, vocabulary, relations, and boards. Media rows are vault-scoped and
+    /// stay. This is the only way a guide is deleted.
     pub fn purge_guide(&mut self, id: &GuideId) -> Result<()> {
         if load_guide(self.conn(), id)?.deleted_at.is_none() {
             return Err(Error::NotTrashed { kind: "guide" });
@@ -317,18 +318,6 @@ impl Vault {
                  WHERE e.guide_id = ?1 AND b.guide_id != ?1",
             )?,
         })
-    }
-
-    /// Deletes a guide and everything in it: entries, tags, aliases, mentions, gallery rows.
-    /// Media rows are vault-scoped and stay.
-    pub fn delete_guide(&mut self, id: &GuideId) -> Result<()> {
-        let changed = self
-            .conn()
-            .execute("DELETE FROM guide WHERE id = ?1", params![id])?;
-        if changed == 0 {
-            return Err(not_found("guide", id));
-        }
-        Ok(())
     }
 
     /// Applies a global tag to a guide.

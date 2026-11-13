@@ -38,6 +38,7 @@
   import BoardView from "./views/BoardView.svelte";
   import BoardsView from "./views/BoardsView.svelte";
   import EntryView from "./views/EntryView.svelte";
+  import GuideTrashView from "./views/GuideTrashView.svelte";
   import GuideView from "./views/GuideView.svelte";
   import GuidesView from "./views/GuidesView.svelte";
   import SettingsView from "./views/SettingsView.svelte";
@@ -116,6 +117,7 @@
   const crumbs = $derived.by((): Crumb[] => {
     if (route.view === "settings") return [{ text: "Settings" }];
     const out: Crumb[] = [{ text: "Guides", href: routeHash(HOME) }];
+    if (route.view === "guides-trash") return [...out, { text: "Trash" }];
     const guide = session.current.guide;
     if (!inGuide || !guide) return out;
     out.push({ text: guide.name, href: routeHash({ view: "guide", guideId: guide.id }) });
@@ -464,12 +466,14 @@
     {:else if route.view === "settings"}
       <SettingsSidebar />
     {:else}
-      <GuidesSidebar />
+      <GuidesSidebar {route} />
     {/if}
     <div class="content">
       <main tabindex="-1" class:split bind:this={mainEl}>
         {#if route.view === "guides"}
           <GuidesView />
+        {:else if route.view === "guides-trash"}
+          <GuideTrashView />
         {:else if route.view === "guide"}
           <GuideView guideId={route.guideId} />
         {:else if route.view === "tags"}

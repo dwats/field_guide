@@ -377,7 +377,7 @@ impl Vault {
     }
 
     /// Removes a board in the Trash for good, with its notes, images, strings, and positions.
-    /// Entries and stored media are untouched.
+    /// Entries and stored media are untouched. This is the only way a board is deleted.
     pub fn purge_board(&mut self, id: &BoardId) -> Result<()> {
         if load_board(self.conn(), id)?.deleted_at.is_none() {
             return Err(Error::NotTrashed { kind: "board" });
@@ -417,17 +417,6 @@ impl Vault {
             images: count("board_image")?,
             strings: count("board_string")?,
         })
-    }
-
-    /// Deletes a board and its positions. Entries are untouched.
-    pub fn delete_board(&mut self, id: &BoardId) -> Result<()> {
-        let removed = self
-            .conn()
-            .execute("DELETE FROM board WHERE id = ?1", params![id])?;
-        if removed == 0 {
-            return Err(not_found("board", id));
-        }
-        Ok(())
     }
 
     /// Saved positions on a board, ordered by entry id.

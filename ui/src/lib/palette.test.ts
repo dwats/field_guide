@@ -17,8 +17,8 @@ function entry(title: string): EntrySummary {
 }
 
 const guides: Guide[] = [
-  { id: "g", name: "Minecraft", description: "", cover_media_id: null, cover_crop: null, tag_ids: [], created_at: "", updated_at: "" },
-  { id: "h", name: "Valheim", description: "", cover_media_id: null, cover_crop: null, tag_ids: [], created_at: "", updated_at: "" },
+  { id: "g", name: "Minecraft", description: "", cover_media_id: null, cover_crop: null, tag_ids: [], deleted_at: null, created_at: "", updated_at: "" },
+  { id: "h", name: "Valheim", description: "", cover_media_id: null, cover_crop: null, tag_ids: [], deleted_at: null, created_at: "", updated_at: "" },
 ];
 const commands = [
   { action: "new" as const, label: "New entry" },

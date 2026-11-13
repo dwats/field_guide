@@ -451,7 +451,11 @@
     bind:this={content}
   >
     <div class="page">
-      {#if entry && guide}
+      {#if entry && guide?.deleted_at}
+        <h1>This entry's guide is in the Trash</h1>
+        <p class="muted">Restore the guide "{guide.name}" to open "{entry.title}" again.</p>
+        <p><a href={routeHash({ view: "guides-trash" })}>Open Trash</a></p>
+      {:else if entry && guide}
         <header class="entry-head">
           <h1 class="entry-title">{entry.title}</h1>
           <div class="toolbar">
@@ -639,7 +643,7 @@
       {/if}
     </div>
   </div>
-  {#if entry && guide}
+  {#if entry && guide && !guide.deleted_at}
     <EntryPanel
       bind:this={panel}
       {entry}

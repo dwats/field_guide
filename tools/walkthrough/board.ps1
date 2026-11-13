@@ -502,7 +502,7 @@ foreach ($background in @("Grid", "Cork", "Blank", "Dots")) {
   Shot ("b2-background-" + $background.ToLower())
 }
 
-# 10. Rename from More; Delete board asks first and the script answers Cancel.
+# 10. Rename from More; Move to Trash does not ask, and Undo in the notice opens the board again.
 OpenMenu "More"
 Shot "b30-board-menu"
 Click (MenuItem "Rename board...")
@@ -514,10 +514,12 @@ Click (Find $win "Rename" $CT::Button)
 Start-Sleep -Seconds 1
 Shot "b31-renamed"
 OpenMenu "More"
-Click (MenuItem "Delete board...")
-Start-Sleep -Milliseconds 600
-Shot "b32-confirm-delete-board"
-Click (Find $win "Cancel" $CT::Button)
+Click (MenuItem "Move to Trash")
+Start-Sleep -Seconds 1
+Shot "b32-board-moved-to-trash"
+Click (Find $win "Undo" $CT::Button)
+Start-Sleep -Seconds 2
+Shot "b32b-board-restored"
 
 # 11. Leave and come back: membership, positions, pan, and zoom are restored.
 Click (Find $win "Boards" $CT::Hyperlink)

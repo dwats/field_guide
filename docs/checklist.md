@@ -34,8 +34,11 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] The sidebar collapses to a rail and expands again; the width and the splitter position survive a restart.
 - [ ] Trash lists trashed entries with their deletion time and tags; Restore puts one back with its tags and relations and offers Undo; Purge and Empty trash ask first.
 - [ ] In Trash, Enter restores the focused row and Delete asks before deleting it for good, with focus on Cancel.
+- [ ] A guide's Trash lists trashed boards under the entries, with their deletion time and what they hold; Restore puts a board back with its cards, notes, images, and strings and offers Undo; Purge names the notes, images, strings, and cards; Empty trash names the entries and the boards; the sidebar's Trash count includes trashed boards.
+- [ ] The guides list's sidebar has a Trash row at the bottom with the number of trashed guides; the page lists them with their deletion time and entry count; Restore puts a guide back and offers Undo; Purge and Empty trash ask first, state the counts, and start with focus on Cancel; Enter restores the focused row and Delete asks.
 - [ ] Breadcrumbs in the top bar read Guides / guide / page; Back and Forward work.
-- [ ] Edit guide opens a modal; Delete guide asks first.
+- [ ] Edit guide opens a modal.
+- [ ] More, Move guide to Trash moves the guide without a confirmation, returns to the guides list, and offers Undo, which opens the guide again; the guide is gone from the list, the palette, and New guide's vocabulary list; its entries are gone from the relation lists and boards of other guides and come back on restore; a new guide with its name is refused with a message that names the Trash; Back to its page shows "This guide is in the Trash" with Restore.
 
 ## Right panel
 
@@ -91,7 +94,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] The selected card's panel has Entry and Relations tabs; typing a relation in the panel draws its line on the board at once; Ctrl+R puts the caret in the relation line; Ctrl+F puts it in the picker's search.
 - [ ] The selected card shows in the panel with its relations, Open entry, and Remove from board; a card with a gallery shows its first image as the picture, proportions following the image; one without shows the title alone.
 - [ ] Trashing a member entry takes its card and lines off the board; restoring brings them back in place.
-- [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Delete board (asks first) work from More on the board page and from the list.
+- [ ] The picker's search line, chips, and Stubs only come back when the board is reopened; Rename board and Move to Trash work from More on the board page and from the list; Move to Trash does not ask, and the notice offers Undo, which opens the board again with everything on it; a new board with the trashed name is refused with a message that names the Trash; Back to the board's page shows "This board is in the Trash" with Restore.
 - [ ] Export and import a guide with a board: the board, its filters, the card positions, the notes, the strings, and the background survive the round trip.
 - [ ] The header's plus makes a square note at the middle of the window and opens it for editing; typing markdown with a task list and clicking elsewhere saves and shows the rendered note; Escape saves too and focus returns to the note; double-click edits again; clicking a check box flips it and the change survives a reload; the panel's color swatches recolor the note; Delete removes it with Undo.
 - [ ] A note resizes from its corners on both axes and from its edges on one; Shift on a corner keeps the proportions; the size survives a reload; long content scrolls inside the note.

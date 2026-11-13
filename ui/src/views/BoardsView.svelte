@@ -1,17 +1,17 @@
 <script lang="ts">
-  // The guide's boards (design section 6): the list, New board, and Rename or Delete per row.
+  // The guide's boards (design section 6): the list, New board, and Rename or Move to Trash per
+  // row. Moving a board to Trash can be reversed, so it does not ask: the notice carries Undo.
   // The header and the empty state follow the shared page rules (UI review 15 and 16).
   import { Pin, Plus } from "@lucide/svelte";
   import { untrack } from "svelte";
 
   import BoardNameDialog from "../components/BoardNameDialog.svelte";
-  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import EmptyState from "../components/EmptyState.svelte";
   import Menu from "../components/Menu.svelte";
   import { api, errorMessage, type Board, type Guide } from "../lib/api";
   import { when } from "../lib/format";
   import { navigate, routeHash } from "../lib/router";
-  import { notify, session, setCurrent } from "../lib/session.svelte";
+  import { notify, session, setCurrent, touch } from "../lib/session.svelte";
 
   interface Props {
     guideId: string;
@@ -23,7 +23,6 @@
   let error = $state("");
   let creating = $state(false);
   let renaming = $state<Board | null>(null);
-  let deleting = $state<Board | null>(null);
 
   $effect(() => {
     void guideId;
@@ -55,17 +54,23 @@
     await load();
   }
 
-  async function remove() {
-    if (!deleting) return;
-    const name = deleting.name;
+  /** The list reloads through `touch`, here and when Undo runs from another page. */
+  async function moveToTrash(board: Board) {
     try {
-      await api.deleteBoard(deleting.id);
-      notify(`Deleted the board "${name}". Its entries are untouched.`);
+      await api.trashBoard(board.id);
+      touch();
+      notify(`Moved the board "${board.name}" to Trash.`, {
+        action: {
+          label: "Undo",
+          run: async () => {
+            await api.restoreBoard(board.id);
+            touch();
+          },
+        },
+      });
     } catch (e) {
       notify(errorMessage(e), { kind: "error" });
     }
-    deleting = null;
-    await load();
   }
 </script>
 
@@ -120,12 +125,13 @@
                     </button>
                     <button
                       role="menuitem"
+                      class="danger"
                       onclick={() => {
                         close();
-                        deleting = board;
+                        void moveToTrash(board);
                       }}
                     >
-                      Delete...
+                      Move to Trash
                     </button>
                   {/snippet}
                 </Menu>
@@ -154,14 +160,6 @@
   confirmLabel="Rename"
   onsubmit={rename}
   onclose={() => (renaming = null)}
-/>
-<ConfirmDialog
-  open={deleting !== null}
-  title={`Delete the board "${deleting?.name ?? ""}"?`}
-  body={["The entries on it stay in the guide. This cannot be undone."]}
-  confirmLabel="Delete board"
-  onconfirm={remove}
-  oncancel={() => (deleting = null)}
 />
 
 <style>

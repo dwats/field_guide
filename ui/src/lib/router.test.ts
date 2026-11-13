@@ -20,9 +20,17 @@ describe("parseRoute", () => {
     expect(parseRoute("#/settings")).toEqual({ view: "settings" });
   });
 
+  it("reads the guides' Trash apart from a guide's Trash", () => {
+    expect(parseRoute("#/trash")).toEqual({ view: "guides-trash" });
+    expect(parseRoute("#/trash/")).toEqual({ view: "guides-trash" });
+    expect(routeHash({ view: "guides-trash" })).toBe("#/trash");
+    expect(parseRoute("#/guide/abc/trash")).toEqual({ view: "trash", guideId: "abc" });
+  });
+
   it("round-trips every route through routeHash", () => {
     const routes: Route[] = [
       HOME,
+      { view: "guides-trash" },
       { view: "guide", guideId: "g 1" },
       { view: "tags", guideId: "g/2" },
       { view: "vocabulary", guideId: "g/3" },
