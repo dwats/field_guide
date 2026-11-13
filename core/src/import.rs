@@ -341,11 +341,19 @@ pub struct ImportReport {
     pub boards_created: usize,
     /// Boards that already existed under the same name and had filters and positions replaced.
     pub boards_updated: usize,
+    /// Boards created under another name, because a board in the Trash holds theirs.
+    pub boards_renamed: Vec<RenamedBoard>,
     pub media_added: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenamedEntry {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenamedBoard {
     pub from: String,
     pub to: String,
 }

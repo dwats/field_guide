@@ -199,6 +199,8 @@ The migration is not part of the stub layer. It is code.
 
 - The leak test reads lists, searches, and drawings. It leaves out reads by id of a thing itself (`get_guide`, `get_entry`, `get_relation`) and the raw saved positions (`board_layout`); they answer for a thing in the Trash on purpose. Its fixture ties no string to a card from the other guide: `board_view` returns every string and the page leaves out those whose card is hidden, as it does today for a trashed member.
 - The test `restoring_a_guide_is_refused...` for decision 11 is in batch 2, where `restore_board` is.
+- Batch 3: a second import of the same archive, while a board in the Trash still holds the name, makes one more board, "Name (imported 2)". Matching a renamed board on a later import is part of decision 12 and out of scope.
+- Batch 3: an endpoint that resolves to an entry in a trashed guide is reported with a reason that names the Trash, whether or not stubs were asked for. An endpoint whose own entry is in the Trash keeps today's rule.
 
 ## Progress
 
@@ -207,7 +209,7 @@ The migration is not part of the stub layer. It is code.
 - [x] Batch 1 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 161 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean. `check_joinable` is not extended yet; its test is in batch 2.
 - [x] Batch 2 tests approved and committed (2026-11-13, decision 22). With the stub layer, the 8 new tests fail at their assertions and the 161 other behavior tests pass. The stub layer changes `empty_trash` to return `TrashEmptied`, so `app/src/commands.rs`, `ui/src/lib/api.ts`, and one line of `ui/src/views/TrashView.svelte` are in it.
 - [x] Batch 2 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 169 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
-- [ ] Batch 3 tests approved and committed
+- [x] Batch 3 tests approved and committed (2026-11-13, decision 23). The stub layer is one report field, `ImportReport.boards_renamed`. 7 new tests fail for the expected reason; `a_guide_with_a_trashed_board_round_trips_without_it` passes already and stays as a pin.
 - [ ] Batch 3 built, gates pass, committed
 - [ ] Batch 4 built, gates pass, reviewer run, committed
 - [ ] `.claude/tasks.md` and docs updated

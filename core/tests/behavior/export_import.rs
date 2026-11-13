@@ -10,7 +10,7 @@ use fieldguide_core::guide::CoverCrop;
 use fieldguide_core::guide::GuideFilter;
 use fieldguide_core::guide::GuideUpdate;
 use fieldguide_core::import::{
-    self, GuideChoice, GuideTarget, ImportOptions, ImportReport, MappingChoice,
+    self, GuideChoice, GuideTarget, ImportOptions, ImportReport, MappingChoice, RenamedBoard,
 };
 use fieldguide_core::media::MediaDimensions;
 use fieldguide_core::relation::{Perspective, RelationFilter};
@@ -1681,4 +1681,479 @@ fn importing_a_board_keeps_the_position_of_an_entry_the_vault_holds_in_the_trash
     let layout = target.board_layout(&board_id).unwrap();
     assert_eq!(layout.len(), 1);
     assert_eq!((layout[0].x, layout[0].y), (30.0, 40.0));
+}
+
+// ---- The Trash for boards and guides in archives (design sections 7 and 8) ----
+
+/// Adds a guide "Starbound" that Minecraft reaches into: an edge from Stone Block to its entry
+/// "Erchius Fuel", and that entry as a qualifier value on a new edge inside Minecraft. Returns
+/// the guide, the entry, and what an archive would show of them: names, slugs, and ids.
+fn neighbor(f: &mut Fixture) -> (GuideId, EntryId, Vec<String>) {
+    let starbound = guide(&mut f.v, "Starbound");
+    let fuel = entry(&mut f.v, &starbound, "Erchius Fuel", "From the moon.");
+    let drops =
+        f.v.list_verbs(&f.mc)
+            .unwrap()
+            .into_iter()
+            .find(|verb| verb.label == "DROPS")
+            .unwrap()
+            .id;
+    let mined =
+        f.v.list_qualifier_labels(&f.mc)
+            .unwrap()
+            .into_iter()
+            .find(|label| label.label == "mined with")
+            .unwrap()
+            .id;
+    relate(&mut f.v, &f.stone, &drops, &fuel);
+    relate_with(
+        &mut f.v,
+        &f.cobble,
+        &drops,
+        &f.stone,
+        vec![q_entry(&mined, &fuel)],
+    );
+    let marks = vec![
+        "Starbound".to_owned(),
+        "starbound".to_owned(),
+        "Erchius Fuel".to_owned(),
+        "erchius-fuel".to_owned(),
+        starbound.0.clone(),
+        fuel.0.clone(),
+    ];
+    (starbound, fuel, marks)
+}
+
+/// The archive's files, media aside, whose name or text shows any of the marks.
+fn holders(archive: &Path, marks: &[String]) -> Vec<String> {
+    entries(archive)
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with("media/"))
+        .filter(|(name, bytes)| {
+            let text = String::from_utf8_lossy(bytes);
+            marks
+                .iter()
+                .any(|mark| name.contains(mark.as_str()) || text.contains(mark.as_str()))
+        })
+        .map(|(name, _)| name)
+        .collect()
+}
+
+fn guide_names(v: &Vault) -> Vec<String> {
+    v.list_guides(&GuideFilter::default())
+        .unwrap()
+        .into_iter()
+        .map(|g| g.name)
+        .collect()
+}
+
+fn board_names(boards: Vec<fieldguide_core::board::Board>) -> Vec<String> {
+    boards.into_iter().map(|b| b.name).collect()
+}
+
+#[test]
+fn a_vault_export_leaves_out_trashed_guides_and_boards() {
+    let mut f = fixture();
+    let (starbound, _, mut marks) = neighbor(&mut f);
+    f.v.trash_guide(&starbound).unwrap();
+    let old = f.v.create_board(&f.mc, "Old Plans").unwrap().id;
+    f.v.create_board_note(&old, "an old plan", 0.0, 0.0)
+        .unwrap();
+    f.v.trash_board(&old).unwrap();
+    marks.extend([
+        "Old Plans".to_owned(),
+        "old-plans".to_owned(),
+        "an old plan".to_owned(),
+        old.0.clone(),
+    ]);
+
+    let archive = export_to(&f.v, &ExportScope::Vault, f.dir.path(), "vault.zip");
+    assert_eq!(
+        holders(&archive, &marks),
+        Vec::<String>::new(),
+        "archive files that show something of the Trash"
+    );
+
+    // The round trip gives back the live set, and nothing in it is left unresolved.
+    let (_dir, mut target) = empty_vault();
+    let report = import_all(&mut target, &archive, &[], &ImportOptions::default());
+    assert_eq!(report.guides_created, ["Minecraft", "Terraria"]);
+    assert!(
+        report.relations_unresolved.is_empty(),
+        "{:?}",
+        report.relations_unresolved
+    );
+    assert_eq!(report.boards_created, 1);
+    assert_eq!(snapshot(&target), snapshot(&f.v));
+}
+
+#[test]
+fn a_guide_with_a_trashed_board_round_trips_without_it() {
+    let mut f = fixture();
+    let old = f.v.create_board(&f.mc, "Old Plans").unwrap().id;
+    f.v.create_board_note(&old, "an old plan", 0.0, 0.0)
+        .unwrap();
+    f.v.set_board_positions(
+        &old,
+        &[BoardNode {
+            entry_id: f.stone.clone(),
+            x: 5.0,
+            y: 5.0,
+        }],
+    )
+    .unwrap();
+    f.v.trash_board(&old).unwrap();
+
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+    let (_dir, mut target) = empty_vault();
+    let report = import_all(&mut target, &archive, &[], &ImportOptions::default());
+    assert_eq!(report.boards_created, 1);
+    let local = target.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    assert_eq!(
+        board_names(target.list_boards(&local).unwrap()),
+        ["Overview"]
+    );
+    assert!(target.list_trashed_boards(&local).unwrap().is_empty());
+    assert_eq!(
+        snapshot_guide(&target, &local, false),
+        snapshot_guide(&f.v, &f.mc, false)
+    );
+}
+
+#[test]
+fn an_edge_into_a_trashed_guide_is_not_exported() {
+    let mut f = fixture();
+    let (starbound, fuel, marks) = neighbor(&mut f);
+    let board = f.v.list_boards(&f.mc).unwrap()[0].id.clone();
+    f.v.set_board_positions(
+        &board,
+        &[BoardNode {
+            entry_id: fuel.clone(),
+            x: 9.0,
+            y: 9.0,
+        }],
+    )
+    .unwrap();
+    f.v.create_board_string(&board, &card(&fuel), &card(&f.stone), "")
+        .unwrap();
+    let scope = ExportScope::Guide { id: f.mc.clone() };
+
+    // While Starbound is live, the archive names its entry as an end of two relations and as a
+    // card on the board.
+    let live = export_to(&f.v, &scope, f.dir.path(), "live.zip");
+    assert_eq!(
+        holders(&live, &marks),
+        [
+            "guides/minecraft/boards/overview.json",
+            "guides/minecraft/relations.jsonl"
+        ]
+    );
+
+    f.v.trash_guide(&starbound).unwrap();
+    let archive = export_to(&f.v, &scope, f.dir.path(), "guide.zip");
+    assert_eq!(
+        holders(&archive, &marks),
+        Vec::<String>::new(),
+        "archive files that show something of the guide in the Trash"
+    );
+    let parsed = import::read_archive(&archive).unwrap();
+    let guide_file = &parsed.guides[0];
+    assert_eq!(
+        guide_file.relations.len(),
+        4,
+        "the edge into the Trash is left out; the edge that carried a value from it stays"
+    );
+    let kept = guide_file
+        .relations
+        .iter()
+        .find(|line| line.subject.title == "Cobblestone Block")
+        .unwrap();
+    assert!(kept.qualifiers.is_empty());
+    let file = &guide_file.boards[0];
+    assert_eq!(file.nodes.len(), 2);
+    assert_eq!(
+        file.strings.len(),
+        3,
+        "the string to the hidden card is left out"
+    );
+
+    // Restored, the guide is named again.
+    f.v.restore_guide(&starbound).unwrap();
+    let back = export_to(&f.v, &scope, f.dir.path(), "back.zip");
+    assert_eq!(holders(&back, &marks).len(), 2);
+}
+
+#[test]
+fn exporting_a_trashed_guide_is_refused() {
+    let mut f = fixture();
+    f.v.trash_guide(&f.mc).unwrap();
+
+    // The guide, a tag in it, and an entry in it are all refused, and nothing is written.
+    let scopes = [
+        (ExportScope::Guide { id: f.mc.clone() }, "guide.zip"),
+        (
+            ExportScope::Tag {
+                id: f.blocks.clone(),
+            },
+            "tag.zip",
+        ),
+        (
+            ExportScope::Entry {
+                id: f.stone.clone(),
+            },
+            "entry.zip",
+        ),
+    ];
+    for (scope, name) in &scopes {
+        let path = f.dir.path().join(name);
+        match f.v.export(scope, &path) {
+            Err(Error::Invalid(message)) => {
+                assert!(message.contains("restore it before exporting"), "{message}");
+            }
+            result => panic!("expected a refusal for {scope:?}, got {result:?}"),
+        }
+        assert!(!path.exists(), "nothing is written for {scope:?}");
+    }
+
+    // A vault export goes on without it.
+    let archive = export_to(&f.v, &ExportScope::Vault, f.dir.path(), "vault.zip");
+    let parsed = import::read_archive(&archive).unwrap();
+    let names: Vec<&str> = parsed
+        .guides
+        .iter()
+        .map(|g| g.guide.name.as_str())
+        .collect();
+    assert_eq!(names, ["Terraria"]);
+
+    // Restored, the guide exports again.
+    f.v.restore_guide(&f.mc).unwrap();
+    let path = f.dir.path().join("guide.zip");
+    assert_eq!(f.v.export(&scopes[0].0, &path).unwrap().guides, 1);
+}
+
+#[test]
+fn import_never_matches_a_trashed_guide() {
+    let f = fixture();
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+    let (_dir, mut target) = empty_vault();
+    let local = guide(&mut target, "minecraft");
+    entry(&mut target, &local, "Local Only", "kept");
+    target.trash_guide(&local).unwrap();
+    let held = target.guide_contents(&local).unwrap();
+
+    // The plan does not offer the guide in the Trash, and the new guide takes a free name.
+    let parsed = import::read_archive(&archive).unwrap();
+    let plan = target.propose_import(&parsed, &[]).unwrap();
+    assert_eq!(
+        plan.guides[0].target,
+        GuideTarget::New {
+            name: "Minecraft".to_owned()
+        }
+    );
+    let report = target
+        .apply_import(&parsed, &plan, &ImportOptions::default())
+        .expect("a name held in the Trash does not stop an import");
+    assert_eq!(report.guides_created, ["Minecraft (imported)"]);
+    assert!(report.guides_updated.is_empty());
+    assert_eq!(guide_names(&target), ["Minecraft (imported)"]);
+    let imported = target.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    assert_eq!(
+        snapshot_guide(&target, &imported, false),
+        GuideSnap {
+            name: "Minecraft (imported)".to_owned(),
+            ..snapshot_guide(&f.v, &f.mc, false)
+        }
+    );
+
+    // The guide in the Trash is as it was, and comes back under its own name.
+    assert_eq!(target.guide_contents(&local).unwrap(), held);
+    assert_eq!(target.restore_guide(&local).unwrap().name, "minecraft");
+    assert_eq!(browse(&target, &local), ["Local Only"]);
+}
+
+#[test]
+fn import_into_a_trashed_guide_is_refused_and_writes_nothing() {
+    let mut f = fixture();
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+    f.v.trash_guide(&f.mc).unwrap();
+    let before = (
+        f.v.guide_contents(&f.mc).unwrap(),
+        snapshot(&f.v),
+        media_files(&f.v),
+    );
+
+    // The caller names the guide in the Trash as the target.
+    let parsed = import::read_archive(&archive).unwrap();
+    let choice = GuideChoice {
+        archive_guide_id: parsed.guides[0].guide.id.clone(),
+        target: Some(GuideTarget::Existing { id: f.mc.clone() }),
+        add_tag: None,
+    };
+    let plan = f.v.propose_import(&parsed, &[choice]).unwrap();
+    match f.v.apply_import(&parsed, &plan, &ImportOptions::default()) {
+        Err(Error::InTrash { kind, name }) => {
+            assert_eq!((kind, name.as_str()), ("guide", "Minecraft"));
+        }
+        result => panic!("expected InTrash, got {result:?}"),
+    }
+    assert_eq!(
+        (
+            f.v.guide_contents(&f.mc).unwrap(),
+            snapshot(&f.v),
+            media_files(&f.v)
+        ),
+        before
+    );
+}
+
+#[test]
+fn an_incoming_board_whose_name_a_trashed_board_holds_is_created_renamed() {
+    let f = fixture();
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+    let (_dir, mut target) = empty_vault();
+    import_all(&mut target, &archive, &[], &ImportOptions::default());
+    let local = target.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    let first = target.list_boards(&local).unwrap()[0].id.clone();
+    target.trash_board(&first).unwrap();
+    let held = target.board_contents(&first).unwrap();
+
+    // The second import lands in the same guide and meets the name in the Trash.
+    let parsed = import::read_archive(&archive).unwrap();
+    let plan = target.propose_import(&parsed, &[]).unwrap();
+    let report = target
+        .apply_import(&parsed, &plan, &ImportOptions::default())
+        .expect("a board name held in the Trash does not stop an import");
+    assert_eq!((report.boards_created, report.boards_updated), (1, 0));
+    assert_eq!(
+        report.boards_renamed,
+        [RenamedBoard {
+            from: "Overview".to_owned(),
+            to: "Overview (imported)".to_owned(),
+        }]
+    );
+    assert_eq!(
+        board_names(target.list_boards(&local).unwrap()),
+        ["Overview (imported)"]
+    );
+    assert_eq!(
+        board_names(target.list_trashed_boards(&local).unwrap()),
+        ["Overview"]
+    );
+
+    // The board in the Trash is as it was, and the new one holds what the archive carried.
+    assert_eq!(target.board_contents(&first).unwrap(), held);
+    let boards = snapshot_guide(&target, &local, false).boards;
+    let source = snapshot_guide(&f.v, &f.mc, false).boards;
+    assert_eq!(
+        boards,
+        [BoardSnap {
+            name: "Overview (imported)".to_owned(),
+            ..source[0].clone()
+        }]
+    );
+}
+
+#[test]
+fn an_endpoint_in_a_trashed_guide_stays_unresolved() {
+    let f = fixture();
+    // Minecraft's archive carries "Stone Block DROPS Copper Ore" with the Terraria entry as an
+    // external endpoint: its id, its title, and its guide's name.
+    let archive = export_to(
+        &f.v,
+        &ExportScope::Guide { id: f.mc.clone() },
+        f.dir.path(),
+        "guide.zip",
+    );
+    let stubs = ImportOptions {
+        create_stubs_for_unresolved: true,
+    };
+    let all = RelationFilter {
+        include_external: true,
+    };
+    let unresolved_in_trash = |report: &ImportReport| {
+        assert_eq!(
+            report.relations_unresolved.len(),
+            1,
+            "{:?}",
+            report.relations_unresolved
+        );
+        assert_eq!(report.relations_unresolved[0].object, "Copper Ore");
+        assert!(
+            report.relations_unresolved[0].reason.contains("trash"),
+            "{:?}",
+            report.relations_unresolved
+        );
+        assert_eq!(
+            report.stubs_created, 0,
+            "an endpoint in the Trash is reported, not replaced by a stub"
+        );
+        assert_eq!(report.relations_created, 2);
+    };
+
+    // By id: the target holds the very same Terraria entry, in a guide that is in the Trash.
+    let (_d1, mut by_id) = empty_vault();
+    import_all(
+        &mut by_id,
+        &export_to(
+            &f.v,
+            &ExportScope::Guide { id: f.tr.clone() },
+            f.dir.path(),
+            "terraria.zip",
+        ),
+        &[],
+        &ImportOptions::default(),
+    );
+    let terraria = by_id.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    by_id.trash_guide(&terraria).unwrap();
+    let report = import_all(&mut by_id, &archive, &[], &stubs);
+    unresolved_in_trash(&report);
+    by_id.restore_guide(&terraria).unwrap();
+    assert!(by_id.relations_for_entry(&f.ore, &all).unwrap().is_empty());
+
+    // By guide name and title: another entry with that title, in a trashed guide of that name.
+    let (_d2, mut by_name) = empty_vault();
+    let terraria = guide(&mut by_name, "terraria");
+    let ore = entry(&mut by_name, &terraria, "copper ore", "different id");
+    by_name.trash_guide(&terraria).unwrap();
+    let report = import_all(&mut by_name, &archive, &[], &stubs);
+    unresolved_in_trash(&report);
+    let minecraft = by_name.list_guides(&GuideFilter::default()).unwrap()[0]
+        .id
+        .clone();
+    assert!(
+        by_name
+            .lookup_entry(&minecraft, "Copper Ore")
+            .unwrap()
+            .is_none()
+    );
+    by_name.restore_guide(&terraria).unwrap();
+    assert!(by_name.relations_for_entry(&ore, &all).unwrap().is_empty());
 }
