@@ -35,10 +35,14 @@ Gates that remain:
   ce8a1cc) has no section and no gate in docs/plan.md. Its checks are lines
   in docs/checklist.md. T1 marked the Theme section only.
 
-Gates last run at ce8a1cc, the last commit that changed code: 31 unit, 151
-behavior, 159 UI tests, clippy clean, svelte-check clean, release build
-succeeded. For the current head, run `git log --oneline -5`; this file
-cannot name the commit that holds it.
+Gates last run at 0286726 (T2, after the review fixes): 31 unit, 176
+behavior, 176 UI tests, clippy clean, format clean, svelte-check clean. The
+schema version is 7. No release build was made for T2; the last one is of
+ce8a1cc, so `tools/walkthrough/run/t1/` holds a build without the Trash for
+boards and guides. For the current head, run `git log --oneline -5`; this
+file cannot name the commit that holds it.
+
+T2 is in progress: see its Status and Notes.
 
 ## Carry-over from the long session
 
@@ -271,8 +275,9 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** in progress (plan approved 2026-11-13; decisions 5 to 11 and 17
-  to 20 answered (a); progress is the list at the end of the plan file)
+- **Status:** in progress. Batches 1 to 4 are built, reviewed, and pushed
+  (2026-11-13). The review follow-up, decisions 24 to 27, is decided and not
+  built: it is "Batch 5" in the plan file, and the next session starts there.
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -320,6 +325,15 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     decisions 24 to 27. Three more are Inbox lines.
   - Nothing in the UI was seen in a window. Done criteria 6 and 7 are built
     and stay unchecked until the checklist lines are judged.
+  - Done criteria 1, 2, 3, 4, 5, 8, and 9 are met and tested as of 0286726.
+    Their boxes get checked at wrap-up, after Batch 5.
+  - `docs/design.md` section 3 already states the rule of decision 24. The
+    code does not follow it yet: only the guide page and the entry page of
+    a trashed guide say so today.
+  - For the next session: read the plan's "Batch 5" first. Its core parts
+    need tests first, with stubs, shown to me before they are committed
+    (Decisions, 2026-11-13). After Batch 5: all gates, the `reviewer` on
+    the diff from 0286726, this entry, and the list of not judged checks.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -428,10 +442,10 @@ decision to docs/design.md with its reason, or to Decisions below.
 21. T2: the batch 1 tests (10 new tests in `core/tests/behavior/trash.rs`, `guides.rs`, and `schema.rs`, with the stub layer; not committed): (a) approved, commit them and build batch 1; (b) change them. **Answer:** (a)
 22. T2: the batch 2 tests (8 new tests in `core/tests/behavior/boards.rs`, `trash.rs`, and `media_cleanup.rs`, with the stub layer; not committed): (a) approved, commit them and build batch 2; (b) change them. **Answer:** (a)
 23. T2: the batch 3 tests (8 new tests in `core/tests/behavior/export_import.rs`, with one stub, the report field `boards_renamed`; not committed). 7 fail for the expected reason. `a_guide_with_a_trashed_board_round_trips_without_it` passes already, because batch 2 made `list_boards` leave out trashed boards: (a) approved, keep the passing test as a pin, commit, and build batch 3; (b) approved without the passing test; (c) change them. **Answer:** (a)
-24. T2 review: pages inside a trashed guide stay reachable by Back and through the guide sidebar (Tag editor, Vocabulary, Boards, a board, the guide's Trash). Tag delete, tag merge, and vocabulary merge work there and cannot be undone. The plan said no page offers them; that was wrong: (a) every page inside a trashed guide shows "This guide is in the Trash" with Restore, and the guide sidebar is not drawn; (b) the same, and core also refuses every edit inside a trashed guide; (c) keep it, and correct the plan and `docs/design.md`. **Answer:**
-25. T2 review: purging a guide removes two things from other, live guides that the dialog does not name: qualifier values that point at its entries, and strings tied to its cards on other guides' boards: (a) `guide_contents` gains a count for each and the dialog a line for each; the approved test `guide_contents_counts_what_purge_removes` changes to name the two new fields; (b) leave the dialog, and record the gap in `docs/design.md`. **Answer:**
-26. T2 review: Empty trash on the guides list adds up the per-guide counts, so one relation between two trashed guides is counted twice: (a) core counts all trashed guides together in one new function, test first; (b) the dialog lists each guide with its entry count and says everything in them is removed, with no summed counts; (c) keep the sums. **Answer:**
-27. T2 review, two small gaps in core: a new qualifier label can still be created through a relation of a trashed guide (no page reaches it); the Vocabulary page's "in Trash" count ignores relations into a trashed guide, so Delete is refused with no reason shown: (a) a failing test for each, shown to me, then the fix; (b) Inbox lines only. **Answer:**
+24. T2 review: pages inside a trashed guide stay reachable by Back and through the guide sidebar (Tag editor, Vocabulary, Boards, a board, the guide's Trash). Tag delete, tag merge, and vocabulary merge work there and cannot be undone. The plan said no page offers them; that was wrong: (a) every page inside a trashed guide shows "This guide is in the Trash" with Restore, and the guide sidebar is not drawn; (b) the same, and core also refuses every edit inside a trashed guide; (c) keep it, and correct the plan and `docs/design.md`. **Answer:** (a), and note it in the design
+25. T2 review: purging a guide removes two things from other, live guides that the dialog does not name: qualifier values that point at its entries, and strings tied to its cards on other guides' boards: (a) `guide_contents` gains a count for each and the dialog a line for each; the approved test `guide_contents_counts_what_purge_removes` changes to name the two new fields; (b) leave the dialog, and record the gap in `docs/design.md`. **Answer:** (a)
+26. T2 review: Empty trash on the guides list adds up the per-guide counts, so one relation between two trashed guides is counted twice: (a) core counts all trashed guides together in one new function, test first; (b) the dialog lists each guide with its entry count and says everything in them is removed, with no summed counts; (c) keep the sums. **Answer:** (a)
+27. T2 review, two small gaps in core: a new qualifier label can still be created through a relation of a trashed guide (no page reaches it); the Vocabulary page's "in Trash" count ignores relations into a trashed guide, so Delete is refused with no reason shown: (a) a failing test for each, shown to me, then the fix; (b) Inbox lines only. **Answer:** (a)
 
 ## Inbox
 
@@ -515,4 +529,6 @@ Format: `- [date] decision — reason`
 - [2026-11-13] T2: the batch 1 tests are approved as written (decision 21). They are not edited while batch 1 is built; if one looks wrong, the agent stops and asks — my answer (a).
 - [2026-11-13] T2: the batch 2 tests are approved as written (decision 22) — my answer (a).
 - [2026-11-13] T2: the batch 3 tests are approved as written, and the round-trip test that passes already stays as a pin (decision 23) — my answer (a).
+- [2026-11-13] T2 review follow-up, my answers (a) to decisions 24 to 27. Every page inside a trashed guide shows "This guide is in the Trash" with Restore, and the guide sidebar is not drawn; `docs/design.md` section 3 has the rule and its reason. `guide_contents` gains counts for the qualifier values and the strings a purge removes from other guides, and the approved test `guide_contents_counts_what_purge_removes` may change to name the two new fields. Core counts all trashed guides together for Empty trash on the guides list. The two small core gaps each get a failing test, shown to me, then the fix. None of this is built yet; the plan's Batch 5 lists it.
+- [2026-11-13] The guesses in the T2 review report stand: `main` was pushed at 0286726; no fix that touches an approved test was started without an answer — my answer "check".
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.

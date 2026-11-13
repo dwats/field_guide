@@ -1,6 +1,6 @@
 # T2 plan: Trash for boards and guides
 
-Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). The Progress list at the end says where the work stands.
+Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up, is decided and not started. The Progress list at the end says where the work stands.
 
 The design is `.claude/work/trash-boards-guides/design.md`. This plan does not repeat it. It says what is built in what order, what differs from the design, and which tests gate each batch.
 
@@ -150,6 +150,41 @@ Docs:
 - `docs/checklist.md`: the lines "Delete guide asks first" and "Delete board (asks first)" are rewritten, and lines for the new Trash behavior are added, unchecked.
 - `tools/walkthrough/board.ps1` step 10 clicks "Delete board...". It is changed to "Move to Trash". The script is parsed, not run.
 
+### Batch 5: review follow-up (decisions 24 to 27, all answered (a) on 2026-11-13)
+
+Not started. Four parts. Parts B, C, and D change core, so each needs its tests first, with stubs, shown to the owner before they are committed. They can be shown together in one stop. Part A is UI only.
+
+Part A, decision 24: every page inside a trashed guide says so.
+
+- Rule, already in `docs/design.md` section 3: every page inside a trashed guide shows "This guide is in the Trash" with Restore in place of its content, and the guide sidebar is not drawn.
+- Today only `GuideView` and `EntryView` check `guide.deleted_at`. `EntryView` shows a link to `#/trash`, not Restore. `BoardView` checks the board only.
+- To change: `ui/src/views/TagsView.svelte`, `VocabularyView.svelte`, `BoardsView.svelte`, `TrashView.svelte`, `BoardView.svelte` (a live board in a trashed guide), `EntryView.svelte` (Restore, to match), and `ui/src/App.svelte` (no `Sidebar` while `session.current.guide?.deleted_at` is set).
+- Suggested shape: one small component, `ui/src/components/TrashedGuide.svelte`, with the heading, the muted line, and Restore, which calls `api.restoreGuide` and then `touch()`. Each view renders it when its loaded guide has `deleted_at`. Do not decide in `App.svelte` from `session.current` alone: the entry and board routes carry no guide id, and a stale `session.current` would block the next page from loading.
+- Open detail, list under Guesses: what the sidebar column shows on such a page. Suggested: the guides sidebar, since every view has the sidebar column.
+- No Vitest test fits; add one line to `docs/checklist.md` and report it as not judged.
+
+Part B, decision 25: the purge dialog names what a guide purge removes from other guides.
+
+- `GuideContents` gains two counts. Suggested names: `values_in_other_guides`, the qualifier values on relations with no end in this guide that point at this guide's entries; and `strings_on_other_boards`, the strings on boards of other guides with an end on a card of this guide's entries.
+- The foreign key `relation_qualifier.value_entry_id` cascades, and the trigger `board_string_follows_node` deletes the strings. The reviewer's scratch run showed both.
+- Tests first, in `core/tests/behavior/trash.rs`: a new test with its own fixture, `guide_contents_counts_what_purge_removes_from_other_guides`. The approved test `guide_contents_counts_what_purge_removes` gains the two fields in its struct literals, both 0; the owner allowed this change (decision 25).
+- UI: `ui/src/lib/api.ts` (the type), `ui/src/lib/trash.ts` (two lines in `guidePurgeLines`), `ui/src/lib/trash.test.ts`.
+- Docs: `docs/design.md` section 3, the Purge bullet.
+
+Part C, decision 26: Empty trash on the guides list states exact counts.
+
+- Today `emptyGuideTrashLines` sums each guide's `GuideContents`, so a relation or a card between two trashed guides is counted twice, and "other guides" includes guides that are going too. Two empty guides read "2 guides are removed for good. The guide is empty."
+- New core function, suggested `guide_trash_contents() -> Result<GuideContents>`: the counts for every trashed guide taken together, each row once, where "other guides" means guides that are not in the Trash. `guide_contents` and it can share one set of queries over "the guide is in this set".
+- Test first: two trashed guides joined by a relation, a qualifier value, and a card on each other's board, beside a live third guide; the expected struct is exact, and the rows are gone after `empty_guide_trash`.
+- App: a command `guide_trash_contents`. UI: `emptyGuideTrashLines` takes the guide count and the combined contents; `sumGuides` goes; the empty-guide line reads right for several guides.
+
+Part D, decision 27: two small gaps in core.
+
+- `relation::insert_qualifiers` with `LabelSpec::New` creates a qualifier label without `guide::ensure_guide_live`, so `add_qualifier` and `replace_qualifiers` on a relation of a trashed guide create one. Test first: `a_new_qualifier_label_cannot_be_created_through_a_relation_of_a_trashed_guide`, expecting `Error::InTrash { kind: "guide", .. }`.
+- `verb_usage` counts "in trash" from the ends' own `deleted_at` (`core/src/vocabulary.rs`, near the `coalesce(sum(...))`), so a relation into a trashed guide is counted as in use with no Trash note, and Delete is refused with no reason shown. Use `entry::hidden_sql`. Check `qualifier_label_usage` for the same. Test first: `verb_usage_counts_a_relation_into_a_trashed_guide_as_in_trash`.
+
+After Batch 5: every gate, the `reviewer` on the diff from 0286726, the wrap-up of T2 in `.claude/tasks.md` (status, done criteria, the list of not judged checks), commit, push.
+
 ## Gates
 
 After every batch: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all`, `npm test`, `npm run check`. After batch 4, the `reviewer` subagent reads the whole diff from 0b718e4.
@@ -212,5 +247,10 @@ The migration is not part of the stub layer. It is code.
 - [x] Batch 3 tests approved and committed (2026-11-13, decision 23). The stub layer is one report field, `ImportReport.boards_renamed`. 7 new tests fail for the expected reason; `a_guide_with_a_trashed_board_round_trips_without_it` passes already and stays as a pin.
 - [x] Batch 3 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 177 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
 - [x] Batch 4 built, gates pass, reviewer run, committed (2026-11-13, ca94215). Gates: 31 unit, 176 behavior, 176 UI tests, clippy clean, format clean, svelte-check clean.
-- [ ] Review follow-up: decisions 24 to 27 in `.claude/tasks.md`. Three findings that needed no decision are fixed.
-- [ ] `.claude/tasks.md` and docs updated
+- [x] Review findings that needed no decision: fixed and pushed (2026-11-13, 0286726).
+- [x] Decisions 24 to 27 answered (a) (2026-11-13). Decision 24 is recorded in `docs/design.md` section 3.
+- [ ] Batch 5, part A: pages inside a trashed guide (UI)
+- [ ] Batch 5, parts B, C, D: tests with stubs shown, approved, committed
+- [ ] Batch 5, parts B, C, D: built, gates pass, committed
+- [ ] Reviewer run on the diff from 0286726
+- [ ] T2 wrapped up in `.claude/tasks.md`: status, done criteria, not judged checks; pushed
