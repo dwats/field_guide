@@ -32,8 +32,10 @@ Gates that remain:
   ce8a1cc) has no section and no gate in docs/plan.md. Its checks are lines
   in docs/checklist.md, none run yet.
 
-Last commit: ce8a1cc. Gates at that commit: 31 unit, 151 behavior, 159 UI
-tests, clippy clean, svelte-check clean, release build succeeded.
+Gates last run at ce8a1cc, the last commit that changed code: 31 unit, 151
+behavior, 159 UI tests, clippy clean, svelte-check clean, release build
+succeeded. For the current head, run `git log --oneline -5`; this file
+cannot name the commit that holds it.
 
 ## Carry-over from the long session
 
@@ -134,14 +136,24 @@ Things that were only in the conversation.
 - New dependencies added in this stretch: `tauri-plugin-opener` (called from
   Rust only, not registered), `@codemirror/autocomplete`, `@lezer/highlight`.
 
-### Reference files outside the repository
+### Reference files
 
-All in `C:\Users\DWats\.claude\projects\c--Users-DWats-Projects-field-guide-app\memory\reports\`:
+In the repository (moved 2026-11-12):
 
-- `review-ux-2026-11-10.md` and `review-ui-2026-11-10.md`: the two reviews.
-  docs/ux-review.md in the repository is the older 2026-11-08 review.
-- `plan-dark-mode-2026-11-10.md`: the dark mode plan.
-- `design-trash-boards-guides-2026-11-11.md`: the Trash design for T2.
+- `docs/reviews/ux-2026-11-10.md`: the UX review. "UX review" in this file
+  means this one. docs/ux-review.md is the older 2026-11-08 review, which
+  docs/design.md cites by that path.
+- `docs/reviews/ui-2026-11-10.md`: the UI design review. "UI review" in
+  this file means this one.
+- `.claude/work/trash-boards-guides/design.md`: the Trash design for T2.
+- The screenshots both reviews cite (`shots-drive`, `shots-board`,
+  `shots-notes`) are in `tools/walkthrough/run/shots-19b8dae/`, on this
+  machine only.
+
+History, outside the repository, in
+`C:\Users\DWats\.claude\projects\c--Users-DWats-Projects-field-guide-app\memory\reports\`:
+
+- `plan-dark-mode-2026-11-10.md`: the dark mode plan, built.
 - `theme-contract.md`, `ux-fixes-contract.md`, `wave2-contract.md`,
   `board-decorations-contract.md`, `board-images-contract.md`: the briefs the
   subagents built from.
@@ -249,9 +261,9 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
 - **Inputs:** docs/design.md section 3 (Trash), section 6 (the line
   "deleting a board asks first, since the entries stay and there is nothing
   else to reverse" is out of date), sections 7 and 8;
-  `design-trash-boards-guides-2026-11-11.md` (path under Carry-over), which
-  has the schema, the core API, the rules, the tests by name, and four build
-  batches; UX review failing item 9
+  `.claude/work/trash-boards-guides/design.md`, which has the schema, the
+  core API, the rules, the tests by name, and four build batches; UX review
+  failing item 9
 - **Done when:**
   - [ ] Migration 0007 adds `deleted_at` to boards and guides; the schema
         version is 7; existing vaults migrate with nothing trashed.
@@ -393,4 +405,6 @@ Format: `- [date] decision — reason`
 - [2026-11-12] `explorer` runs on Sonnet and `reviewer` inherits the main model — set by me in the agent files.
 - [2026-11-12] Push to `main` before a new session starts — my instruction; no reason given.
 - [2026-11-12] The walkthrough scripts live in `tools/walkthrough/`; the app copy, the test vault, and screenshots live in `tools/walkthrough/run/`, ignored by git — the temp folder they were in would not survive a cleanup. I chose (a); the session picked the folder.
-
+- [2026-11-12] The leftover walkthrough vault is not committed — no script or test reads it; each script makes its own guide.
+- [2026-11-12] This file names the commit the gates last ran at, not the head; `git log` gives the head — a committed file cannot name its own commit.
+- [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
