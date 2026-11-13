@@ -203,7 +203,7 @@ The migration is not part of the stub layer. It is code.
 ## Progress
 
 - [x] Plan approved (2026-11-13)
-- [ ] Batch 1 tests approved and committed. Written 2026-11-13 with the stub layer, not committed: 10 new tests fail at their assertions, the 151 old behavior tests and 31 unit tests pass, clippy and the format check are clean.
+- [x] Batch 1 tests approved and committed (2026-11-13, decision 21). With the stub layer, the 10 new tests fail at their assertions, and the 151 old behavior tests and 31 unit tests pass.
 - [ ] Batch 1 built, gates pass, committed
 - [ ] Batch 2 tests approved and committed
 - [ ] Batch 2 built, gates pass, committed

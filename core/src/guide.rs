@@ -44,8 +44,36 @@ pub struct Guide {
     pub cover_crop: Option<CoverCrop>,
     /// Global tags applied to this guide.
     pub tag_ids: Vec<TagId>,
+    /// Set while the guide is in the Trash.
+    pub deleted_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// What a guide holds, counted by core for the purge dialog: everything a purge removes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuideContents {
+    /// Entries of the guide that are not in the Trash themselves.
+    pub entries: usize,
+    /// Entries of the guide that were in the Trash before it.
+    pub entries_in_trash: usize,
+    pub tags: usize,
+    pub verbs: usize,
+    pub qualifier_labels: usize,
+    /// Relations with at least one end in this guide.
+    pub relations: usize,
+    /// Of `relations`, those whose other end is in another guide.
+    pub relations_with_other_guides: usize,
+    /// The guide's boards, those in the Trash included.
+    pub boards: usize,
+    /// Notes on those boards.
+    pub notes: usize,
+    /// Images on those boards.
+    pub images: usize,
+    /// Strings on those boards.
+    pub strings: usize,
+    /// Cards of this guide's entries on boards of other guides.
+    pub cards_on_other_boards: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +214,44 @@ impl Vault {
         load_guide(self.conn(), id)
     }
 
+    /// Moves a guide to the Trash. Everything in it is kept and hidden from every other guide
+    /// until it is restored. Trashing a guide that is already there changes nothing.
+    pub fn trash_guide(&mut self, id: &GuideId) -> Result<Guide> {
+        // Stub for the tests of T2 batch 1: not built yet.
+        load_guide(self.conn(), id)
+    }
+
+    /// Takes a guide out of the Trash, with everything in it as it was.
+    pub fn restore_guide(&mut self, id: &GuideId) -> Result<Guide> {
+        // Stub for the tests of T2 batch 1: not built yet.
+        load_guide(self.conn(), id)
+    }
+
+    /// Removes a guide in the Trash for good, with everything in it. Media rows are vault-scoped
+    /// and stay.
+    pub fn purge_guide(&mut self, id: &GuideId) -> Result<()> {
+        // Stub for the tests of T2 batch 1: not built yet.
+        load_guide(self.conn(), id).map(|_| ())
+    }
+
+    /// Guides in the Trash, the most recently trashed first.
+    pub fn list_trashed_guides(&self) -> Result<Vec<Guide>> {
+        // Stub for the tests of T2 batch 1: not built yet.
+        Ok(Vec::new())
+    }
+
+    /// Purges every guide in the Trash and returns how many went.
+    pub fn empty_guide_trash(&mut self) -> Result<usize> {
+        // Stub for the tests of T2 batch 1: not built yet.
+        Ok(0)
+    }
+
+    /// What the guide holds, live or in the Trash: the counts a purge dialog states.
+    pub fn guide_contents(&self, id: &GuideId) -> Result<GuideContents> {
+        // Stub for the tests of T2 batch 1: not built yet.
+        load_guide(self.conn(), id).map(|_| GuideContents::default())
+    }
+
     /// Deletes a guide and everything in it: entries, tags, aliases, mentions, gallery rows.
     /// Media rows are vault-scoped and stay.
     pub fn delete_guide(&mut self, id: &GuideId) -> Result<()> {
@@ -245,6 +311,7 @@ fn guide_from_row(row: &Row<'_>) -> rusqlite::Result<Guide> {
         cover_media_id: row.get(3)?,
         cover_crop,
         tag_ids: Vec::new(),
+        deleted_at: None,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
     })
@@ -285,7 +352,10 @@ fn ensure_name_free(conn: &Connection, name: &str, except: Option<&GuideId>) -> 
         )
         .optional()?;
     match holder {
-        Some(id) if Some(&id) != except => Err(Error::GuideNameTaken(name.to_owned())),
+        Some(id) if Some(&id) != except => Err(Error::GuideNameTaken {
+            name: name.to_owned(),
+            in_trash: false,
+        }),
         _ => Ok(()),
     }
 }

@@ -66,14 +66,15 @@ impl From<CoreError> for AppError {
             CoreError::NotFound { .. } => "not_found",
             CoreError::InvalidName { .. } => "invalid_name",
             CoreError::NameTaken { .. } => "name_taken",
-            CoreError::GuideNameTaken(_) => "guide_name_taken",
+            CoreError::GuideNameTaken { .. } => "guide_name_taken",
             CoreError::TagNameTaken(_) => "tag_name_taken",
             CoreError::BoardNameTaken(_) => "board_name_taken",
             CoreError::TagCycle => "tag_cycle",
             CoreError::LabelTaken { .. } => "label_taken",
             CoreError::InUse { .. } => "in_use",
             CoreError::Invalid(_) => "invalid",
-            CoreError::NotTrashed => "not_trashed",
+            CoreError::NotTrashed { .. } => "not_trashed",
+            CoreError::InTrash { .. } => "in_trash",
             CoreError::UndoFailed(_) => "undo_failed",
         };
         AppError {

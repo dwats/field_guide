@@ -92,8 +92,10 @@ pub enum Error {
         holder_in_trash: bool,
     },
 
-    #[error("a guide named \"{0}\" already exists")]
-    GuideNameTaken(String),
+    /// Guide names are unique across the vault, and a guide in the Trash keeps its name until it
+    /// is purged; the message then says where the holder is and the two ways out.
+    #[error("a guide named \"{name}\" {}", guide_holder(.in_trash))]
+    GuideNameTaken { name: String, in_trash: bool },
 
     #[error("a tag named \"{0}\" already exists at that level")]
     TagNameTaken(String),
@@ -116,8 +118,13 @@ pub enum Error {
     #[error("{0}")]
     Invalid(String),
 
-    #[error("entry is not in the trash")]
-    NotTrashed,
+    /// Restore and purge act on what is in the Trash. `kind` is "entry", "guide", or "board".
+    #[error("this {kind} is not in the Trash")]
+    NotTrashed { kind: &'static str },
+
+    /// A create inside a guide that is in the Trash, or a write to a board that is.
+    #[error("the {kind} \"{name}\" is in the Trash; restore it first")]
+    InTrash { kind: &'static str, name: String },
 
     #[error("rename cannot be undone: {0}")]
     UndoFailed(String),
@@ -138,4 +145,12 @@ fn held_as(alias: &bool) -> &'static str {
 
 fn in_trash(trashed: &bool) -> &'static str {
     if *trashed { " (in Trash)" } else { "" }
+}
+
+fn guide_holder(in_trash: &bool) -> &'static str {
+    if *in_trash {
+        "is in the Trash; restore it or purge it first"
+    } else {
+        "already exists"
+    }
 }

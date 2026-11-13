@@ -13,7 +13,7 @@ fn guide_names_are_unique_case_insensitively() {
         name: "  minecraft ".to_owned(),
         description: String::new(),
     }) {
-        Err(Error::GuideNameTaken(name)) => assert_eq!(name, "minecraft"),
+        Err(Error::GuideNameTaken { name, .. }) => assert_eq!(name, "minecraft"),
         other => panic!("expected GuideNameTaken, got {other:?}"),
     }
     let other = guide(&mut v, "Minecraft Modded");
@@ -25,7 +25,7 @@ fn guide_names_are_unique_case_insensitively() {
                 description: None,
             },
         ),
-        Err(Error::GuideNameTaken(_))
+        Err(Error::GuideNameTaken { .. })
     ));
     // Changing only the casing of its own name is fine.
     let renamed = v
@@ -132,6 +132,59 @@ fn only_global_tags_apply_to_guides() {
             .tag_ids
             .is_empty()
     );
+}
+
+#[test]
+fn a_trashed_guide_keeps_its_name_and_purge_frees_it() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let other = guide(&mut v, "Terraria");
+    v.trash_guide(&g).unwrap();
+
+    // A new guide cannot take the name, and the error says where its holder is.
+    let err = v
+        .create_guide(NewGuide {
+            name: "minecraft".to_owned(),
+            description: String::new(),
+        })
+        .unwrap_err();
+    match &err {
+        Error::GuideNameTaken { name, in_trash } => {
+            assert_eq!(name, "minecraft");
+            assert!(in_trash, "the holder is in the Trash");
+        }
+        unexpected => panic!("expected GuideNameTaken, got {unexpected:?}"),
+    }
+    assert!(err.to_string().contains("in the Trash"), "{err}");
+    // Neither can a rename.
+    assert!(matches!(
+        v.update_guide(
+            &other,
+            GuideUpdate {
+                name: Some("MINECRAFT".to_owned()),
+                description: None,
+            },
+        ),
+        Err(Error::GuideNameTaken { in_trash: true, .. })
+    ));
+    // A live holder is reported as before.
+    assert!(matches!(
+        v.create_guide(NewGuide {
+            name: "Terraria".to_owned(),
+            description: String::new(),
+        }),
+        Err(Error::GuideNameTaken {
+            in_trash: false,
+            ..
+        })
+    ));
+
+    // Restore meets no taken name; purge frees it.
+    assert_eq!(v.restore_guide(&g).unwrap().name, "Minecraft");
+    v.trash_guide(&g).unwrap();
+    v.purge_guide(&g).unwrap();
+    let fresh = guide(&mut v, "Minecraft");
+    assert_ne!(fresh, g);
 }
 
 #[test]

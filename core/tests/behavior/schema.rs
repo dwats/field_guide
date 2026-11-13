@@ -192,3 +192,63 @@ fn a_version_5_vault_keeps_its_notes_and_strings_and_its_strings_still_follow_th
         "the image's strings went with it"
     );
 }
+
+/// Builds a vault file at schema version 6 with SQL alone: one guide with two entries and a
+/// board that holds both.
+fn version_6_vault(db: &std::path::Path) {
+    let conn = rusqlite::Connection::open(db).unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    for sql in [
+        include_str!("../../migrations/0001_initial.sql"),
+        include_str!("../../migrations/0002_relations.sql"),
+        include_str!("../../migrations/0003_boards.sql"),
+        include_str!("../../migrations/0004_cover_crop.sql"),
+        include_str!("../../migrations/0005_board_notes.sql"),
+        include_str!("../../migrations/0006_board_images.sql"),
+    ] {
+        conn.execute_batch(sql).unwrap();
+    }
+    conn.pragma_update(None, "user_version", 6).unwrap();
+    let t = "2026-01-01T00:00:00Z";
+    conn.execute_batch(&format!(
+        "INSERT INTO guide (id, name, name_norm, created_at, updated_at)
+             VALUES ('g', 'Minecraft', 'minecraft', '{t}', '{t}');
+         INSERT INTO entry (id, guide_id, title, title_norm, created_at, updated_at)
+             VALUES ('stone', 'g', 'Stone', 'stone', '{t}', '{t}'),
+                    ('ore', 'g', 'Ore', 'ore', '{t}', '{t}');
+         INSERT INTO board (id, guide_id, name, name_norm, created_at, updated_at)
+             VALUES ('b', 'g', 'Puzzle', 'puzzle', '{t}', '{t}');
+         INSERT INTO board_node (board_id, entry_id, x, y)
+             VALUES ('b', 'stone', 0, 0), ('b', 'ore', 100, 0);"
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_version_6_vault_migrates_to_7_with_nothing_trashed() {
+    use fieldguide_core::guide::GuideFilter;
+    use fieldguide_core::{BoardId, GuideId};
+
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    version_6_vault(&db);
+    let mut v = Vault::open(&db).unwrap();
+    assert_eq!(SCHEMA_VERSION, 7);
+    assert_eq!(v.schema_version().unwrap(), 7);
+
+    // Everything the vault held is still live.
+    let g = GuideId::from("g");
+    let guides = v.list_guides(&GuideFilter::default()).unwrap();
+    assert_eq!(guides.len(), 1);
+    assert_eq!(guides[0].name, "Minecraft");
+    assert!(guides[0].deleted_at.is_none());
+    assert!(v.list_trashed_guides().unwrap().is_empty());
+    assert_eq!(v.list_boards(&g).unwrap().len(), 1);
+    assert_eq!(v.board_view(&BoardId::from("b")).unwrap().cards.len(), 2);
+
+    // The migrated vault takes the new state and gives it back.
+    assert!(v.trash_guide(&g).unwrap().deleted_at.is_some());
+    assert_eq!(v.list_trashed_guides().unwrap().len(), 1);
+    assert!(v.restore_guide(&g).unwrap().deleted_at.is_none());
+    assert_eq!(v.list_guides(&GuideFilter::default()).unwrap().len(), 1);
+}

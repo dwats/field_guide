@@ -450,7 +450,7 @@ impl Vault {
 
     pub fn restore_entry(&mut self, id: &EntryId) -> Result<EntrySummary> {
         if load_summary(self.conn(), id)?.deleted_at.is_none() {
-            return Err(Error::NotTrashed);
+            return Err(Error::NotTrashed { kind: "entry" });
         }
         self.conn().execute(
             "UPDATE entry SET deleted_at = NULL WHERE id = ?1",
@@ -464,7 +464,7 @@ impl Vault {
     /// must be trashed first.
     pub fn purge_entry(&mut self, id: &EntryId) -> Result<()> {
         if load_summary(self.conn(), id)?.deleted_at.is_none() {
-            return Err(Error::NotTrashed);
+            return Err(Error::NotTrashed { kind: "entry" });
         }
         self.conn()
             .execute("DELETE FROM entry WHERE id = ?1", params![id])?;
