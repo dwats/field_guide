@@ -161,18 +161,20 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 
 ## Theme
 
-- [ ] Settings, Appearance shows Theme first, with System, Light, and Dark pictured. The pictures show a light, a dark, and a split window in either scheme.
-- [ ] Dark with Windows in light mode: the page, the sidebars, the panel, and the title bar turn dark at once, with no reload.
-- [ ] Restart with Dark saved: no white frame appears before the first paint, and the title bar is dark from the start.
-- [ ] System: switching Windows between light and dark changes the app while it runs.
-- [ ] Light with Windows in dark mode: the app is light, and so is the title bar.
-- [ ] The palette rows "Theme: System", "Theme: Light", and "Theme: Dark" work, and Settings reflects them.
-- [ ] Editor in dark: the caret is visible, the selection is readable, the gutter is dark, links are blue, and markup marks are muted.
-- [ ] An entry using every markdown feature reads in dark; a hidden spoiler is a gray block, not a bright one.
-- [ ] Menus, the palette, and every dialog stand out from the page in dark.
-- [ ] Text fields and selects have an edge that is easy to see in both schemes; buttons have a lighter one; dividers are the faintest.
-- [ ] Board in dark on each of the four backgrounds: cards, five note colors, text and links in notes, polaroids (warm off-white), relation and mention edges, all four string colors including black, pins, and handles.
-- [ ] Image viewer: the stage is black in both schemes and the bottom bar follows the theme.
-- [ ] "Dim images in dark" on: pictures in entries, galleries, covers, and boards are slightly darker in dark and unchanged in light; the image viewer shows them at full brightness.
-- [ ] Check boxes, the crop zoom slider, selects, and the number field look native and dark.
-- [ ] An old `config.toml` without `theme` opens as System with dimming off.
+Walked through 2026-11-12 at ce8a1cc in both schemes (task T1). A checked line passed. A failed or not judged line stays unchecked and says why. Screenshots: `tools/walkthrough/run/shots-ce8a1cc/`.
+
+- [ ] Settings, Appearance shows Theme first, with System, Light, and Dark pictured. The pictures show a light, a dark, and a split window in either scheme. **Failed:** Theme is first, but all three pictures follow the current scheme (three dark windows in Dark, three light in Light).
+- [x] Dark with Windows in light mode: the page, the sidebars, the panel, and the title bar turn dark at once, with no reload.
+- [x] Restart with Dark saved: no white frame appears before the first paint, and the title bar is dark from the start. Checked by screen captures every 30 ms from the window's first frame; a flash shorter than that would not show.
+- [ ] System: switching Windows between light and dark changes the app while it runs. **Not judged:** the walkthrough did not change the Windows setting. System followed Windows in light mode.
+- [ ] Light with Windows in dark mode: the app is light, and so is the title bar. **Not judged:** Windows was in light mode for every run.
+- [x] The palette rows "Theme: System", "Theme: Light", and "Theme: Dark" work, and Settings reflects them.
+- [x] Editor in dark: the caret is visible, the selection is readable, the gutter is dark, links are blue, and markup marks are muted.
+- [x] An entry using every markdown feature reads in dark; a hidden spoiler is a gray block, not a bright one.
+- [x] Menus, the palette, and every dialog stand out from the page in dark.
+- [x] Text fields and selects have an edge that is easy to see in both schemes; buttons have a lighter one; dividers are the faintest.
+- [ ] Board in dark on each of the four backgrounds: cards, five note colors, text and links in notes, polaroids (warm off-white), relation and mention edges, all four string colors including black, pins, and handles. **Failed:** the caption of a picture card is pale text on the off-white frame and is hard to read. Everything else in the line passed.
+- [x] Image viewer: the stage is black in both schemes and the bottom bar follows the theme.
+- [x] "Dim images in dark" on: pictures in entries, galleries, covers, and boards are slightly darker in dark and unchanged in light; the image viewer shows them at full brightness.
+- [x] Check boxes, the crop zoom slider, selects, and the number field look native and dark.
+- [x] An old `config.toml` without `theme` opens as System with dimming off.
