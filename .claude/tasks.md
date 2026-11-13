@@ -428,6 +428,7 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-12] [agent] Defect: the board panel's title for a selected string reads "Stringfrom Stone Block to note ..."; a space is missing — T1, `dark/notes/n06`
 - [2026-11-12] [agent] Defect: Settings, Data: a long path breaks in the middle of a word ("va" / "ult") — T1, `dark/drive/41`
 - [2026-11-13] [me] Web links: only a fully qualified address is recognized, such as `http://google.com`; a bare `google.com` is not a link. "Open in browser" itself works. Defect or enhancement: for triage — my check of T1's not judged list
+- [2026-11-13] [me] Defect: a double click on a board note does not open it for editing, whether I click as fast as possible or slowly. docs/design.md section 6 says it should, and `BoardCanvas.svelte` has code for it (two presses on the same note within 400 ms, or Enter). Cause not investigated. The walkthrough scripts open notes by keyboard only, so they did not catch it — after T1
 
 **Questions and unconfirmed guesses** (each needs my answer)
 
@@ -440,7 +441,6 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 
 **Board enhancements**
 
-- [2026-11-13] [me] Enhancement: double click to enter a board note's editing mode. Agent's note: docs/design.md section 6 and `BoardCanvas.svelte` already do this (two presses on the same note within 400 ms, or Enter). If it did not work for me, this is a defect — after T1
 - [2026-11-13] [me] Enhancement: board "icon pins" or "stickers" in a variety of shapes. They stay prominent at every zoom level. Mine: stars, arrows, skull, treasure chest, lock, key. The app is not only for games. Agent's additions: question mark, exclamation mark, check mark, cross, numbered and lettered badges, flag, map marker, heart, lightbulb, warning triangle, clock, calendar, magnifier, eye, person, group, house, book, bookmark, speech bubble, coin, wrench, flask, leaf, lightning bolt, target, thumbs up and down, a plain dot in each tag color; and a sticker made from any typed character or emoji, so the set stays open — after T1
 - [2026-11-13] [me] Enhancement: board level of detail. Zoomed out, things become unreadable; different levels of detail by zoom level may help. I am unsure of the best way; may be worth a dedicated research task — after T1
 - [2026-11-13] [me] Enhancement: board multi-select with the common keys (think Lucidchart). Hold click and drag to box select. Shift with hold click and drag adds to the selection — after T1
@@ -474,4 +474,6 @@ Format: `- [date] decision — reason`
 - [2026-11-13] T1 validated by me: the four not judged checks passed, "Dark with Windows in light mode" stays passed, "no white frame" is a pass by my own look, and the `portable` refusal for the scripts is an Inbox line only — my answers to T1's report.
 - [2026-11-13] Defects found in a task go to the Inbox. A defect pass is run as its own session task — my instruction.
 - [2026-11-13] The Inbox is grouped (Defects; Questions and unconfirmed guesses; Board enhancements; Walkthrough scripts) — I said to group as the agent sees fit; the agent chose the groups.
+- [2026-11-13] Double click on a board note is a defect, not an enhancement: I tried it fast and slow and it did not open the note. The line moved to Defects — my answer (a).
+- [2026-11-13] The agent's guesses in T1's closing report stand for now: the web link line sits under Defects for triage; the agent's sticker suggestions stay on the icon pins line; the Entries and Boards checklist lines that hold the browser launch and Escape in a note stay unchecked; the four Inbox group names — my answer.
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
