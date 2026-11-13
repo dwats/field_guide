@@ -264,6 +264,9 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     body with every markdown feature; the README describes coverage and how
     to read a run. No code in `core`, `app`, or `ui` changed.
   - Plan and run log: `.claude/work/t1-walkthrough/plan.md`.
+  - Commit: beb7166 (scripts, fixture, checklist marks, this entry). Gates
+    ran the same day with no code change since ce8a1cc: 31 unit, 151
+    behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
   - For the next task: `run/t1/` holds the build and a vault with 8 guides.
     A script refuses to start while `fieldguide.exe` runs.
 
