@@ -161,13 +161,13 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 
 ## Theme
 
-Walked through 2026-11-12 at ce8a1cc in both schemes (task T1). A checked line passed. A failed or not judged line stays unchecked and says why. Screenshots: `tools/walkthrough/run/shots-ce8a1cc/`.
+Walked through 2026-11-12 at ce8a1cc in both schemes (task T1). A checked line passed. A failed line stays unchecked and says why. The owner checked by eye, on 2026-11-13, the lines the scripts could not judge. Screenshots: `tools/walkthrough/run/shots-ce8a1cc/`.
 
 - [ ] Settings, Appearance shows Theme first, with System, Light, and Dark pictured. The pictures show a light, a dark, and a split window in either scheme. **Failed:** Theme is first, but all three pictures follow the current scheme (three dark windows in Dark, three light in Light).
 - [x] Dark with Windows in light mode: the page, the sidebars, the panel, and the title bar turn dark at once, with no reload.
-- [x] Restart with Dark saved: no white frame appears before the first paint, and the title bar is dark from the start. Checked by screen captures every 30 ms from the window's first frame; a flash shorter than that would not show.
-- [ ] System: switching Windows between light and dark changes the app while it runs. **Not judged:** the walkthrough did not change the Windows setting. System followed Windows in light mode.
-- [ ] Light with Windows in dark mode: the app is light, and so is the title bar. **Not judged:** Windows was in light mode for every run.
+- [x] Restart with Dark saved: no white frame appears before the first paint, and the title bar is dark from the start. Screen captures about 30 ms apart, from 85 ms to 1.5 s after launch, show none; the owner looked on 2026-11-13 and saw none.
+- [x] System: switching Windows between light and dark changes the app while it runs. Checked by the owner 2026-11-13.
+- [x] Light with Windows in dark mode: the app is light, and so is the title bar. Checked by the owner 2026-11-13; the opposite holds too.
 - [x] The palette rows "Theme: System", "Theme: Light", and "Theme: Dark" work, and Settings reflects them.
 - [x] Editor in dark: the caret is visible, the selection is readable, the gutter is dark, links are blue, and markup marks are muted.
 - [x] An entry using every markdown feature reads in dark; a hidden spoiler is a gray block, not a bright one.

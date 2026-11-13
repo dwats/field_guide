@@ -1,6 +1,6 @@
 # T1 plan: walkthrough of ce8a1cc in Dark and Light
 
-Status: steps 1 to 4 are done (2026-11-12). The results are in `docs/checklist.md` (Theme section) and in T1's Notes and the Inbox in `.claude/tasks.md`. Step 5 (review, commit) is in progress.
+Status: done. Committed as beb7166 on 2026-11-12. The owner validated the not judged checks on 2026-11-13; the Theme section now stands at 13 passed, 2 failed. The results are in `docs/checklist.md` (Theme section) and in T1's Notes and the Inbox in `.claude/tasks.md`.
 
 ## Goal
 

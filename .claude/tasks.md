@@ -24,9 +24,10 @@ not started.
 Gates that remain:
 
 - "Dark mode and tokens": the Theme section of docs/checklist.md must pass in
-  both schemes. T1 walked it through on 2026-11-12: 11 lines passed, 2
-  failed, 2 are not judged. The gate stays open until the 2 failures are
-  fixed and I have checked the 2 not judged lines.
+  both schemes. T1 walked it through on 2026-11-12 and I checked the rest
+  by eye on 2026-11-13: 13 lines passed, 2 failed (the theme pictures; the
+  caption on picture cards in Dark). The gate stays open until the 2
+  failures are fixed.
 - Phase 7: "a board with a few hundred cards stays responsive while dragging"
   was never checked. docs/plan.md says it waits for a walkthrough with a
   generated guide.
@@ -202,8 +203,8 @@ Each was reported once under Guesses. None was answered.
 Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
 
 ### T1: Walkthrough of ce8a1cc in Dark and Light
-- **Status:** done 2026-11-12, except that 4 "not judged" checks wait for me
-  to validate them (listed in Notes)
+- **Status:** done (walkthrough 2026-11-12; I validated the not judged
+  checks on 2026-11-13)
 - **Goal:** See everything built since 19b8dae running, in both schemes, and
   list what is wrong. Close the open gate of "Dark mode and tokens".
 - **Depends on:** none
@@ -220,7 +221,8 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
         notes, strings, an index card, and a polaroid; the board panel's
         Entry and Relations tabs; the image viewer.
   - [x] Every line of the Theme section of docs/checklist.md is marked
-        passed or failed. (11 passed, 2 failed, 2 not judged.)
+        passed or failed. (13 passed, 2 failed, after my checks on
+        2026-11-13.)
   - [x] Each item under "The subagents asked for a look at" is marked fine
         or reported.
   - [x] Every defect found is one line in the Inbox.
@@ -229,23 +231,23 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
 - **Notes:**
   - The gate of "Dark mode and tokens" is not closed. Theme lines 1 (theme
     pictures) and 11 (picture card caption in Dark) failed.
-  - Not judged, for me to validate by eye:
-    1. System: switching Windows between light and dark changes the app
-       while it runs.
-    2. Light with Windows in dark mode: the app and the title bar are light.
-    3. "Open in browser" in the web link dialog opens the default browser.
-       The dialog itself is fine; the script answered Cancel.
-    4. Escape in a board note saves once, not twice. Focus does return to
-       the note (seen in the script's output for all five notes).
-  - Passed with a limit: no white frame at startup. Captures ran from 85
-    ms to 1.5 s, about 30 ms apart; a shorter flash would not show. Whether
-    this counts as passed is decision 15.
-  - "Dark with Windows in light mode" is marked passed, although my answer
-    on 2026-11-12 listed it as not judged. Reason: Windows was already in
-    light app mode (read, not changed), and the title bar is dark in
-    `dark/drive/50-screen-title-bar`. Whether the mark stays is decision 14.
-  - The reviewer found no blocker. Its open points are decisions 14 to 16
-    and two Inbox lines. The last two script edits (the "Theme: System"
+  - The checks the agent could not judge, validated by me on 2026-11-13:
+    1. System: switching the Windows 10 app mode switches the Field Guide
+       theme. Passed.
+    2. Light with Windows in dark mode: the app and the title bar are
+       light. The opposite holds too. Passed.
+    3. "Open in browser" opens the browser. Passed. It only recognizes
+       fully qualified addresses such as `http://google.com` (Inbox).
+    4. Escape in a board note: I entered an existing note, typed a word,
+       pressed Escape; it looks correct. Passed.
+    Items 3 and 4 are parts of larger checklist lines (Entries, Boards)
+    that T1 did not run in full, so those lines stay unchecked.
+  - No white frame at startup: passed. Captures about 30 ms apart showed
+    none, and I looked and saw none (decision 15).
+  - "Dark with Windows in light mode" stays passed (decision 14). Windows
+    was already in light app mode during the runs.
+  - The reviewer found no blocker. Its open points were decisions 14 to 16
+    (answered 2026-11-13) and Inbox lines. The last two script edits (the "Theme: System"
     step only with `-Theme`; the focus-loss message) were parsed, not run.
   - The list to look at. Fine: dark title bar and no white frame at
     startup; editor caret, selection, and gutter in Dark; image dimming
@@ -257,8 +259,8 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     long titles (they wrap; the breadcrumbs shorten the guide names).
     Reported in the Inbox: the theme pictures; the top bar with the sidebar
     folded; the caption on picture cards in Dark; the header controls with a
-    long title move between Read and Edit. Not judged: Escape in a note
-    (double save); the browser launch.
+    long title move between Read and Edit. Checked by me on 2026-11-13:
+    Escape in a note (no double save); the browser launch.
   - What changed: the three scripts were rewritten whole with one helper
     block copied into each; `tools/walkthrough/fixtures/markdown.md` is the
     body with every markdown feature; the README describes coverage and how
@@ -404,9 +406,9 @@ decision to docs/design.md with its reason, or to Decisions below.
 11. Restore a board whose guide is trashed: (a) refuse; (b) allow. **Answer:**(a)
 12. Second import of a board: (a) keep local notes and add imported ones; (b) keep replacing. **Answer:**(a)
 13. Symmetric turned on for a verb with both A to B and B to A: (a) combine each pair; (b) leave both. **Answer:**(a)
-14. T1, Theme line "Dark with Windows in light mode", marked passed although I listed it as not judged: (a) keep it passed, since Windows was already in light mode; (b) mark it not judged. **Answer:**
-15. T1, Theme line "no white frame at startup", marked passed from captures 30 ms apart: (a) mark it not judged and I check it by eye; (b) accept the pass with the limit as written. **Answer:**
-16. Walkthrough scripts refuse to start when no `portable` file sits beside `-Exe`: (a) add it as a small follow-up to T1; (b) Inbox line only. **Answer:**
+14. T1, Theme line "Dark with Windows in light mode", marked passed although I listed it as not judged: (a) keep it passed, since Windows was already in light mode; (b) mark it not judged. **Answer:** (a)
+15. T1, Theme line "no white frame at startup", marked passed from captures 30 ms apart: (a) mark it not judged and I check it by eye; (b) accept the pass with the limit as written. **Answer:** a pass; I looked and saw no white frame
+16. Walkthrough scripts refuse to start when no `portable` file sits beside `-Exe`: (a) add it as a small follow-up to T1; (b) Inbox line only. **Answer:** (b)
 
 ## Inbox
 
@@ -415,8 +417,8 @@ and keeps working; I triage between tasks.
 
 Format: `- [date] [agent|me] idea or problem — where it came up`
 
-- [2026-11-12] [agent] Guess: editor shortens long media file names except on the line being edited; saved text unchanged. Nobody asked for it. Keep or remove?
-- [2026-11-12] [agent] Guess: yellow note is slightly darker in Dark so links pass contrast. Keep or remove?
+**Defects** (for a defect pass, run as its own session task)
+
 - [2026-11-12] [agent] Defect: the Images album does not open on an entry whose body shows the same picture twice; after that, the album on the next entry shows its backdrop and no dialog. Reproduced with a real mouse click. Suspected, not verified: the album list is keyed by the picture's address in `ui/src/components/ImageAlbum.svelte` — T1 walkthrough
 - [2026-11-12] [agent] Defect: all three theme pictures in Settings follow the current scheme (three dark windows in Dark, three light in Light). Fails Theme line 1 — T1, `drive/40-settings-appearance` in both schemes
 - [2026-11-12] [agent] Defect: on a board in Dark, a picture card's caption is pale text (about #E5E1D6) on the off-white frame (#D6D2C8). Fails Theme line 11 — T1, `dark/board/b13`
@@ -425,14 +427,32 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-12] [agent] Defect: with the sidebar folded, the breadcrumbs start 56 px right of the content column — T1, `dark/drive/22`
 - [2026-11-12] [agent] Defect: the board panel's title for a selected string reads "Stringfrom Stone Block to note ..."; a space is missing — T1, `dark/notes/n06`
 - [2026-11-12] [agent] Defect: Settings, Data: a long path breaks in the middle of a word ("va" / "ult") — T1, `dark/drive/41`
+- [2026-11-13] [me] Web links: only a fully qualified address is recognized, such as `http://google.com`; a bare `google.com` is not a link. "Open in browser" itself works. Defect or enhancement: for triage — my check of T1's not judged list
+
+**Questions and unconfirmed guesses** (each needs my answer)
+
 - [2026-11-12] [agent] Question: board panel, Relations tab: after Save the verb suggestions stay open over the relation list, and the list has about one row of height above the picker. Change or keep? — T1, `dark/board/b13`
 - [2026-11-12] [agent] Question: after navigation by keyboard, the page heading shows a focus ring as a wide box. Keep or remove? — T1, `dark/drive/40`, `51`
 - [2026-11-12] [agent] Question: an info notice stays up across pages until dismissed or replaced, and covers the bottom rows of Settings and of the media cleanup list. Keep or time it out? — T1, `dark/drive/43`
 - [2026-11-12] [agent] Question: the editor's text looks bold in both schemes. Intended? — T1, `drive/05`
+- [2026-11-12] [agent] Guess: editor shortens long media file names except on the line being edited; saved text unchanged. Nobody asked for it. Keep or remove?
+- [2026-11-12] [agent] Guess: yellow note is slightly darker in Dark so links pass contrast. Keep or remove?
+
+**Board enhancements**
+
+- [2026-11-13] [me] Enhancement: double click to enter a board note's editing mode. Agent's note: docs/design.md section 6 and `BoardCanvas.svelte` already do this (two presses on the same note within 400 ms, or Enter). If it did not work for me, this is a defect — after T1
+- [2026-11-13] [me] Enhancement: board "icon pins" or "stickers" in a variety of shapes. They stay prominent at every zoom level. Mine: stars, arrows, skull, treasure chest, lock, key. The app is not only for games. Agent's additions: question mark, exclamation mark, check mark, cross, numbered and lettered badges, flag, map marker, heart, lightbulb, warning triangle, clock, calendar, magnifier, eye, person, group, house, book, bookmark, speech bubble, coin, wrench, flask, leaf, lightning bolt, target, thumbs up and down, a plain dot in each tag color; and a sticker made from any typed character or emoji, so the set stays open — after T1
+- [2026-11-13] [me] Enhancement: board level of detail. Zoomed out, things become unreadable; different levels of detail by zoom level may help. I am unsure of the best way; may be worth a dedicated research task — after T1
+- [2026-11-13] [me] Enhancement: board multi-select with the common keys (think Lucidchart). Hold click and drag to box select. Shift with hold click and drag adds to the selection — after T1
+- [2026-11-13] [me] Enhancement: board right-click menu by context. On empty space: a palette of things to add (note, pins, stickers, searchable entries). On an item: lock position, delete, arrange (bring to front, send to back, and the like). With several items selected: group, ungroup, lock, arrange, delete — after T1
+
+**Walkthrough scripts**
+
 - [2026-11-12] [agent] Idea: the three walkthrough scripts repeat one helper block of 356 lines. Move it to one file they all load? — T1
 - [2026-11-12] [agent] Problem: the walkthrough scripts flip "Line numbers" and "Dim images in dark" by a click without reading their state. A run that stops between the two clicks leaves the setting on, and the next run's screenshots show the opposite state with 0 misses — T1 review
 - [2026-11-12] [agent] Problem: the two restart checks (Dark saved at startup; old `config.toml` without `theme`) have no committed script, so two checked Theme lines cannot be repeated from the repository — T1 review
 - [2026-11-12] [agent] Problem: a board note's text goes out in one SendKeys call after one foreground check. If focus changes during that call, the rest of the text goes to the other window. Suspected, not seen — T1 review
+- [2026-11-13] [agent] Idea: the walkthrough scripts refuse to start when no file named `portable` sits beside `-Exe`. Without it they would drive the real data directory — T1 review; I answered "Inbox line only" (decision 16)
 
 ## Decisions
 
@@ -451,4 +471,7 @@ Format: `- [date] decision — reason`
 - [2026-11-12] T1: the web link check stops at the confirm dialog. The browser launch is marked "not judged" — my answer (b).
 - [2026-11-12] A check that screenshots cannot prove is marked "not judged", never passed. The agent lists every "not judged" line at the end of the task and I validate them before the next task starts. A validated line is marked off and stays marked off until code that affects that feature changes — my instruction. "Marked off" read by the agent as: checked in docs/checklist.md.
 - [2026-11-12] T1 guesses confirmed: a fresh build from the head; a new run folder `tools/walkthrough/run/t1/`; the three scripts extended, no fourth; a `-Theme` parameter; the markdown fixture file.
+- [2026-11-13] T1 validated by me: the four not judged checks passed, "Dark with Windows in light mode" stays passed, "no white frame" is a pass by my own look, and the `portable` refusal for the scripts is an Inbox line only — my answers to T1's report.
+- [2026-11-13] Defects found in a task go to the Inbox. A defect pass is run as its own session task — my instruction.
+- [2026-11-13] The Inbox is grouped (Defects; Questions and unconfirmed guesses; Board enhancements; Walkthrough scripts) — I said to group as the agent sees fit; the agent chose the groups.
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
