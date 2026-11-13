@@ -8,6 +8,7 @@
 
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import EmptyState from "../components/EmptyState.svelte";
+  import TrashedGuide from "../components/TrashedGuide.svelte";
   import {
     api,
     errorMessage,
@@ -186,7 +187,9 @@
 </script>
 
 <div class="page">
-  {#if guide}
+  {#if guide?.deleted_at}
+    <TrashedGuide {guide} />
+  {:else if guide}
     <header class="page-header">
       <div class="page-titles">
         <h1>Trash</h1>

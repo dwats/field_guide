@@ -68,6 +68,13 @@
       route.view === "boards" ||
       route.view === "board",
   );
+  /**
+   * A page inside a guide in the Trash shows only that fact and Restore (design section 3), so the
+   * guide's sidebar is not drawn and New means a new guide. This decides the sidebar column only:
+   * `session.current` is the last page's until the new page has loaded, so the page itself checks
+   * the guide it loaded.
+   */
+  const inTrashedGuide = $derived(inGuide && Boolean(session.current.guide?.deleted_at));
   /** Pages that scroll their own columns instead of the main column. */
   const split = $derived(route.view === "entry" || route.view === "board");
   /** The sidebar column: a rail when collapsed, the dragged width, else the density preset's. */
@@ -102,7 +109,7 @@
   // The New dialogs live here, so Mod+N and Mod+Shift+N work on every page.
   $effect(() =>
     register("new", () => {
-      if (inGuide && session.current.guide) newEntryOpen = true;
+      if (inGuide && session.current.guide && !inTrashedGuide) newEntryOpen = true;
       else newGuideOpen = true;
     }),
   );
@@ -461,7 +468,7 @@
     </div>
   </header>
   <div class="columns" style:--sidebar-col={sidebarWidth}>
-    {#if inGuide}
+    {#if inGuide && !inTrashedGuide}
       <Sidebar {route} />
     {:else if route.view === "settings"}
       <SettingsSidebar />

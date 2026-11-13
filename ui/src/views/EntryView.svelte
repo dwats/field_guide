@@ -18,6 +18,7 @@
   import Modal from "../components/Modal.svelte";
   import Preview from "../components/Preview.svelte";
   import TagPicker from "../components/TagPicker.svelte";
+  import TrashedGuide from "../components/TrashedGuide.svelte";
   import {
     api,
     errorMessage,
@@ -449,14 +450,13 @@
   <div
     class="content"
     class:editing={mode === "edit"}
-    class:drop-target={session.dropActive && entry !== null}
+    class:drop-target={session.dropActive && entry !== null && !guide?.deleted_at}
     bind:this={content}
   >
     <div class="page">
       {#if entry && guide?.deleted_at}
-        <h1>This entry's guide is in the Trash</h1>
-        <p class="muted">Restore the guide "{guide.name}" to open "{entry.title}" again.</p>
-        <p><a href={routeHash({ view: "guides-trash" })}>Open Trash</a></p>
+        <!-- This page follows the route only, so it reloads itself after Restore. -->
+        <TrashedGuide {guide} onrestored={() => void load(entryId)} />
       {:else if entry && guide}
         <header class="entry-head">
           <h1 class="entry-title">{entry.title}</h1>

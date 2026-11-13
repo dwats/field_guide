@@ -8,6 +8,7 @@
   import BoardNameDialog from "../components/BoardNameDialog.svelte";
   import EmptyState from "../components/EmptyState.svelte";
   import Menu from "../components/Menu.svelte";
+  import TrashedGuide from "../components/TrashedGuide.svelte";
   import { api, errorMessage, type Board, type Guide } from "../lib/api";
   import { when } from "../lib/format";
   import { navigate, routeHash } from "../lib/router";
@@ -75,7 +76,9 @@
 </script>
 
 <div class="page">
-  {#if guide}
+  {#if guide?.deleted_at}
+    <TrashedGuide {guide} />
+  {:else if guide}
     <header class="page-header">
       <div class="page-titles">
         <h1>Boards</h1>

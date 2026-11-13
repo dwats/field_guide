@@ -32,8 +32,10 @@
   let request = 0;
   const uid = $props.id();
 
+  /** A guide in the Trash does not count: its pages show no content, so the palette offers none. */
   const inGuide = $derived(
     session.current.guide !== null &&
+      !session.current.guide.deleted_at &&
       (route.view === "guide" ||
         route.view === "entry" ||
         route.view === "tags" ||

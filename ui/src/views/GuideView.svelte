@@ -17,6 +17,7 @@
   import Modal from "../components/Modal.svelte";
   import NewEntryDialog from "../components/NewEntryDialog.svelte";
   import TagPicker from "../components/TagPicker.svelte";
+  import TrashedGuide from "../components/TrashedGuide.svelte";
   import { api, errorMessage, type CoverCrop, type Guide, type Media } from "../lib/api";
   import { perform } from "../lib/actions";
   import { stepIndex } from "../lib/combobox";
@@ -306,17 +307,6 @@
     }
   }
 
-  /** From the page a stale route shows for a guide in the Trash. The page reloads through `touch`. */
-  async function restoreFromTrash() {
-    if (!guide) return;
-    try {
-      await api.restoreGuide(guide.id);
-      touch();
-    } catch (e) {
-      error = errorMessage(e);
-    }
-  }
-
   function tagsOf(ids: string[]): TagOption[] {
     return ids.map((id) => tags.find((t) => t.id === id)).filter((t): t is TagOption => t !== undefined);
   }
@@ -352,12 +342,8 @@
 
 <div class="page" class:drop-target={session.dropActive && !guide?.deleted_at}>
   {#if guide?.deleted_at}
-    <h1>This guide is in the Trash</h1>
-    <p class="muted">
-      "{guide.name}" keeps its entries, tags, relations, and boards until it is restored or purged.
-    </p>
-    <p><button class="primary" onclick={() => void restoreFromTrash()}>Restore</button></p>
-    {#if error}<p class="error">{error}</p>{/if}
+    <!-- A stale route, such as Back after Move to Trash. The page reloads through `touch`. -->
+    <TrashedGuide {guide} />
   {:else if guide}
     <header class="page-header guide-head">
       <div class="cover-slot" bind:this={coverSlot}>

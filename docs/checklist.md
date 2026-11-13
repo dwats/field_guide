@@ -39,6 +39,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Breadcrumbs in the top bar read Guides / guide / page; Back and Forward work.
 - [ ] Edit guide opens a modal.
 - [ ] More, Move guide to Trash moves the guide without a confirmation, returns to the guides list, and offers Undo, which opens the guide again; the guide is gone from the list, the palette, and New guide's vocabulary list; its entries are gone from the relation lists and boards of other guides and come back on restore; a new guide with its name is refused with a message that names the Trash; Back to its page shows "This guide is in the Trash" with Restore.
+- [ ] While a guide is in the Trash, Back to any page inside it (an entry, the Tag editor, Vocabulary, Boards, a board, the guide's Trash) shows "This guide is in the Trash" with Restore in place of the page; the sidebar column shows the guides list's sidebar; the palette lists no entries of the guide; New opens New guide; Restore brings the page and the guide's sidebar back; a board in the Trash inside a guide in the Trash shows the guide's message first.
 
 ## Right panel
 

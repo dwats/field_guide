@@ -13,6 +13,7 @@
   import BoardNameDialog from "../components/BoardNameDialog.svelte";
   import BoardPanel from "../components/BoardPanel.svelte";
   import Menu from "../components/Menu.svelte";
+  import TrashedGuide from "../components/TrashedGuide.svelte";
   import { register } from "../lib/actions";
   import {
     api,
@@ -190,14 +191,18 @@
     try {
       const data = await api.boardView(boardId);
       if (!alive || mine !== request || data.board.id !== boardId) return;
-      if (guide?.id !== data.board.guide_id) {
-        const found = await api.getGuide(data.board.guide_id);
+      // The guide is kept between loads; one seen in the Trash is asked for again, since Restore
+      // changes it.
+      let owner = guide;
+      if (!owner || owner.id !== data.board.guide_id || owner.deleted_at) {
+        owner = await api.getGuide(data.board.guide_id);
         if (!alive || mine !== request) return;
-        guide = found;
+        guide = owner;
       }
-      if (data.board.deleted_at) {
+      if (owner.deleted_at || data.board.deleted_at) {
         // A stale route, such as Back after Move to Trash: nothing is drawn and nothing is written.
-        trashed = data.board;
+        // The guide's message comes first: a board cannot be restored while its guide is in the Trash.
+        trashed = owner.deleted_at ? null : data.board;
         board = null;
         select(null);
         editingNote = null;
@@ -998,6 +1003,8 @@
           </button>
         </div>
       </div>
+    {:else if guide?.deleted_at}
+      <div class="page"><TrashedGuide {guide} /></div>
     {:else if trashed}
       <div class="page">
         <h1>This board is in the Trash</h1>

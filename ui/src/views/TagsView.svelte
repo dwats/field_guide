@@ -10,6 +10,7 @@
   import EmptyState from "../components/EmptyState.svelte";
   import Modal from "../components/Modal.svelte";
   import Suggestions from "../components/Suggestions.svelte";
+  import TrashedGuide from "../components/TrashedGuide.svelte";
   import { api, errorMessage, type EntryCounts, type Guide, type TagNode } from "../lib/api";
   import { moveHighlight, pickExplicitIndex, stepIndex } from "../lib/combobox";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
@@ -309,7 +310,10 @@
 </script>
 
 <div class="page">
-  {#if guide}
+  {#if guide?.deleted_at}
+    <!-- This page follows the route only, so it reloads itself after Restore. -->
+    <TrashedGuide {guide} onrestored={() => void load()} />
+  {:else if guide}
     <header class="page-header">
       <div class="page-titles"><h1>Tag editor</h1></div>
       <div class="page-toolbar">
