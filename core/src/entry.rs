@@ -406,13 +406,15 @@ impl Vault {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    /// The same lookup across every guide, for callers that ask for external targets.
+    /// The same lookup across every guide, for callers that ask for external targets. Entries of
+    /// a guide in the Trash are left out, as entries in the Trash are.
     pub fn lookup_entry_any_guide(&self, text: &str) -> Result<Vec<EntrySummary>> {
         let mut stmt = self.conn().prepare(&format!(
             "SELECT {SUMMARY_COLUMNS} FROM entry n
-             WHERE n.deleted_at IS NULL
+             WHERE NOT {hidden}
                AND (n.title_norm = ?1 OR n.id IN (SELECT entry_id FROM entry_alias WHERE alias_norm = ?1))
-             ORDER BY n.title_norm, n.id"
+             ORDER BY n.title_norm, n.id",
+            hidden = hidden_sql("n")
         ))?;
         let rows = stmt.query_map(params![normalize(text)], summary_from_row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -493,6 +495,16 @@ impl Vault {
 
 /// Every query that selects these aliases the entry table as `n`. The last column is the
 /// entry's tag ids in name order, joined with commas, from a correlated subquery.
+/// SQL that is true when the entry behind `alias` is hidden from other guides: it is in the
+/// Trash, or its guide is. Every query that reaches across guides uses this or `EntryRef`, whose
+/// `deleted_at` follows the same rule (design section 3, Trash).
+pub(crate) fn hidden_sql(alias: &str) -> String {
+    format!(
+        "({alias}.deleted_at IS NOT NULL OR EXISTS (SELECT 1 FROM guide hidden_guide \
+         WHERE hidden_guide.id = {alias}.guide_id AND hidden_guide.deleted_at IS NOT NULL))"
+    )
+}
+
 const SUMMARY_COLUMNS: &str = "n.id, n.guide_id, n.title, n.is_stub, n.deleted_at, n.created_at, n.updated_at, \
      (SELECT group_concat(nt.tag_id ORDER BY t.name_norm, t.id) FROM entry_tag nt JOIN tag t ON t.id = nt.tag_id \
        WHERE nt.entry_id = n.id)";
@@ -667,7 +679,7 @@ pub(crate) fn insert_entry(
 ) -> Result<EntryId> {
     let title = names::clean_entry_name("title", title)?;
     let title_norm = normalize(&title);
-    guide::ensure_guide_exists(conn, guide_id)?;
+    guide::ensure_guide_live(conn, guide_id)?;
     if let Some(holder) = name_holder(conn, guide_id, &title_norm)? {
         return Err(name_taken(title, holder));
     }

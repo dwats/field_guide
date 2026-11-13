@@ -282,7 +282,7 @@ impl Vault {
     pub fn create_board(&mut self, guide_id: &GuideId, name: &str) -> Result<Board> {
         let name = names::clean_label("board name", name)?;
         let tx = self.savepoint()?;
-        guide::ensure_guide_exists(&tx, guide_id)?;
+        guide::ensure_guide_live(&tx, guide_id)?;
         ensure_name_free(&tx, guide_id, &name, None)?;
         let id = BoardId::generate();
         let now = clock::now();
@@ -362,21 +362,22 @@ impl Vault {
     }
 
     /// The board as drawn: its live members as cards, with the first gallery item as the picture,
-    /// and every relation and mention whose ends are both on the board. A member in the trash is
-    /// left out, with its edges, until it is restored. External cards and edges are flagged, not
-    /// filtered; the toggles are the page's.
+    /// and every relation and mention whose ends are both on the board. A member in the trash, or
+    /// one whose guide is, is left out with its edges until it is restored. External cards and
+    /// edges are flagged, not filtered; the toggles are the page's.
     pub fn board_view(&self, id: &BoardId) -> Result<BoardView> {
         let conn = self.conn();
         let board = load_board(conn, id)?;
 
         let mut cards = Vec::new();
         {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare(&format!(
                 "SELECT e.id, e.guide_id, e.title, e.is_stub, e.deleted_at, n.x, n.y
                  FROM board_node n JOIN entry e ON e.id = n.entry_id
-                 WHERE n.board_id = ?1 AND e.deleted_at IS NULL
+                 WHERE n.board_id = ?1 AND NOT {hidden}
                  ORDER BY e.title_norm, e.id",
-            )?;
+                hidden = entry::hidden_sql("e")
+            ))?;
             let rows = stmt.query_map(params![id], |row| {
                 Ok((
                     EntryRef {
@@ -467,7 +468,7 @@ impl Vault {
         {
             // One row per pair: an entry that names its target by title and by alias has two
             // mention rows.
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare(&format!(
                 "SELECT DISTINCT m.entry_id, m.target_entry_id, a.guide_id, b.guide_id
                  FROM mention m
                  JOIN board_node s ON s.board_id = ?1 AND s.entry_id = m.entry_id
@@ -475,9 +476,11 @@ impl Vault {
                  JOIN entry a ON a.id = m.entry_id
                  JOIN entry b ON b.id = m.target_entry_id
                  WHERE m.entry_id != m.target_entry_id
-                   AND a.deleted_at IS NULL AND b.deleted_at IS NULL
+                   AND NOT {hidden_a} AND NOT {hidden_b}
                  ORDER BY m.entry_id, m.target_entry_id",
-            )?;
+                hidden_a = entry::hidden_sql("a"),
+                hidden_b = entry::hidden_sql("b")
+            ))?;
             let rows = stmt.query_map(params![id], |row| {
                 Ok((
                     row.get::<_, EntryId>(0)?,

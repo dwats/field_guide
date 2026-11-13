@@ -131,15 +131,16 @@ impl Vault {
         })
     }
 
+    /// The guide, live or in the Trash; `deleted_at` says which.
     pub fn get_guide(&self, id: &GuideId) -> Result<Guide> {
         load_guide(self.conn(), id)
     }
 
-    /// Guides matching the filter, ordered by name.
+    /// Guides matching the filter, ordered by name. Guides in the Trash are left out.
     pub fn list_guides(&self, filter: &GuideFilter) -> Result<Vec<Guide>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(&format!(
-            "SELECT {COLUMNS} FROM guide ORDER BY name_norm, id"
+            "SELECT {COLUMNS} FROM guide WHERE deleted_at IS NULL ORDER BY name_norm, id"
         ))?;
         let mut guides = stmt
             .query_map([], guide_from_row)?
@@ -217,39 +218,105 @@ impl Vault {
     /// Moves a guide to the Trash. Everything in it is kept and hidden from every other guide
     /// until it is restored. Trashing a guide that is already there changes nothing.
     pub fn trash_guide(&mut self, id: &GuideId) -> Result<Guide> {
-        // Stub for the tests of T2 batch 1: not built yet.
+        self.conn().execute(
+            "UPDATE guide SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+            params![id, clock::now()],
+        )?;
         load_guide(self.conn(), id)
     }
 
     /// Takes a guide out of the Trash, with everything in it as it was.
     pub fn restore_guide(&mut self, id: &GuideId) -> Result<Guide> {
-        // Stub for the tests of T2 batch 1: not built yet.
+        if load_guide(self.conn(), id)?.deleted_at.is_none() {
+            return Err(Error::NotTrashed { kind: "guide" });
+        }
+        self.conn().execute(
+            "UPDATE guide SET deleted_at = NULL WHERE id = ?1",
+            params![id],
+        )?;
         load_guide(self.conn(), id)
     }
 
     /// Removes a guide in the Trash for good, with everything in it. Media rows are vault-scoped
     /// and stay.
     pub fn purge_guide(&mut self, id: &GuideId) -> Result<()> {
-        // Stub for the tests of T2 batch 1: not built yet.
-        load_guide(self.conn(), id).map(|_| ())
+        if load_guide(self.conn(), id)?.deleted_at.is_none() {
+            return Err(Error::NotTrashed { kind: "guide" });
+        }
+        self.conn()
+            .execute("DELETE FROM guide WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     /// Guides in the Trash, the most recently trashed first.
     pub fn list_trashed_guides(&self) -> Result<Vec<Guide>> {
-        // Stub for the tests of T2 batch 1: not built yet.
-        Ok(Vec::new())
+        let conn = self.conn();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {COLUMNS} FROM guide WHERE deleted_at IS NOT NULL
+             ORDER BY deleted_at DESC, name_norm, id"
+        ))?;
+        let mut guides = stmt
+            .query_map([], guide_from_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for guide in &mut guides {
+            guide.tag_ids = tag::tags_of_guide(conn, &guide.id)?;
+        }
+        Ok(guides)
     }
 
     /// Purges every guide in the Trash and returns how many went.
     pub fn empty_guide_trash(&mut self) -> Result<usize> {
-        // Stub for the tests of T2 batch 1: not built yet.
-        Ok(0)
+        Ok(self
+            .conn()
+            .execute("DELETE FROM guide WHERE deleted_at IS NOT NULL", [])?)
     }
 
     /// What the guide holds, live or in the Trash: the counts a purge dialog states.
     pub fn guide_contents(&self, id: &GuideId) -> Result<GuideContents> {
-        // Stub for the tests of T2 batch 1: not built yet.
-        load_guide(self.conn(), id).map(|_| GuideContents::default())
+        let conn = self.conn();
+        ensure_guide_exists(conn, id)?;
+        let count = |sql: &str| -> Result<usize> {
+            let n: i64 = conn.query_row(sql, params![id], |row| row.get(0))?;
+            Ok(usize::try_from(n).unwrap_or(0))
+        };
+        // Both ends of every relation, so a relation counts once whichever end is here.
+        const ENDS: &str = "FROM relation r
+             JOIN entry s ON s.id = r.subject_entry_id
+             JOIN entry o ON o.id = r.object_entry_id";
+        // A row of one of the board's own tables, for the guide's boards.
+        let on_boards = |table: &str| {
+            format!(
+                "SELECT COUNT(*) FROM {table} t JOIN board b ON b.id = t.board_id
+                 WHERE b.guide_id = ?1"
+            )
+        };
+        Ok(GuideContents {
+            entries: count(
+                "SELECT COUNT(*) FROM entry WHERE guide_id = ?1 AND deleted_at IS NULL",
+            )?,
+            entries_in_trash: count(
+                "SELECT COUNT(*) FROM entry WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
+            )?,
+            tags: count("SELECT COUNT(*) FROM tag WHERE scope_guide_id = ?1")?,
+            verbs: count("SELECT COUNT(*) FROM verb WHERE guide_id = ?1")?,
+            qualifier_labels: count("SELECT COUNT(*) FROM qualifier_label WHERE guide_id = ?1")?,
+            relations: count(&format!(
+                "SELECT COUNT(*) {ENDS} WHERE s.guide_id = ?1 OR o.guide_id = ?1"
+            ))?,
+            relations_with_other_guides: count(&format!(
+                "SELECT COUNT(*) {ENDS} WHERE (s.guide_id = ?1) != (o.guide_id = ?1)"
+            ))?,
+            boards: count("SELECT COUNT(*) FROM board WHERE guide_id = ?1")?,
+            notes: count(&on_boards("board_note"))?,
+            images: count(&on_boards("board_image"))?,
+            strings: count(&on_boards("board_string"))?,
+            cards_on_other_boards: count(
+                "SELECT COUNT(*) FROM board_node n
+                 JOIN entry e ON e.id = n.entry_id
+                 JOIN board b ON b.id = n.board_id
+                 WHERE e.guide_id = ?1 AND b.guide_id != ?1",
+            )?,
+        })
     }
 
     /// Deletes a guide and everything in it: entries, tags, aliases, mentions, gallery rows.
@@ -292,7 +359,7 @@ impl Vault {
 }
 
 const COLUMNS: &str = "id, name, description, cover_media_id, cover_x, cover_y, cover_w, cover_h, \
-     created_at, updated_at";
+     created_at, updated_at, deleted_at";
 
 fn guide_from_row(row: &Row<'_>) -> rusqlite::Result<Guide> {
     let part = |i: usize| -> rusqlite::Result<Option<u16>> {
@@ -311,7 +378,7 @@ fn guide_from_row(row: &Row<'_>) -> rusqlite::Result<Guide> {
         cover_media_id: row.get(3)?,
         cover_crop,
         tag_ids: Vec::new(),
-        deleted_at: None,
+        deleted_at: row.get(10)?,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
     })
@@ -343,18 +410,39 @@ pub(crate) fn ensure_guide_exists(conn: &Connection, id: &GuideId) -> Result<()>
     }
 }
 
-fn ensure_name_free(conn: &Connection, name: &str, except: Option<&GuideId>) -> Result<()> {
-    let holder: Option<GuideId> = conn
+/// A create inside a guide needs the guide out of the Trash: nothing may be added to what the
+/// user cannot see.
+pub(crate) fn ensure_guide_live(conn: &Connection, id: &GuideId) -> Result<()> {
+    let found: Option<(String, Option<String>)> = conn
         .query_row(
-            "SELECT id FROM guide WHERE name_norm = ?1",
+            "SELECT name, deleted_at FROM guide WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    match found {
+        None => Err(not_found("guide", id)),
+        Some((name, Some(_))) => Err(Error::InTrash {
+            kind: "guide",
+            name,
+        }),
+        Some((_, None)) => Ok(()),
+    }
+}
+
+/// A guide in the Trash keeps its name, so restore never meets a taken one.
+fn ensure_name_free(conn: &Connection, name: &str, except: Option<&GuideId>) -> Result<()> {
+    let holder: Option<(GuideId, Option<String>)> = conn
+        .query_row(
+            "SELECT id, deleted_at FROM guide WHERE name_norm = ?1",
             params![normalize(name)],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
     match holder {
-        Some(id) if Some(&id) != except => Err(Error::GuideNameTaken {
+        Some((id, deleted_at)) if Some(&id) != except => Err(Error::GuideNameTaken {
             name: name.to_owned(),
-            in_trash: false,
+            in_trash: deleted_at.is_some(),
         }),
         _ => Ok(()),
     }

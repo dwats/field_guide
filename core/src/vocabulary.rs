@@ -134,7 +134,7 @@ pub struct VocabularyCopy {
 impl Vault {
     pub fn create_verb(&mut self, guide_id: &GuideId, new: NewVerb) -> Result<Verb> {
         let tx = self.savepoint()?;
-        guide::ensure_guide_exists(&tx, guide_id)?;
+        guide::ensure_guide_live(&tx, guide_id)?;
         let verb = insert_verb(&tx, guide_id, &new)?;
         tx.commit()?;
         Ok(verb)
@@ -377,7 +377,7 @@ impl Vault {
         new: NewQualifierLabel,
     ) -> Result<QualifierLabel> {
         let tx = self.savepoint()?;
-        guide::ensure_guide_exists(&tx, guide_id)?;
+        guide::ensure_guide_live(&tx, guide_id)?;
         let label = insert_qualifier_label(&tx, guide_id, &new)?;
         tx.commit()?;
         Ok(label)
@@ -538,7 +538,7 @@ impl Vault {
         let verbs = self.list_verbs(from)?;
         let labels = self.list_qualifier_labels(from)?;
         let tx = self.savepoint()?;
-        guide::ensure_guide_exists(&tx, to)?;
+        guide::ensure_guide_live(&tx, to)?;
         let mut copied = VocabularyCopy::default();
         for verb in verbs {
             let new = NewVerb {

@@ -23,6 +23,7 @@ pub struct EntryRef {
     pub guide_id: GuideId,
     pub title: String,
     pub is_stub: bool,
+    /// Set when the entry or its guide is in the Trash: either way the entry is hidden.
     pub deleted_at: Option<String>,
 }
 
@@ -655,7 +656,8 @@ fn number_text(number: f64) -> String {
 
 pub(crate) fn load_entry_ref(conn: &Connection, id: &EntryId) -> Result<EntryRef> {
     conn.query_row(
-        "SELECT id, guide_id, title, is_stub, deleted_at FROM entry WHERE id = ?1",
+        "SELECT e.id, e.guide_id, e.title, e.is_stub, coalesce(e.deleted_at, g.deleted_at)
+         FROM entry e JOIN guide g ON g.id = e.guide_id WHERE e.id = ?1",
         params![id],
         |row| {
             Ok(EntryRef {

@@ -375,20 +375,17 @@ fn insert_tag(
     raw_name: &str,
 ) -> Result<Tag> {
     let name = names::clean_tag_name(raw_name)?;
-    match parent {
-        Some(parent_id) => {
-            let parent_tag = load_tag(conn, parent_id)?;
-            if parent_tag.scope_guide_id.as_ref() != scope {
-                return Err(Error::Invalid(
-                    "the parent tag is in a different scope".to_owned(),
-                ));
-            }
+    if let Some(parent_id) = parent {
+        let parent_tag = load_tag(conn, parent_id)?;
+        if parent_tag.scope_guide_id.as_ref() != scope {
+            return Err(Error::Invalid(
+                "the parent tag is in a different scope".to_owned(),
+            ));
         }
-        None => {
-            if let Some(guide_id) = scope {
-                guide::ensure_guide_exists(conn, guide_id)?;
-            }
-        }
+    }
+    // A tag is a create inside its guide, at the root or under a parent.
+    if let Some(guide_id) = scope {
+        guide::ensure_guide_live(conn, guide_id)?;
     }
     if find_child(conn, scope, parent, &normalize(&name))?.is_some() {
         return Err(Error::TagNameTaken(name));
