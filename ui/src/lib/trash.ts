@@ -151,8 +151,10 @@ export function emptyTrashLines(entries: number, boards: BoardContents[]): strin
   const on = held(sum);
   if (on.words.length > 0) lines.push(`${one ? "The board holds" : "The boards hold"} ${listOf(on.words)}.`);
   if (sum.cards > 0) {
+    // A card may belong to an entry that is in this Trash and goes with it.
+    const stay = entries > 0 ? "Entries that are not in the Trash stay in the guide." : "The entries stay in the guide.";
     lines.push(
-      `${countOf(sum.cards, "card")} ${sum.cards === 1 ? "comes" : "come"} off ${one ? "the board" : "the boards"}. The entries stay in the guide.`,
+      `${countOf(sum.cards, "card")} ${sum.cards === 1 ? "comes" : "come"} off ${one ? "the board" : "the boards"}. ${stay}`,
     );
   }
   return lines;

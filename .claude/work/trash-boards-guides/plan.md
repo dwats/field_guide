@@ -33,8 +33,8 @@ The design was written at 06b6638. Checked against the code on 2026-11-13:
 
 Each follows the design's wording. Say so if one is wrong.
 
-- In a trashed guide, creates are refused. Edits to things that already exist are not refused (an entry body, a rename, a cover). The UI gives no way to reach them.
-- `ensure_board_live` checks the board's own `deleted_at`. A live board inside a trashed guide is unreachable from the UI and is not refused in core.
+- In a trashed guide, creates are refused. Edits to things that already exist are not refused (an entry body, a rename, a cover). The UI gives no way to reach them. Wrong, found by the review on 2026-11-13: Back and the guide sidebar reach the Tag editor, Vocabulary, Boards, a board, and the guide's Trash of a trashed guide (decision 24).
+- `ensure_board_live` checks the board's own `deleted_at`. A live board inside a trashed guide is unreachable from the UI and is not refused in core. Wrong in the same way: Back reaches it (decision 24).
 - `Guide.deleted_at` and `Board.deleted_at` are serialized to the UI. `EntrySummary.deleted_at` and `Entry.deleted_at` stay the entry's own value. `EntryRef.deleted_at` is set when the entry or its guide is in Trash.
 - `ImportReport` gains `boards_renamed`, a list of from and to names, like `entries_renamed`.
 - `EntryCounts` gains `trashed_boards`.
@@ -211,5 +211,6 @@ The migration is not part of the stub layer. It is code.
 - [x] Batch 2 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 169 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
 - [x] Batch 3 tests approved and committed (2026-11-13, decision 23). The stub layer is one report field, `ImportReport.boards_renamed`. 7 new tests fail for the expected reason; `a_guide_with_a_trashed_board_round_trips_without_it` passes already and stays as a pin.
 - [x] Batch 3 built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 177 behavior, 159 UI tests, clippy clean, format clean, svelte-check clean.
-- [ ] Batch 4 built, gates pass, reviewer run, committed
+- [x] Batch 4 built, gates pass, reviewer run, committed (2026-11-13, ca94215). Gates: 31 unit, 176 behavior, 176 UI tests, clippy clean, format clean, svelte-check clean.
+- [ ] Review follow-up: decisions 24 to 27 in `.claude/tasks.md`. Three findings that needed no decision are fixed.
 - [ ] `.claude/tasks.md` and docs updated

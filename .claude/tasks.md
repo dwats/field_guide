@@ -152,8 +152,6 @@ History, outside the repository, in
   it found is in the Inbox; what it could not judge is in T1's Notes.
 - The list "the subagents asked for a look at" is answered item by item in
   T1's Notes.
-- Until T2 is built, Delete board still removes its notes, images, and
-  strings after one confirm that does not list them.
 - Backups hold no media. Purge, then media cleanup, then a backup restore
   loses image files. Settings does not say so.
 - Wikilinks inside board notes are not rewritten when an import renames a
@@ -311,6 +309,17 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   and its tests change in the same batch.
   - Plan: `.claude/work/trash-boards-guides/plan.md`. It lists what differs
     from the design, the tests per batch, and a Progress list.
+  - Built 2026-11-13 in four batches. Commits: 97f4ee7 and 9f784cd (guides
+    in core), a490e6e and 2990cb3 (boards in core), 6205ed9 and d015c94
+    (export and import), ca94215 (commands, UI, docs). The approved core
+    tests were not edited while each batch was built.
+  - Review 2026-11-13 (`reviewer`): no blocker, two major and seven minor
+    findings. Fixed at once: a paste or a drop on the entry page of a
+    trashed guide wrote to the body; a misplaced doc comment; the Empty
+    trash dialog said "the entries stay" while trashed entries go. Open:
+    decisions 24 to 27. Three more are Inbox lines.
+  - Nothing in the UI was seen in a window. Done criteria 6 and 7 are built
+    and stay unchecked until the checklist lines are judged.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -419,6 +428,10 @@ decision to docs/design.md with its reason, or to Decisions below.
 21. T2: the batch 1 tests (10 new tests in `core/tests/behavior/trash.rs`, `guides.rs`, and `schema.rs`, with the stub layer; not committed): (a) approved, commit them and build batch 1; (b) change them. **Answer:** (a)
 22. T2: the batch 2 tests (8 new tests in `core/tests/behavior/boards.rs`, `trash.rs`, and `media_cleanup.rs`, with the stub layer; not committed): (a) approved, commit them and build batch 2; (b) change them. **Answer:** (a)
 23. T2: the batch 3 tests (8 new tests in `core/tests/behavior/export_import.rs`, with one stub, the report field `boards_renamed`; not committed). 7 fail for the expected reason. `a_guide_with_a_trashed_board_round_trips_without_it` passes already, because batch 2 made `list_boards` leave out trashed boards: (a) approved, keep the passing test as a pin, commit, and build batch 3; (b) approved without the passing test; (c) change them. **Answer:** (a)
+24. T2 review: pages inside a trashed guide stay reachable by Back and through the guide sidebar (Tag editor, Vocabulary, Boards, a board, the guide's Trash). Tag delete, tag merge, and vocabulary merge work there and cannot be undone. The plan said no page offers them; that was wrong: (a) every page inside a trashed guide shows "This guide is in the Trash" with Restore, and the guide sidebar is not drawn; (b) the same, and core also refuses every edit inside a trashed guide; (c) keep it, and correct the plan and `docs/design.md`. **Answer:**
+25. T2 review: purging a guide removes two things from other, live guides that the dialog does not name: qualifier values that point at its entries, and strings tied to its cards on other guides' boards: (a) `guide_contents` gains a count for each and the dialog a line for each; the approved test `guide_contents_counts_what_purge_removes` changes to name the two new fields; (b) leave the dialog, and record the gap in `docs/design.md`. **Answer:**
+26. T2 review: Empty trash on the guides list adds up the per-guide counts, so one relation between two trashed guides is counted twice: (a) core counts all trashed guides together in one new function, test first; (b) the dialog lists each guide with its entry count and says everything in them is removed, with no summed counts; (c) keep the sums. **Answer:**
+27. T2 review, two small gaps in core: a new qualifier label can still be created through a relation of a trashed guide (no page reaches it); the Vocabulary page's "in Trash" count ignores relations into a trashed guide, so Delete is refused with no reason shown: (a) a failing test for each, shown to me, then the fix; (b) Inbox lines only. **Answer:**
 
 ## Inbox
 
@@ -444,6 +457,10 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-13] [me] Web links: only a fully qualified address is recognized, such as `http://google.com`; a bare `google.com` is not a link. "Open in browser" itself works. Defect or enhancement: for triage — my check of T1's not judged list
 - [2026-11-13] [me] Defect: a double click on a board note does not open it for editing, whether I click as fast as possible or slowly. docs/design.md section 6 says it should, and `BoardCanvas.svelte` has code for it (two presses on the same note within 400 ms, or Enter). Cause not investigated. The walkthrough scripts open notes by keyboard only, so they did not catch it — after T1
 
+- [2026-11-13] [agent] Problem: purging one entry removes the qualifier values that point at it and the strings tied to its cards, and the purge dialog names neither. It predates T2 — T2 review
+- [2026-11-13] [agent] Suspected, not verified: deleting or merging a global tag takes it off a guide that is in the Trash, so Restore does not return it. `docs/design.md` section 3 says a trashed guide keeps everything — T2 review
+- [2026-11-13] [agent] Problem: a new relation to an entry whose guide is in the Trash is refused with "is in the trash; restore it first". The entry is not in the Trash; its guide is — T2
+
 **Questions and unconfirmed guesses** (each needs my answer)
 
 - [2026-11-12] [agent] Question: board panel, Relations tab: after Save the verb suggestions stay open over the relation list, and the list has about one row of height above the picker. Change or keep? — T1, `dark/board/b13`
@@ -452,6 +469,9 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-12] [agent] Question: the editor's text looks bold in both schemes. Intended? — T1, `drive/05`
 - [2026-11-12] [agent] Guess: editor shortens long media file names except on the line being edited; saved text unchanged. Nobody asked for it. Keep or remove?
 - [2026-11-12] [agent] Guess: yellow note is slightly darker in Dark so links pass contrast. Keep or remove?
+
+- [2026-11-13] [agent] Question: while a board in the Trash holds a name, every import of the same archive makes one more board, "Name (imported)", then "Name (imported 2)". Match the renamed board on a later import? It belongs with decision 12 — T2
+- [2026-11-13] [agent] Guess: one purge line differs from the Trash design: "7 of those relations are with entries in other guides." The design's wording read as if those relations were counted twice. Keep or change?
 
 **Board enhancements**
 

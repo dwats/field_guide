@@ -169,7 +169,14 @@ describe("emptyTrashLines", () => {
     ).toEqual([
       "14 entries and 2 boards are removed for good.",
       "The boards hold 10 notes, 3 images, and 14 strings.",
-      "12 cards come off the boards. The entries stay in the guide.",
+      "12 cards come off the boards. Entries that are not in the Trash stay in the guide.",
+    ]);
+  });
+
+  it("says the entries stay only when no entry is purged with the boards", () => {
+    expect(emptyTrashLines(0, [board({ cards: 1 })])).toEqual([
+      "1 board is removed for good.",
+      "1 card comes off the board. The entries stay in the guide.",
     ]);
   });
 

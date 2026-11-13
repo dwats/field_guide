@@ -373,6 +373,8 @@
    */
   async function addImages(sources: Array<{ path: string } | File>, at: DropPoint | null) {
     if (!entry || sources.length === 0) return;
+    // The page of an entry whose guide is in the Trash shows no body, so it takes no image.
+    if (guide?.deleted_at) return;
     const intoEditor =
       mode === "edit" && (at ? pointIn(editorPane, at) : (editor?.hasFocus() ?? false));
     // Files already stored are placed even when a later one fails, so no stored file is left

@@ -507,8 +507,6 @@ impl Vault {
     }
 }
 
-/// Every query that selects these aliases the entry table as `n`. The last column is the
-/// entry's tag ids in name order, joined with commas, from a correlated subquery.
 /// SQL that is true when the entry behind `alias` is hidden from other guides: it is in the
 /// Trash, or its guide is. Every query that reaches across guides uses this or `EntryRef`, whose
 /// `deleted_at` follows the same rule (design section 3, Trash).
@@ -519,6 +517,8 @@ pub(crate) fn hidden_sql(alias: &str) -> String {
     )
 }
 
+/// Every query that selects these aliases the entry table as `n`. The last column is the
+/// entry's tag ids in name order, joined with commas, from a correlated subquery.
 const SUMMARY_COLUMNS: &str = "n.id, n.guide_id, n.title, n.is_stub, n.deleted_at, n.created_at, n.updated_at, \
      (SELECT group_concat(nt.tag_id ORDER BY t.name_norm, t.id) FROM entry_tag nt JOIN tag t ON t.id = nt.tag_id \
        WHERE nt.entry_id = n.id)";
