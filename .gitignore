@@ -13,3 +13,6 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Walkthrough run folder: the app copy, the test vault, screenshots
+/tools/walkthrough/run/
