@@ -65,3 +65,5 @@ Core tests run against in-memory SQLite. Export, import, backup, and data-direct
 - Migrations are numbered SQL files in `core/migrations/`, forward only.
 - Line endings are LF everywhere; `.gitattributes` enforces it.
 - UI tooling is ESM (Vite requires it). Keep the UI dumb: call `invoke`, render the result, send actions back.
+
+@.claude/AGENTS.md
