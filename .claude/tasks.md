@@ -42,10 +42,8 @@ ce8a1cc, so `tools/walkthrough/run/t1/` holds a build without the Trash for
 boards and guides. For the current head, run `git log --oneline -5`; this
 file cannot name the commit that holds it.
 
-After e4dc7c8 (T2 batch 5, part A, UI only): 176 UI tests, svelte-check
-clean. The working tree also holds the Batch 5 core tests with stubs, not
-committed: with them, 4 new behavior tests fail as intended and 176 pass;
-clippy and format are clean.
+Gates run again at c7de1e0 (T2 batch 5, parts B, C, and D): 31 unit, 180
+behavior, 178 UI tests, clippy clean, format clean, svelte-check clean.
 
 T2 is in progress: see its Status and Notes.
 
@@ -280,11 +278,11 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** in progress. Batches 1 to 4 are built, reviewed, and pushed
-  (2026-11-13). Batch 5, the review follow-up: part A (decision 24) is built
-  and committed, e4dc7c8. The core tests for parts B, C, and D (decisions 25
-  to 27) are approved (decision 28) and committed with their stubs; nothing
-  of B, C, or D is built.
+- **Status:** blocked on decision 29. Batches 1 to 4 are built, reviewed,
+  and pushed (2026-11-13). Batch 5, the review follow-up, is built: part A
+  at e4dc7c8, parts B, C, and D at c7de1e0, all gates passing. The
+  `reviewer` read Batch 5 and found one major gap in part A (decision 29).
+  The T2 walkthrough is prepared and not run.
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -343,17 +341,34 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     svelte-check clean, 176 UI tests pass. Not seen in a window: one new
     unchecked line in `docs/checklist.md`, Guides section. Its guesses are
     in the plan file under Part A.
-  - Batch 5, parts B, C, D: 4 new tests in `core/tests/behavior/trash.rs`
-    and `vocabulary.rs` with a stub layer in `core/src/guide.rs`. Approved
-    2026-11-13 (decision 28) and committed. With the stubs the 4 fail at
-    their own assertions and the 176 other behavior tests pass, so
-    `cargo test --workspace` is red until parts B, C, and D are built. The
-    plan file lists the tests and the build notes.
-  - For the next session: build parts B, C, and D without editing the
-    approved tests (plan, "Batch 5"). After Batch 5: all gates, the
-    `reviewer` on the diff from 0286726, then the T2 walkthrough (I allowed
-    it for the wrap-up; see Decisions, 2026-11-13), this entry, and the list
-    of not judged checks.
+  - Batch 5, parts B, C, D, built 2026-11-13 (c7de1e0). The 4 approved
+    tests of f2b1f9e pass and were not edited. `guide_contents` and the new
+    `guide_trash_contents` share one counting function over a set of guides;
+    the purge dialog has two new lines; Empty trash on the guides list
+    states core's combined count; a new qualifier label is refused through
+    a relation of a trashed guide; a verb's "in Trash" count follows the
+    hidden rule. `docs/design.md` section 3 has four new bullets and
+    `docs/checklist.md` two new unchecked lines. The guesses are in the plan
+    file's Progress list.
+  - Review of Batch 5, 2026-11-13 (`reviewer`, diff 0286726..c7de1e0):
+    parts B, C, and D are clean, and the approved tests are unchanged. One
+    major finding in part A: decision 29. One question about tests:
+    decision 30. Three minor findings are Inbox lines. Nothing was changed
+    after the review except this file, the plan file, and the walkthrough
+    tooling.
+  - The T2 walkthrough is prepared, not run. `tools/walkthrough/seed/` is a
+    small program (outside the workspace, so outside the gates) that writes
+    a vault with three guides tied across guides; the app has no control
+    that makes those ties. `tools/walkthrough/trash.ps1` is a fourth script
+    for the T2 screens; it checks the dialog lines against the counts the
+    seed prints. The seed was built and run against a scratch vault. The
+    script was parsed by Windows PowerShell with 0 errors and was never
+    run. No release build was made.
+  - For the next session: act on decision 29, run every gate, then build
+    with `cargo tauri build --no-bundle`, seed `tools/walkthrough/run/t2/`,
+    and run `trash.ps1` in Dark and in Light (README). The script will
+    likely need fixes on its first run. Then wrap up: done criteria, the
+    list of not judged checks, push.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -467,6 +482,8 @@ decision to docs/design.md with its reason, or to Decisions below.
 26. T2 review: Empty trash on the guides list adds up the per-guide counts, so one relation between two trashed guides is counted twice: (a) core counts all trashed guides together in one new function, test first; (b) the dialog lists each guide with its entry count and says everything in them is removed, with no summed counts; (c) keep the sums. **Answer:** (a)
 27. T2 review, two small gaps in core: a new qualifier label can still be created through a relation of a trashed guide (no page reaches it); the Vocabulary page's "in Trash" count ignores relations into a trashed guide, so Delete is refused with no reason shown: (a) a failing test for each, shown to me, then the fix; (b) Inbox lines only. **Answer:** (a)
 28. T2: the Batch 5 tests (4 new tests: 3 in `core/tests/behavior/trash.rs`, 1 in `vocabulary.rs`; the stub layer is two new `GuideContents` fields at 0 and `guide_trash_contents` returning zeros; the approved test `guide_contents_counts_what_purge_removes` gains the two fields at 0 and nothing else; not committed). All 4 fail at their own assertions: (a) approved, commit them and build parts B, C, and D; (b) change them. **Answer:** (a)
+29. T2 review of Batch 5: a page inside a guide keeps its controls when the guide goes to the Trash while the page is open. Found path: restore a guide from the guides' Trash, open its Tag editor (or Vocabulary, an entry, a board), then click Undo in the "Restored the guide" notice. The guide is in the Trash again; the page and the guide's sidebar stay, so tag delete, tag merge, and vocabulary merge are reachable, which decision 24 was meant to stop. The Tag editor, Vocabulary, and the entry page do not reload on a change; the board page reloads but keeps its cached guide: (a) every page inside a guide checks its guide again whenever anything changes (`session.revision`), so any such path shows "This guide is in the Trash"; (b) Undo in the "Restored the guide" notice also goes to the guides' Trash page, which closes this one path only; (c) both. **Answer:**
+30. T2 review of Batch 5: two rules have no core test. First, a qualifier whose "new" label text names a label the trashed guide already has is not refused (a guess I confirmed on 2026-11-13). Second, a string with an image end on another guide's board is not counted in `strings_on_other_boards` unless its other end is a card of the purged guide. The code does both today, so the tests would pass at once and act as pins: (a) I write both tests and show them to you before committing; (b) Inbox line only. **Answer:**
 
 ## Inbox
 
@@ -496,6 +513,9 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-13] [agent] Suspected, not verified: deleting or merging a global tag takes it off a guide that is in the Trash, so Restore does not return it. `docs/design.md` section 3 says a trashed guide keeps everything — T2 review
 - [2026-11-13] [agent] Problem: a new relation to an entry whose guide is in the Trash is refused with "is in the trash; restore it first". The entry is not in the Trash; its guide is — T2
 - [2026-11-13] [agent] Problem: the Vocabulary page says "1 of them has an entry in Trash" for a relation into a guide that is in the Trash. The entry is not in the Trash; its guide is. The count is right since Batch 5; the words are not — T2 batch 5, part D
+- [2026-11-13] [agent] Problem: on an entry page or a board page of a guide in the Trash, the palette still lists "Rename entry", "Toggle Read and Edit", "Add a tag", "Add a relation", "New note", and "Add entries". They do nothing visible and show no notice. No entry data is written; "Add entries" and "Show or hide the right panel" write the panel preference — T2 batch 5 review
+- [2026-11-13] [agent] Suspected, not verified: after Restore on a "This guide is in the Trash" page the button is gone and nothing moves keyboard focus, so focus falls to the page body — T2 batch 5 review
+- [2026-11-13] [agent] Wording: "2 qualifiers on relations in other guides" in the purge dialog also covers two qualifiers on one relation — T2 batch 5 review
 
 **Questions and unconfirmed guesses** (each needs my answer)
 

@@ -1,0 +1,12 @@
+# Builds the vault that trash.ps1 drives. Not a member of the workspace, so it is not part of the
+# build or the gates. Run it as tools/walkthrough/README.md says.
+[package]
+name = "walkthrough-seed"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+fieldguide-core = { path = "../../../core" }

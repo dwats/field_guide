@@ -1,6 +1,6 @@
 # T2 plan: Trash for boards and guides
 
-Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up: part A is built (e4dc7c8); the tests for parts B, C, and D are approved (decision 28, 2026-11-13) and committed with their stubs; parts B, C, and D are not built. The Progress list at the end says where the work stands.
+Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up, is built: part A at e4dc7c8, parts B, C, and D at c7de1e0. The `reviewer` read Batch 5 and found one major gap in part A, which waits on decision 29. The walkthrough is prepared and not run. The Progress list at the end says where the work stands.
 
 The design is `.claude/work/trash-boards-guides/design.md`. This plan does not repeat it. It says what is built in what order, what differs from the design, and which tests gate each batch.
 
@@ -152,7 +152,7 @@ Docs:
 
 ### Batch 5: review follow-up (decisions 24 to 27, all answered (a) on 2026-11-13)
 
-Not started. Four parts. Parts B, C, and D change core, so each needs its tests first, with stubs, shown to the owner before they are committed. They can be shown together in one stop. Part A is UI only.
+Built 2026-11-13; see Progress. Four parts. Parts B, C, and D change core, so each needs its tests first, with stubs, shown to the owner before they are committed. They can be shown together in one stop. Part A is UI only.
 
 Part A, decision 24: every page inside a trashed guide says so.
 
@@ -276,6 +276,11 @@ The migration is not part of the stub layer. It is code.
   - Part D: `insert_qualifiers` calls `guide::ensure_guide_live` when the label text names no label of the guide; `verb_counts` uses `entry::hidden_sql`.
   - Docs: `docs/design.md` section 3 (four bullets); `docs/checklist.md`, two new unchecked lines (Guides, Entries).
   - Guesses made while building: the singular forms of the two dialog lines ("1 qualifier on a relation in another guide names one of these entries and is removed.", "this entry" when the guide has one entry, "1 string tied to that card goes with it."); the qualifier line sits after the relations lines and the string line after the cards line; the Vocabulary page's copy for the count is unchanged ("an entry in Trash"), with an Inbox line for the wording.
-- [ ] Reviewer run on the diff from 0286726
-- [ ] T2 walkthrough (allowed by the owner for the wrap-up, 2026-11-13)
+- [x] Reviewer run on the diff from 0286726 (2026-11-13, at c7de1e0). Parts B, C, and D: nothing found in the SQL, the counts against what purge deletes, the label guard, the verb count, or the dialog lines. The approved tests are unchanged. Findings:
+  - Major, part A: a page that is open when its guide goes to the Trash keeps its controls. Path: restore a guide, open its Tag editor, click Undo in the restore notice. `TagsView`, `VocabularyView`, and `EntryView` do not follow `session.revision`; `BoardView` reloads but reuses its cached `guide`. Decision 29, not answered. Nothing was changed for it.
+  - Minor: no core test for "a label text that names an existing label is not refused" or for a string with an image end. Decision 30.
+  - Minor, Inbox lines: palette commands on a trashed guide's entry and board pages; focus after Restore on the trashed-guide page; one loose plural in the qualifier line.
+- [ ] Decision 29 acted on; gates pass; committed
+- [x] Walkthrough tooling prepared (2026-11-13), not run: `tools/walkthrough/seed/` (a program outside the workspace that writes the vault; built offline into `target/seed`, run once against a scratch vault) and `tools/walkthrough/trash.ps1` (the helper block of `board.ps1` plus the T2 steps; parsed with 0 errors, never run). The counts the seed prints are the numbers in the script's `Says` lines.
+- [ ] T2 walkthrough (allowed by the owner for the wrap-up, 2026-11-13): release build, `run/t2/` seeded, `trash.ps1` in Dark and in Light, after decision 29 is acted on
 - [ ] T2 wrapped up in `.claude/tasks.md`: status, done criteria, not judged checks; pushed
