@@ -1,6 +1,6 @@
 # T2 plan: Trash for boards and guides
 
-Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up: part A is built (e4dc7c8); the tests for parts B, C, and D are written with their stubs, not committed, and wait for the owner's approval (decision 28). The Progress list at the end says where the work stands.
+Status: approved 2026-11-13 (decisions 17 to 20, all (a)). Written at head 0b718e4 (last code commit ce8a1cc, schema version 6). Batches 1 to 4 are built, reviewed, and pushed at 0286726. Batch 5, the review follow-up: part A is built (e4dc7c8); the tests for parts B, C, and D are approved (decision 28, 2026-11-13) and committed with their stubs; parts B, C, and D are not built. The Progress list at the end says where the work stands.
 
 The design is `.claude/work/trash-boards-guides/design.md`. This plan does not repeat it. It says what is built in what order, what differs from the design, and which tests gate each batch.
 
@@ -186,7 +186,7 @@ Part D, decision 27: two small gaps in core.
 - `verb_usage` counts "in trash" from the ends' own `deleted_at` (`core/src/vocabulary.rs`, near the `coalesce(sum(...))`), so a relation into a trashed guide is counted as in use with no Trash note, and Delete is refused with no reason shown. Use `entry::hidden_sql`. Check `qualifier_label_usage` for the same. Test first: `verb_usage_counts_a_relation_into_a_trashed_guide_as_in_trash`.
 - Checked 2026-11-13: `QualifierLabelUsage` has no "in trash" count at all, for trashed entries or trashed guides, so there is nothing to make consistent there. A stub value (`QualifierValue::Stub`) on a relation of a trashed guide is already refused, through `entry::insert_entry`.
 
-The tests of parts B, C, and D as written 2026-11-13 (not committed; decision 28):
+The tests of parts B, C, and D as written 2026-11-13 (approved by decision 28 and committed the same day):
 
 | Test | File | Part | Fails with the stubs at |
 |---|---|---|---|
@@ -270,7 +270,8 @@ The migration is not part of the stub layer. It is code.
 - [x] Decisions 24 to 27 answered (a) (2026-11-13). Decision 24 is recorded in `docs/design.md` section 3.
 - [x] Batch 5, part A: pages inside a trashed guide (UI). Built and committed 2026-11-13 (e4dc7c8). svelte-check clean, 176 UI tests pass. Not seen in a window; one unchecked line in `docs/checklist.md`.
 - [x] Batch 5, parts B, C, D: tests with stubs written and shown (2026-11-13). The 4 new tests fail at their own assertions; the 176 other behavior tests and 31 unit tests pass; clippy and format are clean.
-- [ ] Batch 5, parts B, C, D: tests approved (decision 28) and committed
+- [x] Batch 5, parts B, C, D: tests approved (decision 28, 2026-11-13) and committed with the stub layer. The planned guesses for the build were confirmed the same day. The owner allowed a walkthrough at the T2 wrap-up.
 - [ ] Batch 5, parts B, C, D: built, gates pass, committed
 - [ ] Reviewer run on the diff from 0286726
+- [ ] T2 walkthrough (allowed by the owner for the wrap-up, 2026-11-13)
 - [ ] T2 wrapped up in `.claude/tasks.md`: status, done criteria, not judged checks; pushed

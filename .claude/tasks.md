@@ -280,11 +280,11 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** in progress, waiting on decision 28. Batches 1 to 4 are
-  built, reviewed, and pushed (2026-11-13). Batch 5, the review follow-up:
-  part A (decision 24) is built and committed, e4dc7c8. The core tests for
-  parts B, C, and D (decisions 25 to 27) are written with stubs and are not
-  committed; nothing of B, C, or D is built.
+- **Status:** in progress. Batches 1 to 4 are built, reviewed, and pushed
+  (2026-11-13). Batch 5, the review follow-up: part A (decision 24) is built
+  and committed, e4dc7c8. The core tests for parts B, C, and D (decisions 25
+  to 27) are approved (decision 28) and committed with their stubs; nothing
+  of B, C, or D is built.
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -344,14 +344,16 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     unchecked line in `docs/checklist.md`, Guides section. Its guesses are
     in the plan file under Part A.
   - Batch 5, parts B, C, D: 4 new tests in `core/tests/behavior/trash.rs`
-    and `vocabulary.rs` with a stub layer in `core/src/guide.rs`. They are
-    in the working tree, not committed, until decision 28 is answered. With
-    the stubs the 4 fail at their own assertions and the 176 other behavior
-    tests pass. The plan file lists them and the build notes.
-  - For the next session: read decision 28. If approved: commit the tests,
-    then build parts B, C, and D without editing them (plan, "Batch 5").
-    After Batch 5: all gates, the `reviewer` on the diff from 0286726, this
-    entry, and the list of not judged checks.
+    and `vocabulary.rs` with a stub layer in `core/src/guide.rs`. Approved
+    2026-11-13 (decision 28) and committed. With the stubs the 4 fail at
+    their own assertions and the 176 other behavior tests pass, so
+    `cargo test --workspace` is red until parts B, C, and D are built. The
+    plan file lists the tests and the build notes.
+  - For the next session: build parts B, C, and D without editing the
+    approved tests (plan, "Batch 5"). After Batch 5: all gates, the
+    `reviewer` on the diff from 0286726, then the T2 walkthrough (I allowed
+    it for the wrap-up; see Decisions, 2026-11-13), this entry, and the list
+    of not judged checks.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -464,7 +466,7 @@ decision to docs/design.md with its reason, or to Decisions below.
 25. T2 review: purging a guide removes two things from other, live guides that the dialog does not name: qualifier values that point at its entries, and strings tied to its cards on other guides' boards: (a) `guide_contents` gains a count for each and the dialog a line for each; the approved test `guide_contents_counts_what_purge_removes` changes to name the two new fields; (b) leave the dialog, and record the gap in `docs/design.md`. **Answer:** (a)
 26. T2 review: Empty trash on the guides list adds up the per-guide counts, so one relation between two trashed guides is counted twice: (a) core counts all trashed guides together in one new function, test first; (b) the dialog lists each guide with its entry count and says everything in them is removed, with no summed counts; (c) keep the sums. **Answer:** (a)
 27. T2 review, two small gaps in core: a new qualifier label can still be created through a relation of a trashed guide (no page reaches it); the Vocabulary page's "in Trash" count ignores relations into a trashed guide, so Delete is refused with no reason shown: (a) a failing test for each, shown to me, then the fix; (b) Inbox lines only. **Answer:** (a)
-28. T2: the Batch 5 tests (4 new tests: 3 in `core/tests/behavior/trash.rs`, 1 in `vocabulary.rs`; the stub layer is two new `GuideContents` fields at 0 and `guide_trash_contents` returning zeros; the approved test `guide_contents_counts_what_purge_removes` gains the two fields at 0 and nothing else; not committed). All 4 fail at their own assertions: (a) approved, commit them and build parts B, C, and D; (b) change them. **Answer:**
+28. T2: the Batch 5 tests (4 new tests: 3 in `core/tests/behavior/trash.rs`, 1 in `vocabulary.rs`; the stub layer is two new `GuideContents` fields at 0 and `guide_trash_contents` returning zeros; the approved test `guide_contents_counts_what_purge_removes` gains the two fields at 0 and nothing else; not committed). All 4 fail at their own assertions: (a) approved, commit them and build parts B, C, and D; (b) change them. **Answer:** (a)
 
 ## Inbox
 
@@ -550,4 +552,7 @@ Format: `- [date] decision — reason`
 - [2026-11-13] T2: the batch 3 tests are approved as written, and the round-trip test that passes already stays as a pin (decision 23) — my answer (a).
 - [2026-11-13] T2 review follow-up, my answers (a) to decisions 24 to 27. Every page inside a trashed guide shows "This guide is in the Trash" with Restore, and the guide sidebar is not drawn; `docs/design.md` section 3 has the rule and its reason. `guide_contents` gains counts for the qualifier values and the strings a purge removes from other guides, and the approved test `guide_contents_counts_what_purge_removes` may change to name the two new fields. Core counts all trashed guides together for Empty trash on the guides list. The two small core gaps each get a failing test, shown to me, then the fix. None of this is built yet; the plan's Batch 5 lists it.
 - [2026-11-13] The guesses in the T2 review report stand: `main` was pushed at 0286726; no fix that touches an approved test was started without an answer — my answer "check".
+- [2026-11-13] T2: the Batch 5 tests are approved as written (decision 28). They are not edited while parts B, C, and D are built; if one looks wrong, the agent stops and asks — my answer (a).
+- [2026-11-13] T2: the agent may run a walkthrough when T2 is wrapped up — my words: "When we wrap up this task you can do a walkthrough". It covers T2 only. The agent reads it as: after parts B, C, and D are built and the gates pass, the keyboard and mouse are handed over for the T2 walkthrough runs.
+- [2026-11-13] The guesses in the Batch 5 part A report stand — my answer "check" to each: on a trashed guide's pages the sidebar column shows the guides list's sidebar; the entry page shows the same message as the other pages; a board in the Trash inside a guide in the Trash shows the guide's message first; the palette lists no entries of a trashed guide and offers no "create entry" row; New opens New guide there; breadcrumbs are unchanged. The two planned guesses stand too: a "new" qualifier label whose text names an existing label counts as an edit and is not refused; the dialog copy is "N qualifiers on relations in other guides name these entries and are removed." and "N strings tied to those cards go with them."
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
