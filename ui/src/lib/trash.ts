@@ -1,6 +1,6 @@
 // Words for the Trash of boards and guides (design section 3). A purge cannot be undone, so its
-// dialog states what is lost. Core counts it (`guide_contents`, `board_contents`); these functions
-// only turn the counts into sentences. A count of zero drops its words, and a line whose counts
+// dialog states what is lost. Core counts it (`guide_contents`, `guide_trash_contents`,
+// `board_contents`); these functions only turn the counts into sentences. A count of zero drops its words, and a line whose counts
 // are all zero is left out.
 
 import type { BoardContents, GuideContents } from "./api";
@@ -62,6 +62,10 @@ export function boardPurgeLines(c: BoardContents): string[] {
 
 /** What purging one guide removes. The line about images is always there: core does not count them. */
 export function guidePurgeLines(c: GuideContents): string[] {
+  return purgeLines(c, "The guide is empty.");
+}
+
+function purgeLines(c: GuideContents, emptyLine: string): string[] {
   const lines: string[] = [];
   const entries = c.entries + c.entries_in_trash;
   if (entries > 0) {
@@ -91,6 +95,16 @@ export function guidePurgeLines(c: GuideContents): string[] {
   } else if (c.relations_with_other_guides > 1) {
     lines.push(`${c.relations_with_other_guides} of those relations are with entries in other guides.`);
   }
+  if (c.values_in_other_guides > 0) {
+    // The relation stays in its guide; only the value that was one of these entries goes.
+    const one = c.values_in_other_guides === 1;
+    const named = entries === 1 ? "this entry" : one ? "one of these entries" : "these entries";
+    lines.push(
+      one
+        ? `1 qualifier on a relation in another guide names ${named} and is removed.`
+        : `${c.values_in_other_guides} qualifiers on relations in other guides name ${named} and are removed.`,
+    );
+  }
   if (c.boards > 0) {
     const on = held(c);
     const withWords = on.words.length > 0 ? ` with ${listOf(on.words)}` : "";
@@ -101,7 +115,15 @@ export function guidePurgeLines(c: GuideContents): string[] {
       `${countOf(c.cards_on_other_boards, "card")} ${c.cards_on_other_boards === 1 ? "comes" : "come"} off boards in other guides.`,
     );
   }
-  if (lines.length === 0) lines.push("The guide is empty.");
+  if (c.strings_on_other_boards > 0) {
+    const oneCard = c.cards_on_other_boards === 1;
+    lines.push(
+      `${countOf(c.strings_on_other_boards, "string")} tied to ${oneCard ? "that card" : "those cards"} ${
+        c.strings_on_other_boards === 1 ? "goes" : "go"
+      } with ${oneCard ? "it" : "them"}.`,
+    );
+  }
+  if (lines.length === 0) lines.push(emptyLine);
   lines.push('Images stay on disk until you run "Clean up unused media" in Settings.');
   return lines;
 }
@@ -113,27 +135,6 @@ export function sumBoards(list: BoardContents[]): BoardContents {
     sum.notes += c.notes;
     sum.images += c.images;
     sum.strings += c.strings;
-  }
-  return sum;
-}
-
-export function sumGuides(list: GuideContents[]): GuideContents {
-  const sum: GuideContents = {
-    entries: 0,
-    entries_in_trash: 0,
-    tags: 0,
-    verbs: 0,
-    qualifier_labels: 0,
-    relations: 0,
-    relations_with_other_guides: 0,
-    boards: 0,
-    notes: 0,
-    images: 0,
-    strings: 0,
-    cards_on_other_boards: 0,
-  };
-  for (const c of list) {
-    for (const key of Object.keys(sum) as (keyof GuideContents)[]) sum[key] += c[key];
   }
   return sum;
 }
@@ -160,12 +161,16 @@ export function emptyTrashLines(entries: number, boards: BoardContents[]): strin
   return lines;
 }
 
-/** What emptying the guides' Trash removes: every trashed guide, with the summed counts. */
-export function emptyGuideTrashLines(guides: GuideContents[]): string[] {
-  if (guides.length === 0) return ["The Trash is empty."];
+/**
+ * What emptying the guides' Trash removes: every trashed guide. `c` is core's count of all of
+ * them together (`guide_trash_contents`), so nothing between two of them is counted twice and
+ * "other guides" are the guides that stay.
+ */
+export function emptyGuideTrashLines(guides: number, c: GuideContents): string[] {
+  if (guides === 0) return ["The Trash is empty."];
   return [
-    `${countOf(guides.length, "guide")} ${guides.length === 1 ? "is" : "are"} removed for good.`,
-    ...guidePurgeLines(sumGuides(guides)),
+    `${countOf(guides, "guide")} ${guides === 1 ? "is" : "are"} removed for good.`,
+    ...purgeLines(c, guides === 1 ? "The guide is empty." : "The guides are empty."),
   ];
 }
 

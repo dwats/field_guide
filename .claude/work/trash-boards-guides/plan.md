@@ -271,7 +271,11 @@ The migration is not part of the stub layer. It is code.
 - [x] Batch 5, part A: pages inside a trashed guide (UI). Built and committed 2026-11-13 (e4dc7c8). svelte-check clean, 176 UI tests pass. Not seen in a window; one unchecked line in `docs/checklist.md`.
 - [x] Batch 5, parts B, C, D: tests with stubs written and shown (2026-11-13). The 4 new tests fail at their own assertions; the 176 other behavior tests and 31 unit tests pass; clippy and format are clean.
 - [x] Batch 5, parts B, C, D: tests approved (decision 28, 2026-11-13) and committed with the stub layer. The planned guesses for the build were confirmed the same day. The owner allowed a walkthrough at the T2 wrap-up.
-- [ ] Batch 5, parts B, C, D: built, gates pass, committed
+- [x] Batch 5, parts B, C, D: built, gates pass, committed (2026-11-13). The approved tests were not edited. Gates: 31 unit, 180 behavior, 178 UI tests, clippy clean, format clean, svelte-check clean. What was built:
+  - Parts B and C: `guide_contents` and `guide_trash_contents` share `count_contents` in `core/src/guide.rs`, which counts over a set of guides (one guide, or every guide in the Trash). The app has the command `guide_trash_contents`. `ui/src/lib/trash.ts`: two new lines in the purge dialog; `emptyGuideTrashLines(guides, contents)` takes the combined count; `sumGuides` is gone.
+  - Part D: `insert_qualifiers` calls `guide::ensure_guide_live` when the label text names no label of the guide; `verb_counts` uses `entry::hidden_sql`.
+  - Docs: `docs/design.md` section 3 (four bullets); `docs/checklist.md`, two new unchecked lines (Guides, Entries).
+  - Guesses made while building: the singular forms of the two dialog lines ("1 qualifier on a relation in another guide names one of these entries and is removed.", "this entry" when the guide has one entry, "1 string tied to that card goes with it."); the qualifier line sits after the relations lines and the string line after the cards line; the Vocabulary page's copy for the count is unchanged ("an entry in Trash"), with an Inbox line for the wording.
 - [ ] Reviewer run on the diff from 0286726
 - [ ] T2 walkthrough (allowed by the owner for the wrap-up, 2026-11-13)
 - [ ] T2 wrapped up in `.claude/tasks.md`: status, done criteria, not judged checks; pushed

@@ -17,6 +17,8 @@
   let guides = $state<Guide[]>([]);
   /** What each trashed guide holds, by guide id. */
   let contents = $state<Record<string, GuideContents>>({});
+  /** What all of them hold together, each thing counted once: the Empty trash dialog states it. */
+  let together = $state<GuideContents | null>(null);
   let selected = $state<string | null>(null);
   let confirming = $state<"purge" | "empty" | null>(null);
   let loaded = $state(false);
@@ -38,8 +40,10 @@
       const trashed = await api.listTrashedGuides();
       const counted: Record<string, GuideContents> = {};
       for (const guide of trashed) counted[guide.id] = await api.guideContents(guide.id);
+      const all = await api.guideTrashContents();
       guides = trashed;
       contents = counted;
+      together = all;
       if (selected && !guides.some((g) => g.id === selected)) selected = null;
       error = "";
     } catch (e) {
@@ -196,7 +200,7 @@
   <ConfirmDialog
     open={confirming === "empty"}
     title="Empty the Trash?"
-    body={emptyGuideTrashLines(guides.map((guide) => contents[guide.id]).filter((c) => c !== undefined))}
+    body={together ? emptyGuideTrashLines(guides.length, together) : []}
     confirmLabel="Empty trash"
     onconfirm={empty}
     oncancel={() => (confirming = null)}

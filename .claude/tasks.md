@@ -495,6 +495,7 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-13] [agent] Problem: purging one entry removes the qualifier values that point at it and the strings tied to its cards, and the purge dialog names neither. It predates T2 — T2 review
 - [2026-11-13] [agent] Suspected, not verified: deleting or merging a global tag takes it off a guide that is in the Trash, so Restore does not return it. `docs/design.md` section 3 says a trashed guide keeps everything — T2 review
 - [2026-11-13] [agent] Problem: a new relation to an entry whose guide is in the Trash is refused with "is in the trash; restore it first". The entry is not in the Trash; its guide is — T2
+- [2026-11-13] [agent] Problem: the Vocabulary page says "1 of them has an entry in Trash" for a relation into a guide that is in the Trash. The entry is not in the Trash; its guide is. The count is right since Batch 5; the words are not — T2 batch 5, part D
 
 **Questions and unconfirmed guesses** (each needs my answer)
 

@@ -13,7 +13,7 @@ use crate::error::not_found;
 use crate::vocabulary::{self, Direction, NewQualifierLabel, NewVerb, QualifierLabel, Verb};
 use crate::{
     EntryId, Error, GuideId, QualifierId, QualifierLabelId, RelationId, Result, TagId, Vault,
-    VerbId, clock, entry,
+    VerbId, clock, entry, guide,
 };
 
 /// The other end of an edge, or a qualifier's entry value.
@@ -777,18 +777,24 @@ pub(crate) fn insert_qualifiers(
     for qualifier in qualifiers {
         let label = match &qualifier.label {
             LabelSpec::Existing { id } => vocabulary::load_qualifier_label(conn, id)?,
-            LabelSpec::New(new) => match vocabulary::insert_qualifier_label(conn, guide_id, new) {
-                Ok(label) => label,
-                Err(Error::LabelTaken { .. }) => {
-                    vocabulary::lookup_label_in(conn, guide_id, &new.label)?.ok_or_else(|| {
-                        Error::LabelTaken {
-                            kind: "qualifier",
-                            label: new.label.clone(),
-                        }
-                    })?
+            LabelSpec::New(new) => {
+                // A label that is not there yet is a create, and a guide in the Trash takes
+                // none. A text that names a label the guide has is an edit of the relation.
+                if vocabulary::lookup_label_in(conn, guide_id, &new.label)?.is_none() {
+                    guide::ensure_guide_live(conn, guide_id)?;
                 }
-                Err(e) => return Err(e),
-            },
+                match vocabulary::insert_qualifier_label(conn, guide_id, new) {
+                    Ok(label) => label,
+                    Err(Error::LabelTaken { .. }) => vocabulary::lookup_label_in(
+                        conn, guide_id, &new.label,
+                    )?
+                    .ok_or_else(|| Error::LabelTaken {
+                        kind: "qualifier",
+                        label: new.label.clone(),
+                    })?,
+                    Err(e) => return Err(e),
+                }
+            }
         };
         if label.guide_id != *guide_id {
             return Err(Error::Invalid(format!(

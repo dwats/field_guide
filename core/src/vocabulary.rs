@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::not_found;
 use crate::names::{self, normalize};
-use crate::{Error, GuideId, QualifierLabelId, Result, TagId, Vault, VerbId, guide, tag};
+use crate::{Error, GuideId, QualifierLabelId, Result, TagId, Vault, VerbId, entry, guide, tag};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Verb {
@@ -64,7 +64,7 @@ pub struct VerbUsage {
     /// Relations using the verb, including those with an end in Trash. Delete is refused while
     /// this is above zero.
     pub relations: usize,
-    /// Of `relations`, those hidden because an end is in Trash.
+    /// Of `relations`, those hidden because an end is in Trash or in a guide that is.
     pub in_trash: usize,
 }
 
@@ -282,16 +282,20 @@ fn merge_verbs_in(conn: &Connection, source: &VerbId, target: &VerbId) -> Result
     Ok(())
 }
 
-/// Relations using a verb, and how many of those have an end in Trash.
+/// Relations using a verb, and how many of those are hidden because an end is in the Trash or in
+/// a guide that is.
 fn verb_counts(conn: &Connection, id: &VerbId) -> Result<(usize, usize)> {
     load_verb(conn, id)?;
     let (all, trashed): (i64, i64) = conn.query_row(
-        "SELECT count(*),
-                coalesce(sum(s.deleted_at IS NOT NULL OR o.deleted_at IS NOT NULL), 0)
-         FROM relation r
-         JOIN entry s ON s.id = r.subject_entry_id
-         JOIN entry o ON o.id = r.object_entry_id
-         WHERE r.verb_id = ?1",
+        &format!(
+            "SELECT count(*), coalesce(sum({} OR {}), 0)
+             FROM relation r
+             JOIN entry s ON s.id = r.subject_entry_id
+             JOIN entry o ON o.id = r.object_entry_id
+             WHERE r.verb_id = ?1",
+            entry::hidden_sql("s"),
+            entry::hidden_sql("o")
+        ),
         params![id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;

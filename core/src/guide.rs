@@ -280,59 +280,15 @@ impl Vault {
 
     /// What the guide holds, live or in the Trash: the counts a purge dialog states.
     pub fn guide_contents(&self, id: &GuideId) -> Result<GuideContents> {
-        let conn = self.conn();
-        ensure_guide_exists(conn, id)?;
-        let count = |sql: &str| -> Result<usize> {
-            let n: i64 = conn.query_row(sql, params![id], |row| row.get(0))?;
-            Ok(usize::try_from(n).unwrap_or(0))
-        };
-        // Both ends of every relation, so a relation counts once whichever end is here.
-        const ENDS: &str = "FROM relation r
-             JOIN entry s ON s.id = r.subject_entry_id
-             JOIN entry o ON o.id = r.object_entry_id";
-        // A row of one of the board's own tables, for the guide's boards.
-        let on_boards = |table: &str| {
-            format!(
-                "SELECT COUNT(*) FROM {table} t JOIN board b ON b.id = t.board_id
-                 WHERE b.guide_id = ?1"
-            )
-        };
-        Ok(GuideContents {
-            entries: count(
-                "SELECT COUNT(*) FROM entry WHERE guide_id = ?1 AND deleted_at IS NULL",
-            )?,
-            entries_in_trash: count(
-                "SELECT COUNT(*) FROM entry WHERE guide_id = ?1 AND deleted_at IS NOT NULL",
-            )?,
-            tags: count("SELECT COUNT(*) FROM tag WHERE scope_guide_id = ?1")?,
-            verbs: count("SELECT COUNT(*) FROM verb WHERE guide_id = ?1")?,
-            qualifier_labels: count("SELECT COUNT(*) FROM qualifier_label WHERE guide_id = ?1")?,
-            relations: count(&format!(
-                "SELECT COUNT(*) {ENDS} WHERE s.guide_id = ?1 OR o.guide_id = ?1"
-            ))?,
-            relations_with_other_guides: count(&format!(
-                "SELECT COUNT(*) {ENDS} WHERE (s.guide_id = ?1) != (o.guide_id = ?1)"
-            ))?,
-            values_in_other_guides: 0,
-            boards: count("SELECT COUNT(*) FROM board WHERE guide_id = ?1")?,
-            notes: count(&on_boards("board_note"))?,
-            images: count(&on_boards("board_image"))?,
-            strings: count(&on_boards("board_string"))?,
-            cards_on_other_boards: count(
-                "SELECT COUNT(*) FROM board_node n
-                 JOIN entry e ON e.id = n.entry_id
-                 JOIN board b ON b.id = n.board_id
-                 WHERE e.guide_id = ?1 AND b.guide_id != ?1",
-            )?,
-            strings_on_other_boards: 0,
-        })
+        ensure_guide_exists(self.conn(), id)?;
+        count_contents(self.conn(), GuideSet::One(id))
     }
 
     /// What every guide in the Trash holds, taken together: the counts the Empty trash dialog of
     /// the guides list states. Each row counts once, and "other guides" are the guides that are
     /// not in the Trash.
     pub fn guide_trash_contents(&self) -> Result<GuideContents> {
-        Ok(GuideContents::default())
+        count_contents(self.conn(), GuideSet::Trashed)
     }
 
     /// Applies a global tag to a guide.
@@ -399,6 +355,104 @@ pub(crate) fn load_guide(conn: &Connection, id: &GuideId) -> Result<Guide> {
         .ok_or_else(|| not_found("guide", id))?;
     guide.tag_ids = tag::tags_of_guide(conn, id)?;
     Ok(guide)
+}
+
+/// The guides a count is about.
+#[derive(Clone, Copy)]
+enum GuideSet<'a> {
+    One(&'a GuideId),
+    /// Every guide in the Trash.
+    Trashed,
+}
+
+/// Counts what a purge of every guide in `set` removes. Each row counts once, and "other guides"
+/// are the guides outside the set, so a relation or a card between two guides of the set is
+/// neither counted twice nor called a tie to another guide.
+fn count_contents(conn: &Connection, set: GuideSet<'_>) -> Result<GuideContents> {
+    // True when the guide id in `column` is one of the set.
+    let within = |column: &str| match set {
+        GuideSet::One(_) => format!("({column} = ?1)"),
+        GuideSet::Trashed => {
+            format!("({column} IN (SELECT id FROM guide WHERE deleted_at IS NOT NULL))")
+        }
+    };
+    let count = |sql: &str| -> Result<usize> {
+        let n: i64 = match set {
+            GuideSet::One(id) => conn.query_row(sql, params![id], |row| row.get(0))?,
+            GuideSet::Trashed => conn.query_row(sql, [], |row| row.get(0))?,
+        };
+        Ok(usize::try_from(n).unwrap_or(0))
+    };
+    let (subject, object) = (within("s.guide_id"), within("o.guide_id"));
+    // Both ends of every relation, so a relation counts once whichever end is in the set.
+    const ENDS: &str = "FROM relation r
+         JOIN entry s ON s.id = r.subject_entry_id
+         JOIN entry o ON o.id = r.object_entry_id";
+    let entries = within("e.guide_id");
+    let boards = within("b.guide_id");
+    // A row of one of the board's own tables, for the boards of the set.
+    let on_boards = |table: &str| {
+        format!("SELECT COUNT(*) FROM {table} t JOIN board b ON b.id = t.board_id WHERE {boards}")
+    };
+    // An end of a string that is a card of an entry of the set.
+    let tied = |end: &str| {
+        format!(
+            "(st.{end}_kind = 'entry' AND EXISTS              (SELECT 1 FROM entry e WHERE e.id = st.{end}_id AND {entries}))"
+        )
+    };
+    Ok(GuideContents {
+        entries: count(&format!(
+            "SELECT COUNT(*) FROM entry e WHERE {entries} AND e.deleted_at IS NULL"
+        ))?,
+        entries_in_trash: count(&format!(
+            "SELECT COUNT(*) FROM entry e WHERE {entries} AND e.deleted_at IS NOT NULL"
+        ))?,
+        tags: count(&format!(
+            "SELECT COUNT(*) FROM tag WHERE {}",
+            within("scope_guide_id")
+        ))?,
+        verbs: count(&format!(
+            "SELECT COUNT(*) FROM verb WHERE {}",
+            within("guide_id")
+        ))?,
+        qualifier_labels: count(&format!(
+            "SELECT COUNT(*) FROM qualifier_label WHERE {}",
+            within("guide_id")
+        ))?,
+        relations: count(&format!(
+            "SELECT COUNT(*) {ENDS} WHERE {subject} OR {object}"
+        ))?,
+        relations_with_other_guides: count(&format!(
+            "SELECT COUNT(*) {ENDS} WHERE {subject} != {object}"
+        ))?,
+        // The foreign key on `value_entry_id` cascades, so the value goes with its entry.
+        values_in_other_guides: count(&format!(
+            "SELECT COUNT(*) FROM relation_qualifier q
+             JOIN entry e ON e.id = q.value_entry_id
+             JOIN relation r ON r.id = q.relation_id
+             JOIN entry s ON s.id = r.subject_entry_id
+             JOIN entry o ON o.id = r.object_entry_id
+             WHERE {entries} AND NOT {subject} AND NOT {object}"
+        ))?,
+        boards: count(&format!("SELECT COUNT(*) FROM board b WHERE {boards}"))?,
+        notes: count(&on_boards("board_note"))?,
+        images: count(&on_boards("board_image"))?,
+        strings: count(&on_boards("board_string"))?,
+        cards_on_other_boards: count(&format!(
+            "SELECT COUNT(*) FROM board_node n
+             JOIN entry e ON e.id = n.entry_id
+             JOIN board b ON b.id = n.board_id
+             WHERE {entries} AND NOT {boards}"
+        ))?,
+        // The trigger `board_string_follows_node` deletes these when the card goes.
+        strings_on_other_boards: count(&format!(
+            "SELECT COUNT(*) FROM board_string st
+             JOIN board b ON b.id = st.board_id
+             WHERE NOT {boards} AND ({} OR {})",
+            tied("from"),
+            tied("to")
+        ))?,
+    })
 }
 
 pub(crate) fn ensure_guide_exists(conn: &Connection, id: &GuideId) -> Result<()> {

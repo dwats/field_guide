@@ -26,11 +26,13 @@ function guide(c: Partial<GuideContents> = {}): GuideContents {
     qualifier_labels: 0,
     relations: 0,
     relations_with_other_guides: 0,
+    values_in_other_guides: 0,
     boards: 0,
     notes: 0,
     images: 0,
     strings: 0,
     cards_on_other_boards: 0,
+    strings_on_other_boards: 0,
     ...c,
   };
 }
@@ -95,18 +97,22 @@ describe("guidePurgeLines", () => {
       qualifier_labels: 4,
       relations: 310,
       relations_with_other_guides: 7,
+      values_in_other_guides: 6,
       boards: 2,
       notes: 10,
       images: 3,
       strings: 14,
       cards_on_other_boards: 5,
+      strings_on_other_boards: 8,
     });
     expect(lines).toEqual([
       "240 entries, 12 of them already in Trash, are removed for good.",
       "18 tags, 9 verbs, 4 qualifier labels, and 310 relations go with them.",
       "7 of those relations are with entries in other guides.",
+      "6 qualifiers on relations in other guides name these entries and are removed.",
       "2 boards with 10 notes, 3 images, and 14 strings are removed.",
       "5 cards come off boards in other guides.",
+      "8 strings tied to those cards go with them.",
       IMAGES,
     ]);
   });
@@ -128,21 +134,50 @@ describe("guidePurgeLines", () => {
           entries: 1,
           relations: 1,
           relations_with_other_guides: 1,
+          values_in_other_guides: 1,
           boards: 1,
           notes: 1,
           cards_on_other_boards: 1,
+          strings_on_other_boards: 1,
         }),
       ),
     ).toEqual([
       "1 entry is removed for good.",
       "1 relation goes with it.",
       "1 of those relations is with an entry in another guide.",
+      "1 qualifier on a relation in another guide names this entry and is removed.",
       "1 board with 1 note is removed.",
       "1 card comes off boards in other guides.",
+      "1 string tied to that card goes with it.",
       IMAGES,
     ]);
     expect(guidePurgeLines(guide({ entries_in_trash: 1 }))).toEqual([
       "1 entry, already in Trash, is removed for good.",
+      IMAGES,
+    ]);
+  });
+
+  it("names what a purge takes from other guides, one or several", () => {
+    expect(
+      guidePurgeLines(
+        guide({ entries: 3, values_in_other_guides: 1, cards_on_other_boards: 2, strings_on_other_boards: 1 }),
+      ),
+    ).toEqual([
+      "3 entries are removed for good.",
+      "1 qualifier on a relation in another guide names one of these entries and is removed.",
+      "2 cards come off boards in other guides.",
+      "1 string tied to those cards goes with them.",
+      IMAGES,
+    ]);
+    expect(
+      guidePurgeLines(
+        guide({ entries: 1, values_in_other_guides: 2, cards_on_other_boards: 1, strings_on_other_boards: 3 }),
+      ),
+    ).toEqual([
+      "1 entry is removed for good.",
+      "2 qualifiers on relations in other guides name this entry and are removed.",
+      "1 card comes off boards in other guides.",
+      "3 strings tied to that card go with it.",
       IMAGES,
     ]);
   });
@@ -191,20 +226,41 @@ describe("emptyTrashLines", () => {
 });
 
 describe("emptyGuideTrashLines", () => {
-  it("counts the guides, then states the summed counts", () => {
+  it("counts the guides, then states the counts core took of all of them together", () => {
     expect(
-      emptyGuideTrashLines([guide({ entries: 2, tags: 1 }), guide({ entries: 3, entries_in_trash: 1 })]),
+      emptyGuideTrashLines(
+        2,
+        guide({
+          entries: 5,
+          entries_in_trash: 1,
+          tags: 1,
+          relations: 4,
+          relations_with_other_guides: 1,
+          values_in_other_guides: 2,
+          cards_on_other_boards: 2,
+          strings_on_other_boards: 2,
+        }),
+      ),
     ).toEqual([
       "2 guides are removed for good.",
       "6 entries, 1 of them already in Trash, are removed for good.",
-      "1 tag goes with them.",
+      "1 tag and 4 relations go with them.",
+      "1 of those relations is with an entry in another guide.",
+      "2 qualifiers on relations in other guides name these entries and are removed.",
+      "2 cards come off boards in other guides.",
+      "2 strings tied to those cards go with them.",
       IMAGES,
     ]);
-    expect(emptyGuideTrashLines([guide()])).toEqual([
-      "1 guide is removed for good.",
-      "The guide is empty.",
+  });
+
+  it("says so when the guides hold nothing, for one guide and for several", () => {
+    expect(emptyGuideTrashLines(1, guide())).toEqual(["1 guide is removed for good.", "The guide is empty.", IMAGES]);
+    expect(emptyGuideTrashLines(2, guide())).toEqual([
+      "2 guides are removed for good.",
+      "The guides are empty.",
       IMAGES,
     ]);
+    expect(emptyGuideTrashLines(0, guide())).toEqual(["The Trash is empty."]);
   });
 });
 

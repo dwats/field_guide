@@ -134,6 +134,11 @@ pub fn guide_contents(state: S<'_>, id: GuideId) -> CmdResult<GuideContents> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub fn guide_trash_contents(state: S<'_>) -> CmdResult<GuideContents> {
+    state.with_vault(|v| v.guide_trash_contents())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub fn add_guide_tag(state: S<'_>, id: GuideId, tag_id: TagId) -> CmdResult<Guide> {
     state.with_vault(|v| v.add_guide_tag(&id, &tag_id))
 }

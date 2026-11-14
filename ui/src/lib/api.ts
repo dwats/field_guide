@@ -108,6 +108,8 @@ export interface GuideContents {
   relations: number;
   /** Of `relations`, those whose other end is in another guide. */
   relations_with_other_guides: number;
+  /** Qualifier values on relations with no end in the guide that point at its entries. */
+  values_in_other_guides: number;
   /** The guide's boards, those in the Trash included. */
   boards: number;
   notes: number;
@@ -115,6 +117,8 @@ export interface GuideContents {
   strings: number;
   /** Cards of this guide's entries on boards of other guides. */
   cards_on_other_boards: number;
+  /** Strings on boards of other guides with an end on one of those cards. */
+  strings_on_other_boards: number;
 }
 
 export interface GuideFilter {
@@ -512,7 +516,7 @@ export interface NewQualifierLabel {
 export interface VerbUsage {
   verb: Verb;
   relations: number;
-  /** Of `relations`, those with an end in Trash. */
+  /** Of `relations`, those with an end in Trash or in a guide that is. */
   in_trash: number;
 }
 
@@ -593,6 +597,8 @@ export const api = {
   /** Purges every guide in the Trash; returns how many went. */
   emptyGuideTrash: () => invoke<number>("empty_guide_trash"),
   guideContents: (id: Id) => invoke<GuideContents>("guide_contents", { id }),
+  /** Every guide in the Trash counted together; "other guides" are the ones not in the Trash. */
+  guideTrashContents: () => invoke<GuideContents>("guide_trash_contents"),
   addGuideTag: (id: Id, tag_id: Id) => invoke<Guide>("add_guide_tag", { id, tag_id }),
   removeGuideTag: (id: Id, tag_id: Id) => invoke<Guide>("remove_guide_tag", { id, tag_id }),
 

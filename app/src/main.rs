@@ -87,6 +87,7 @@ fn main() -> anyhow::Result<()> {
             commands::list_trashed_guides,
             commands::empty_guide_trash,
             commands::guide_contents,
+            commands::guide_trash_contents,
             commands::add_guide_tag,
             commands::remove_guide_tag,
             commands::tag_tree,
