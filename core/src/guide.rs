@@ -64,6 +64,9 @@ pub struct GuideContents {
     pub relations: usize,
     /// Of `relations`, those whose other end is in another guide.
     pub relations_with_other_guides: usize,
+    /// Qualifier values that point at this guide's entries from relations with no end in this
+    /// guide. The relation stays in its guide and loses the value.
+    pub values_in_other_guides: usize,
     /// The guide's boards, those in the Trash included.
     pub boards: usize,
     /// Notes on those boards.
@@ -74,6 +77,9 @@ pub struct GuideContents {
     pub strings: usize,
     /// Cards of this guide's entries on boards of other guides.
     pub cards_on_other_boards: usize,
+    /// Strings on boards of other guides with an end on one of those cards. A string goes with
+    /// its card.
+    pub strings_on_other_boards: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,6 +313,7 @@ impl Vault {
             relations_with_other_guides: count(&format!(
                 "SELECT COUNT(*) {ENDS} WHERE (s.guide_id = ?1) != (o.guide_id = ?1)"
             ))?,
+            values_in_other_guides: 0,
             boards: count("SELECT COUNT(*) FROM board WHERE guide_id = ?1")?,
             notes: count(&on_boards("board_note"))?,
             images: count(&on_boards("board_image"))?,
@@ -317,7 +324,15 @@ impl Vault {
                  JOIN board b ON b.id = n.board_id
                  WHERE e.guide_id = ?1 AND b.guide_id != ?1",
             )?,
+            strings_on_other_boards: 0,
         })
+    }
+
+    /// What every guide in the Trash holds, taken together: the counts the Empty trash dialog of
+    /// the guides list states. Each row counts once, and "other guides" are the guides that are
+    /// not in the Trash.
+    pub fn guide_trash_contents(&self) -> Result<GuideContents> {
+        Ok(GuideContents::default())
     }
 
     /// Applies a global tag to a guide.

@@ -1,7 +1,7 @@
-use fieldguide_core::Error;
 use fieldguide_core::vocabulary::{
     Direction, LabelMergePreview, NewQualifierLabel, NewVerb, VerbMergePreview, VocabularyCopy,
 };
+use fieldguide_core::{Error, Vault};
 
 use crate::common::*;
 
@@ -439,6 +439,44 @@ fn usage_counts_follow_relations_and_qualifiers_including_trash() {
     v.delete_qualifier_label(&idle).unwrap();
     assert_eq!(v.verb_usage(&g).unwrap().len(), 1);
     assert_eq!(v.qualifier_label_usage(&g).unwrap().len(), 1);
+}
+
+/// A relation into a guide in the Trash is hidden the way a relation to a trashed entry is, and
+/// it still uses the verb. The Vocabulary page refuses Delete for such a verb, and `in_trash` is
+/// the count it shows as the reason.
+#[test]
+fn verb_usage_counts_a_relation_into_a_trashed_guide_as_in_trash() {
+    let mut v = vault();
+    let minecraft = guide(&mut v, "Minecraft");
+    let terraria = guide(&mut v, "Terraria");
+    let stone = entry(&mut v, &minecraft, "Stone", "");
+    let cobble = entry(&mut v, &minecraft, "Cobblestone", "");
+    let copper = entry(&mut v, &terraria, "Copper", "");
+    let drops = verb(&mut v, &minecraft, "drops", None);
+    relate(&mut v, &stone, &drops, &cobble);
+    relate(&mut v, &stone, &drops, &copper);
+    let usage = |v: &Vault| -> Vec<(String, usize, usize)> {
+        v.verb_usage(&minecraft)
+            .unwrap()
+            .into_iter()
+            .map(|u| (u.verb.label, u.relations, u.in_trash))
+            .collect()
+    };
+    assert_eq!(usage(&v), [("drops".to_owned(), 2, 0)]);
+
+    v.trash_guide(&terraria).unwrap();
+    assert_eq!(
+        usage(&v),
+        [("drops".to_owned(), 2, 1)],
+        "the relation to Copper is hidden because Copper's guide is in the Trash"
+    );
+    match v.delete_verb(&drops) {
+        Err(Error::InUse { count: 2, .. }) => {}
+        other => panic!("expected InUse with 2, got {other:?}"),
+    }
+
+    v.restore_guide(&terraria).unwrap();
+    assert_eq!(usage(&v), [("drops".to_owned(), 2, 0)]);
 }
 
 #[test]

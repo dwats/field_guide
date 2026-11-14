@@ -3,7 +3,9 @@ use std::slice::from_ref;
 use fieldguide_core::board::{BoardNode, EndKind, StringEnd};
 use fieldguide_core::entry::{EntryQuery, NewEntry, TrashEmptied};
 use fieldguide_core::guide::{Guide, GuideContents, GuideFilter};
-use fieldguide_core::relation::{CreateRelation, RelationFilter, Target, VerbSpec};
+use fieldguide_core::relation::{
+    CreateRelation, LabelSpec, NewQualifier, QualifierValue, RelationFilter, Target, VerbSpec,
+};
 use fieldguide_core::vocabulary::{Direction, NewQualifierLabel, NewVerb};
 use fieldguide_core::{BoardId, EntryId, Error, GuideId, Vault};
 
@@ -437,6 +439,57 @@ fn nothing_can_be_created_in_a_trashed_guide() {
     assert!(lines(&v, &ore).is_empty());
 }
 
+/// Core refuses creates in a trashed guide and leaves edits alone (design section 3). A qualifier
+/// added to a relation that is already there is an edit; a label that does not exist yet is a
+/// create, and it must not slip in with the edit.
+#[test]
+fn a_new_qualifier_label_cannot_be_created_through_a_relation_of_a_trashed_guide() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let cobble = entry(&mut v, &g, "Cobblestone", "");
+    let drops = verb(&mut v, &g, "drops", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    let edge = relate_with(
+        &mut v,
+        &stone,
+        &drops,
+        &cobble,
+        vec![q_text(&with, "a pickaxe")],
+    );
+    v.trash_guide(&g).unwrap();
+
+    let new_label = || NewQualifier {
+        label: LabelSpec::New(NewQualifierLabel {
+            label: "found in".to_owned(),
+            inverse_label: None,
+        }),
+        value: QualifierValue::Text("caves".to_owned()),
+    };
+    match v.add_qualifier(&edge.id, new_label()) {
+        Err(Error::InTrash { kind, name }) => {
+            assert_eq!((kind, name.as_str()), ("guide", "Minecraft"));
+        }
+        result => panic!("add_qualifier: expected InTrash, got {result:?}"),
+    }
+    let replaced = v.replace_qualifiers(&edge.id, &[new_label()]);
+    assert!(
+        matches!(replaced, Err(Error::InTrash { kind: "guide", .. })),
+        "replace_qualifiers: {replaced:?}"
+    );
+
+    // Nothing was written: the guide comes back with its one label and the edge as it was.
+    v.restore_guide(&g).unwrap();
+    let labels: Vec<String> = v
+        .list_qualifier_labels(&g)
+        .unwrap()
+        .into_iter()
+        .map(|l| l.label)
+        .collect();
+    assert_eq!(labels, ["with"]);
+    assert_eq!(lines(&v, &stone), ["DROPS Cobblestone · with a pickaxe"]);
+}
+
 fn entry_end(id: &EntryId) -> StringEnd {
     StringEnd {
         kind: EndKind::Entry,
@@ -542,11 +595,13 @@ fn guide_contents_counts_what_purge_removes() {
         qualifier_labels: 1,
         relations: 4,
         relations_with_other_guides: 2,
+        values_in_other_guides: 0,
         boards: 2,
         notes: 3,
         images: 1,
         strings: 1,
         cards_on_other_boards: 1,
+        strings_on_other_boards: 0,
     };
     let terraria = GuideContents {
         entries: 1,
@@ -556,11 +611,13 @@ fn guide_contents_counts_what_purge_removes() {
         qualifier_labels: 0,
         relations: 2,
         relations_with_other_guides: 2,
+        values_in_other_guides: 0,
         boards: 1,
         notes: 0,
         images: 0,
         strings: 0,
         cards_on_other_boards: 1,
+        strings_on_other_boards: 0,
     };
     assert_eq!(f.v.guide_contents(&f.minecraft).unwrap(), minecraft);
     assert_eq!(f.v.guide_contents(&f.terraria).unwrap(), terraria);
@@ -588,6 +645,277 @@ fn guide_contents_counts_what_purge_removes() {
     );
     assert_eq!(card_titles(&f.v, &f.terraria_board), ["Copper"]);
     assert_eq!(f.v.board_layout(&f.terraria_board).unwrap().len(), 1);
+}
+
+/// A new note on the board, as the end of a string.
+fn note_end(v: &mut Vault, board: &BoardId, text: &str) -> StringEnd {
+    let note = v.create_board_note(board, text, 0.0, 300.0).unwrap();
+    StringEnd {
+        kind: EndKind::Note,
+        id: note.id.0.clone(),
+    }
+}
+
+fn tie(v: &mut Vault, board: &BoardId, from: &StringEnd, to: &StringEnd) {
+    v.create_board_string(board, from, to, "").unwrap();
+}
+
+/// A purge reaches into other guides two ways that leave the other guide's own row in place: a
+/// relation between two entries of another guide loses a value that was an entry of this guide,
+/// and a board of another guide loses the strings tied to this guide's cards.
+#[test]
+fn guide_contents_counts_what_purge_removes_from_other_guides() {
+    let mut v = vault();
+    let minecraft = guide(&mut v, "Minecraft");
+    let terraria = guide(&mut v, "Terraria");
+    let stone = entry(&mut v, &minecraft, "Stone", "");
+    let furnace = entry(&mut v, &minecraft, "Furnace", "");
+    let coal = entry(&mut v, &minecraft, "Coal", "");
+    let ore = entry(&mut v, &terraria, "Copper Ore", "");
+    let bar = entry(&mut v, &terraria, "Copper Bar", "");
+    let crafts = verb(&mut v, &minecraft, "crafts into", None);
+    let fueled = qualifier_label(&mut v, &minecraft, "fueled by", None);
+    let smelts = verb(&mut v, &terraria, "smelts into", None);
+    let needs = verb(&mut v, &terraria, "needs", None);
+    let heated = qualifier_label(&mut v, &terraria, "heated in", None);
+
+    // Inside Terraria: two values are Minecraft entries and one is text. The relation has no end
+    // in Minecraft, so a purge of Minecraft keeps it and takes the two values.
+    let kept = relate_with(
+        &mut v,
+        &ore,
+        &smelts,
+        &bar,
+        vec![
+            q_entry(&heated, &furnace),
+            q_entry(&heated, &coal),
+            q_text(&heated, "a campfire"),
+        ],
+    );
+    // Two relations with an end in Minecraft. Each goes whole and is counted as a relation, so
+    // its value is not counted a second time.
+    relate_with(
+        &mut v,
+        &stone,
+        &crafts,
+        &furnace,
+        vec![q_entry(&fueled, &coal)],
+    );
+    relate_with(
+        &mut v,
+        &bar,
+        &needs,
+        &furnace,
+        vec![q_entry(&heated, &coal)],
+    );
+
+    // Minecraft's own board. Its string is counted with the board.
+    let map = v.create_board(&minecraft, "Map").unwrap().id;
+    v.add_board_nodes(&map, &[node(&stone, 0.0, 0.0)]).unwrap();
+    let start = note_end(&mut v, &map, "start here");
+    tie(&mut v, &map, &entry_end(&stone), &start);
+
+    // Terraria's board holds two Minecraft cards. Three strings have an end on one of them; the
+    // string between the two counts once. The fourth string touches neither.
+    let smelting = v.create_board(&terraria, "Smelting").unwrap().id;
+    v.add_board_nodes(
+        &smelting,
+        &[
+            node(&ore, 0.0, 0.0),
+            node(&bar, 300.0, 0.0),
+            node(&furnace, 600.0, 0.0),
+            node(&coal, 900.0, 0.0),
+        ],
+    )
+    .unwrap();
+    let recipe = note_end(&mut v, &smelting, "check the recipe");
+    tie(&mut v, &smelting, &entry_end(&furnace), &entry_end(&ore));
+    tie(&mut v, &smelting, &entry_end(&furnace), &recipe);
+    tie(&mut v, &smelting, &entry_end(&furnace), &entry_end(&coal));
+    tie(&mut v, &smelting, &entry_end(&ore), &entry_end(&bar));
+
+    let expected = GuideContents {
+        entries: 3,
+        entries_in_trash: 0,
+        tags: 0,
+        verbs: 1,
+        qualifier_labels: 1,
+        relations: 2,
+        relations_with_other_guides: 1,
+        values_in_other_guides: 2,
+        boards: 1,
+        notes: 1,
+        images: 0,
+        strings: 1,
+        cards_on_other_boards: 2,
+        strings_on_other_boards: 3,
+    };
+    assert_eq!(v.guide_contents(&minecraft).unwrap(), expected);
+    // Nothing of Terraria sits in Minecraft, so a purge of Terraria would take neither.
+    let terraria_holds = v.guide_contents(&terraria).unwrap();
+    assert_eq!(
+        (
+            terraria_holds.values_in_other_guides,
+            terraria_holds.strings_on_other_boards
+        ),
+        (0, 0)
+    );
+
+    // The purge dialog asks about a guide in the Trash, and gets the same counts.
+    v.trash_guide(&minecraft).unwrap();
+    assert_eq!(v.guide_contents(&minecraft).unwrap(), expected);
+
+    // What the two counts named is gone, and nothing else of Terraria's: the relation keeps its
+    // text value, and the board keeps the string between its own two cards.
+    assert_eq!(v.get_relation(&kept.id).unwrap().qualifiers.len(), 3);
+    assert_eq!(v.board_view(&smelting).unwrap().strings.len(), 4);
+    v.purge_guide(&minecraft).unwrap();
+    assert_eq!(v.get_relation(&kept.id).unwrap().qualifiers.len(), 1);
+    assert_eq!(
+        lines(&v, &ore),
+        ["SMELTS INTO Copper Bar · heated in a campfire"]
+    );
+    assert_eq!(v.board_view(&smelting).unwrap().strings.len(), 1);
+    assert_eq!(card_titles(&v, &smelting), ["Copper Bar", "Copper Ore"]);
+}
+
+/// Empty trash on the guides list purges every guide in the Trash at once, so its dialog needs
+/// the counts for all of them together. Adding up `guide_contents` per guide counts a relation
+/// or a string between two trashed guides twice, and calls a guide that is going too an "other
+/// guide".
+#[test]
+fn guide_trash_contents_counts_every_trashed_guide_together_and_each_row_once() {
+    let mut v = vault();
+    let minecraft = guide(&mut v, "Minecraft");
+    let terraria = guide(&mut v, "Terraria");
+    let valheim = guide(&mut v, "Valheim");
+    let stone = entry(&mut v, &minecraft, "Stone", "");
+    let gone = entry(&mut v, &minecraft, "Gone", "");
+    let copper = entry(&mut v, &terraria, "Copper", "");
+    let flint = entry(&mut v, &valheim, "Flint", "");
+    let raft = entry(&mut v, &valheim, "Raft", "");
+    v.ensure_tag_path(Some(&minecraft), "Blocks").unwrap();
+    let drops = verb(&mut v, &minecraft, "drops", None);
+    let mined = qualifier_label(&mut v, &minecraft, "mined with", None);
+    let smelts = verb(&mut v, &terraria, "smelts into", None);
+    let builds = verb(&mut v, &valheim, "builds", None);
+    let using = qualifier_label(&mut v, &valheim, "using", None);
+
+    // Four relations have an end in Minecraft or Terraria. Two join the two guides, one stays
+    // inside Minecraft and carries a Terraria entry as a value, and one reaches Valheim.
+    relate(&mut v, &stone, &drops, &copper);
+    relate(&mut v, &copper, &smelts, &stone);
+    relate_with(
+        &mut v,
+        &stone,
+        &drops,
+        &gone,
+        vec![q_entry(&mined, &copper)],
+    );
+    relate(&mut v, &stone, &drops, &flint);
+    // Inside Valheim: one value from each of the two guides, and one that is text.
+    let kept = relate_with(
+        &mut v,
+        &flint,
+        &builds,
+        &raft,
+        vec![
+            q_entry(&using, &stone),
+            q_entry(&using, &copper),
+            q_text(&using, "a hammer"),
+        ],
+    );
+    v.trash_entry(&gone).unwrap();
+
+    // Each of the two guides has a board with a card of the other on it. Minecraft's board also
+    // holds a Valheim card, a note, and a string.
+    let map = v.create_board(&minecraft, "Map").unwrap().id;
+    v.add_board_nodes(
+        &map,
+        &[
+            node(&stone, 0.0, 0.0),
+            node(&copper, 300.0, 0.0),
+            node(&flint, 600.0, 0.0),
+        ],
+    )
+    .unwrap();
+    note_end(&mut v, &map, "start here");
+    tie(&mut v, &map, &entry_end(&stone), &entry_end(&copper));
+    let smelting = v.create_board(&terraria, "Smelting").unwrap().id;
+    v.add_board_nodes(
+        &smelting,
+        &[node(&copper, 0.0, 0.0), node(&stone, 300.0, 0.0)],
+    )
+    .unwrap();
+    // A board that was in the Trash before its guide still counts as a board of the guide.
+    v.trash_board(&smelting).unwrap();
+
+    // Valheim's board holds one card from each of the two guides. Two strings have an end on
+    // one of them; the string between the two counts once. The third string touches neither.
+    let camp = v.create_board(&valheim, "Camp").unwrap().id;
+    v.add_board_nodes(
+        &camp,
+        &[
+            node(&flint, 0.0, 0.0),
+            node(&raft, 300.0, 0.0),
+            node(&stone, 600.0, 0.0),
+            node(&copper, 900.0, 0.0),
+        ],
+    )
+    .unwrap();
+    tie(&mut v, &camp, &entry_end(&stone), &entry_end(&copper));
+    tie(&mut v, &camp, &entry_end(&flint), &entry_end(&stone));
+    tie(&mut v, &camp, &entry_end(&flint), &entry_end(&raft));
+
+    // With no guide in the Trash there is nothing to count.
+    assert_eq!(v.guide_trash_contents().unwrap(), GuideContents::default());
+
+    v.trash_guide(&minecraft).unwrap();
+    v.trash_guide(&terraria).unwrap();
+    let valheim_before = v.guide_contents(&valheim).unwrap();
+    assert_eq!(
+        v.guide_trash_contents().unwrap(),
+        GuideContents {
+            entries: 2,
+            entries_in_trash: 1,
+            tags: 1,
+            verbs: 2,
+            qualifier_labels: 1,
+            // The per-guide counts add up to 6.
+            relations: 4,
+            // Only the relation with Valheim. The per-guide counts add up to 5.
+            relations_with_other_guides: 1,
+            // Both sit on the one Valheim relation. The per-guide counts add up to 3.
+            values_in_other_guides: 2,
+            boards: 2,
+            notes: 1,
+            images: 0,
+            strings: 1,
+            // Stone and Copper on Valheim's board. The per-guide counts add up to 4.
+            cards_on_other_boards: 2,
+            // On Valheim's board. The per-guide counts add up to 4.
+            strings_on_other_boards: 2,
+        }
+    );
+
+    // What the counts named is gone, and nothing else: Valheim keeps its entries, its verb, its
+    // board, the relation with its text value, and the string between its own two cards.
+    assert_eq!(v.empty_guide_trash().unwrap(), 2);
+    assert_eq!(v.guide_trash_contents().unwrap(), GuideContents::default());
+    assert_eq!(
+        v.guide_contents(&valheim).unwrap(),
+        GuideContents {
+            relations: 1,
+            relations_with_other_guides: 0,
+            strings: 1,
+            cards_on_other_boards: 0,
+            ..valheim_before
+        }
+    );
+    assert_eq!(v.get_relation(&kept.id).unwrap().qualifiers.len(), 1);
+    assert_eq!(lines(&v, &flint), ["BUILDS Raft · using a hammer"]);
+    assert_eq!(v.board_view(&camp).unwrap().strings.len(), 1);
+    assert_eq!(card_titles(&v, &camp), ["Flint", "Raft"]);
 }
 
 #[test]
