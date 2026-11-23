@@ -135,6 +135,6 @@ None. Decisions 33 to 36 were answered (a) on 2026-11-23.
 - [x] Core built; the approved tests pass unedited (2026-11-23: 188 behavior tests pass; `git diff c6742e0 -- core/tests` is empty)
 - [x] UI built (2026-11-23). Beyond the plan: the Undo rule is a pure function, `stringRestore` in `ui/src/lib/board.ts`, with one Vitest test; two `BoardString` fixtures in `board.test.ts` gained the new field. The outline is nine text shadows in `--canvas`, a new custom property that is `--bg`, or `--cork` on cork.
 - [x] Docs updated (2026-11-23): `docs/design.md` sections 6 and 7 (written with the tests), `docs/plan.md` Phase 7b, one new unchecked line in `docs/checklist.md`, Boards.
-- [ ] Gates run; `reviewer` called
+- [x] Gates run; `reviewer` called (2026-11-23 at cce45e0: 31 unit, 188 behavior, 184 UI tests, clippy, format, and svelte-check clean; the review approved with four minor findings, none fixed; see T3's Notes and decisions 38 and 39)
 - [ ] Window check (walkthrough or owner)
 - [ ] `tasks.md` wrapped up

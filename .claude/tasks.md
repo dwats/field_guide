@@ -49,6 +49,10 @@ build is of 646332c, in `tools/walkthrough/run/t2/`; no code in `core`,
 
 T2 is done. I validated its two not judged checks on 2026-11-23.
 
+Gates last run on 2026-11-23 at cce45e0 (T3, built): 31 unit, 188 behavior,
+184 UI tests, clippy clean, format clean, svelte-check clean. The schema
+version is 8. No release build holds T3; the last one is still of 646332c.
+
 ## Carry-over from the long session
 
 Things that were only in the conversation.
@@ -437,18 +441,21 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     run of `trash.ps1`.
 
 ### T3: Pill toggle on lines
-- **Status:** in progress (plan approved 2026-11-23, decisions 33 to 36
-  all (a); the core tests are approved by decision 37 and committed with
-  their stub layer; the build is next)
+- **Status:** in progress (built 2026-11-23 at cce45e0, all gates pass,
+  the `reviewer` approved; not seen in a window, waiting on decisions 38
+  and 39)
 - **Goal:** Let me turn the pill background behind a line's label off for
   one line, so a busy board stays readable. Today every line has the pill.
 - **Done when:**
   - [ ] The selected line's section in the board panel has a "Label
-        background" switch, on by default.
-  - [ ] The choice survives a reload and an export and import.
+        background" switch, on by default. (Built; core test 1 covers the
+        default. Not seen in a window.)
+  - [x] The choice survives a reload and an export and import. (Core
+        tests 2 to 6.)
   - [ ] With the pill off, the label still reads on all four backgrounds in
         both schemes, or the task says where it does not.
-  - [ ] docs/design.md section 6 records the rule.
+  - [x] docs/design.md section 6 records the rule. (Section 7 records
+        the archive field.)
 - **Notes:** Under (a) the choice is a new column on `board_string` and a
   new field on a string in the archive's board file. That is a migration and
   a small format addition; the session's earlier summary of (a) did not say
@@ -475,6 +482,35 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     comparing `SCHEMA_VERSION` with itself asserts nothing. The new
     version 7 test does not pin the number 8, so T7's migration will not
     need to edit it.
+  - Built 2026-11-23 (cce45e0; the tests are c6742e0). Migration 0008
+    adds `board_string.label_background`, default 1; the schema version
+    is 8, so T7 takes 0009. The approved tests were not edited during the
+    build. The archive field is written only when off; `format_version`
+    is still 1.
+  - UI: `Switch.svelte` is new (a `role="switch"` button, label left,
+    track right). The panel's string section has the switch between the
+    swatches and "Delete string". A bare label is `.pill.bare` in
+    `BoardCanvas.svelte`: no box, nine text shadows in `--canvas`, a new
+    custom property that is `--bg`, or `--cork` on cork. Undo's rule is
+    `stringRestore` in `ui/src/lib/board.ts`, with a Vitest test.
+  - Done criterion 3, by figures only: the plan file has the contrast
+    table. Text against every background is 4.4 to 1 or better. Text
+    against the twine itself is 1.0 to 3.4 to 1, so the outline is what
+    keeps the letters apart from the string. Not judged until seen in a
+    window; `docs/checklist.md`, Boards, has one new unchecked line.
+  - Review 2026-11-23 (`reviewer`, diff 6840717..cce45e0): approved, no
+    blocker and no major finding. It read every place that reads or
+    writes a string row and found no path that loses the value; it
+    confirmed the approved tests were not edited by the build, and ran
+    every gate itself with the same counts. Four minor findings, none
+    fixed: a test gap (decision 39) and three Inbox lines (Undo ties a
+    string in two calls; the string section may not fit a 400-pixel-high
+    window; High Contrast mode drops the outline). For the window check it
+    asks for: the black string in Light at the smallest zoom, and whether
+    the outline shows as a halo on cork's grain.
+  - Not built or checked: no release build, no walkthrough step, and
+    `tools/walkthrough/seed/` was not compiled against the new core (it
+    calls `create_board_string` only, whose signature did not change).
 
 ### T4: Narrow windows
 - **Status:** todo (decision 4 answered (a) on 2026-11-12)
@@ -746,6 +782,8 @@ decision to docs/design.md with its reason, or to Decisions below.
 35. T3: two approved tests must change. `core/tests/behavior/boards.rs` has a `BoardStringUpdate` literal that names every field, so a new field stops it compiling. `a_version_6_vault_migrates_to_7_with_nothing_trashed` in `schema.rs` asserts that the schema version is 7, and T3 makes it 8: (a) the literal gains `..BoardStringUpdate::default()`, and the two version lines compare with `SCHEMA_VERSION`; both edits are shown with the new tests before the commit; (b) change them another way, and I say how. **Answer:** (a)
 36. T3: the plan in `.claude/work/t3-pill-toggle/plan.md`: (a) approved; (b) change it. **Answer:** (a)
 37. T3: the six core tests and the two edits of decision 35 (in `core/tests/behavior/boards.rs`, `schema.rs`, and `export_import.rs`, with the stub layer; not committed). All 6 fail at their own assertions: (a) approved, commit them and build; (b) change them. **Answer:** (a)
+38. T3: the window check for done criteria 1 and 3 (the switch, and the bare label on four backgrounds in both schemes). No release build holds T3 yet: (a) the agent makes a release build, adds steps to `tools/walkthrough/notes.ps1`, and takes the keyboard, the mouse, and the clipboard for a run in Dark and a run in Light; (b) the agent makes the release build without opening a window, and I check the new line of `docs/checklist.md` by eye; (c) leave it not judged for now and close the task with the line unchecked. **Answer:**
+39. T3 review: no test turns a string's label background off and then imports the same archive a second time into the same guide (the "second import replaces the board" path). It shares its one insert with the tested path, so the test would pass at once and act as a pin: (a) Inbox line only; (b) I write the pin test and show it to you before committing. **Answer:**
 
 ## Inbox
 
@@ -781,6 +819,9 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-23] [agent] Question: Undo in the "Moved the board to Trash" notice opens the board when the board was trashed from its own page, and only puts it back in the list when it was trashed from the Boards list. Keep the difference or open the board in both? — T2 walkthrough, `dark/trash/t52`, `t56b`
 - [2026-11-23] [agent] Problem: `EntryView.load` has no newest-request guard, so two loads that overlap can finish in either order. It predates T2; the decision 29 fix added one more caller, which now skips a check that was overtaken — T2 decision 29 review
 - [2026-11-13] [agent] Wording: "2 qualifiers on relations in other guides" in the purge dialog also covers two qualifiers on one relation — T2 batch 5 review
+- [2026-11-23] [agent] Problem: Undo ties a deleted string again in two calls, create and then update (color, and since T3 the label background). If the second call fails, the string comes back red with its pill and no notice. It predates T3. One core call that ties a string with all its attributes would make Undo one step — T3 review, `retie` in `ui/src/views/BoardView.svelte`
+- [2026-11-23] [agent] Suspected, not verified: at the minimum window height of 400 pixels the board panel's upper half may be shorter than the selected string's section, which is one row taller since T3, so "Delete string" may overlap the picker's heading. Estimated from the CSS. It belongs with T4 — T3 review, `ui/src/components/BoardPanel.svelte`
+- [2026-11-23] [agent] Problem: Windows High Contrast mode (forced colors) removes text shadows, so a string's label with its background off loses its outline there. Nothing in the app is checked in that mode — T3 review
 
 **Questions and unconfirmed guesses** (each needs my answer)
 
