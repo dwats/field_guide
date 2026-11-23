@@ -8,7 +8,7 @@ Four PowerShell UI Automation scripts that drive a release build of Field Guide 
 | `board.ps1` | Relations on an entry, Vocabulary, the board list, a new board, the picker, Add and Add all, the View menu, the panel's Entry and Relations tabs, a relation typed in the panel, nudge and remove with Undo, the four backgrounds, rename, the delete confirm, reopening. |
 | `notes.ps1` | Board notes in five colors, a check box, a pasted image in its polaroid frame, strings in four colors tied by keyboard, the four backgrounds, an index card and a picture card, delete with Undo, Dim images on a board, reopening. |
 
-| `trash.ps1` | Move guide to Trash with Undo, the pages inside a trashed guide reached by Back, a taken name, the guides' Trash with its purge and Empty trash dialogs, what a purge leaves in another guide, a board moved to Trash from the list and from its page, a guide's Trash with an entry and a board, the Vocabulary count for a relation into a trashed guide. Written 2026-11-13 and parsed; not run yet. |
+| `trash.ps1` | Move guide to Trash with Undo, the pages inside a trashed guide reached by Back, a taken name, the guides' Trash with its purge and Empty trash dialogs, a page that is open when its guide goes to the Trash, what a purge leaves in another guide, a board moved to Trash from the list and from its page, a guide's Trash with an entry and a board, the Vocabulary count for a relation into a trashed guide. Written 2026-11-13 and parsed; not run yet. |
 
 The scripts take the keyboard, the mouse focus, and the clipboard while they run. If another window comes to the front, the script stops, sends no more keys, and closes the copy of the app it started.
 

@@ -2,15 +2,15 @@
   // What every page inside a guide in the Trash shows in place of its content (design section 3,
   // decided 2026-11-13). Core refuses creates in such a guide but not edits, and a tag or
   // vocabulary merge cannot be undone, so no page there offers its controls. Restore reloads the
-  // shell through `touch`; a page that does not follow `session.revision` reloads in `onrestored`.
+  // shell and the page through `touch`: every page inside a guide asks about its guide again on
+  // each change.
   import { api, errorMessage, type Guide } from "../lib/api";
   import { touch } from "../lib/session.svelte";
 
   interface Props {
     guide: Guide;
-    onrestored?: () => void;
   }
-  let { guide, onrestored }: Props = $props();
+  let { guide }: Props = $props();
 
   let error = $state("");
 
@@ -19,7 +19,6 @@
       await api.restoreGuide(guide.id);
       error = "";
       touch();
-      onrestored?.();
     } catch (e) {
       error = errorMessage(e);
     }

@@ -386,6 +386,24 @@ function SelectFirst($grid) { Focus (Find $win $grid $null); Keys "{DOWN}" }
 # The confirm button of an open dialog. The page behind it can have a button of the same name.
 function Confirm($dialog, $button) { Click (Find (Region $dialog) $button $CT::Button); Start-Sleep -Seconds 2 }
 
+# Restores Minecraft from the guides' Trash, opens a page inside it, then clicks Undo in the
+# "Restored the guide" notice. The page that is open must follow the guide into the Trash.
+function UndoRestoreOn($shot, [scriptblock]$open) {
+  GuidesList
+  OpenTrash
+  SelectFirst "Trashed guides"
+  Keys "{ENTER}"
+  Start-Sleep -Seconds 1
+  OpenGuide "Minecraft"
+  & $open
+  Unsaid "This guide is in the Trash"
+  Click (Find $win "Undo" $CT::Button)
+  Start-Sleep -Seconds 2
+  Says "This guide is in the Trash"
+  if (Find $win "Vocabulary" $CT::Hyperlink 1 -Optional) { Miss "no guide sidebar after the guide went to the Trash ($shot)" }
+  Shot $shot
+}
+
 # 0. The seeded vault.
 if (-not (FindPrefix $win "Valheim" $CT::Hyperlink 3 -Optional)) {
   Miss "the seeded guides (run tools\walkthrough\seed first; see the README)"
@@ -516,6 +534,17 @@ Shot "t33-guide-restored"
 Click (Find $win "Undo" $CT::Button)
 Start-Sleep -Seconds 1
 Shot "t34-guide-restore-undone"
+
+# 7b. A page that is open when its guide goes to the Trash follows at once: the Tag editor,
+# Vocabulary, an entry, and a board.
+UndoRestoreOn "t34a-undo-on-tag-editor" { Click (Find $win "Tag editor" $CT::Hyperlink) }
+UndoRestoreOn "t34b-undo-on-vocabulary" { Click (Find $win "Vocabulary" $CT::Hyperlink) }
+UndoRestoreOn "t34c-undo-on-entry" { Click (Find $win "Stone" $CT::Hyperlink); Start-Sleep -Seconds 1 }
+UndoRestoreOn "t34d-undo-on-board" {
+  Click (Find $win "Boards" $CT::Hyperlink)
+  Click (Find $win "Map" $CT::Hyperlink)
+  Start-Sleep -Seconds 2
+}
 
 # 8. Two guides in the Trash. Empty trash counts them together: a relation between the two
 # counts once, and neither is an "other guide".

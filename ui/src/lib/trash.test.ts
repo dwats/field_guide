@@ -75,12 +75,19 @@ describe("guideMoved", () => {
     expect(asked).toEqual(["g1"]);
   });
 
-  it("counts a guide that cannot be read any more as moved, and no guide as not moved", async () => {
+  it("counts a guide that is not there any more as moved, and no guide as not moved", async () => {
     const purged = async (): Promise<Guide> => {
-      throw new Error("not found");
+      throw { kind: "not_found", message: "guide g1 not found" };
     };
     expect(await guideMoved(aGuide(TRASHED), purged)).toBe(true);
     expect(await guideMoved(null, purged)).toBe(false);
+  });
+
+  it("does not count a read that failed for another reason as moved", async () => {
+    const failing = async (): Promise<Guide> => {
+      throw { kind: "database", message: "the database is busy" };
+    };
+    expect(await guideMoved(aGuide(null), failing)).toBe(false);
   });
 });
 

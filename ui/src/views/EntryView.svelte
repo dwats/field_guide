@@ -90,11 +90,16 @@
   // only, and loads again when the guide went into the Trash or came out of it.
   $effect(() => {
     void session.revision;
-    untrack(() => void followGuide());
+    let overtaken = false;
+    untrack(() => void followGuide(() => overtaken));
+    // A newer change asks again, and a page that is gone must not load.
+    return () => {
+      overtaken = true;
+    };
   });
 
-  async function followGuide() {
-    if (await guideMoved(guide, api.getGuide)) await load(entryId);
+  async function followGuide(overtaken: () => boolean) {
+    if ((await guideMoved(guide, api.getGuide)) && !overtaken()) await load(entryId);
   }
 
   // The keyboard map and the palette reach this page through these.
@@ -468,8 +473,7 @@
   >
     <div class="page">
       {#if entry && guide?.deleted_at}
-        <!-- This page follows the route only, so it reloads itself after Restore. -->
-        <TrashedGuide {guide} onrestored={() => void load(entryId)} />
+        <TrashedGuide {guide} />
       {:else if entry && guide}
         <header class="entry-head">
           <h1 class="entry-title">{entry.title}</h1>

@@ -3,21 +3,22 @@
 // `board_contents`); these functions only turn the counts into sentences. A count of zero drops
 // its words, and a line whose counts are all zero is left out.
 
-import type { BoardContents, Guide, GuideContents } from "./api";
+import { isAppError, type BoardContents, type Guide, type GuideContents } from "./api";
 
 /**
  * Whether the guide went into the Trash or came out of it since the page loaded it. Anything
  * can move it while a page inside it is open, such as Undo in a notice, and such a page must
- * then show the other state (design section 3). A guide that cannot be read any more, such as
- * one purged meanwhile, counts as moved, so the page loads again and says what it finds.
+ * then show the other state (design section 3). A guide that is not there any more, purged
+ * meanwhile, counts as moved, so the page loads again and says what it finds. Any other failed
+ * read does not: the page stays as it is and the next change asks again.
  */
 export async function guideMoved(guide: Guide | null, read: (id: string) => Promise<Guide>): Promise<boolean> {
   if (!guide) return false;
   try {
     const now = await read(guide.id);
     return (now.deleted_at === null) !== (guide.deleted_at === null);
-  } catch {
-    return true;
+  } catch (e) {
+    return isAppError(e) && e.kind === "not_found";
   }
 }
 

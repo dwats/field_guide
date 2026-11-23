@@ -42,8 +42,10 @@ ce8a1cc, so `tools/walkthrough/run/t1/` holds a build without the Trash for
 boards and guides. For the current head, run `git log --oneline -5`; this
 file cannot name the commit that holds it.
 
-Gates run again at c7de1e0 (T2 batch 5, parts B, C, and D): 31 unit, 180
-behavior, 178 UI tests, clippy clean, format clean, svelte-check clean.
+Gates run again on 2026-11-23 after the decision 29 fix and its review
+fixes: 31 unit, 180 behavior, 183 UI tests, clippy clean, format clean,
+svelte-check clean. With the two pin tests of decision 30, which are in the
+working tree and not committed, 182 behavior tests pass.
 
 T2 is in progress: see its Status and Notes.
 
@@ -278,11 +280,11 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** blocked on decision 29. Batches 1 to 4 are built, reviewed,
-  and pushed (2026-11-13). Batch 5, the review follow-up, is built: part A
-  at e4dc7c8, parts B, C, and D at c7de1e0, all gates passing. The
-  `reviewer` read Batch 5 and found one major gap in part A (decision 29).
-  The T2 walkthrough is prepared and not run.
+- **Status:** in progress, waiting on decisions 31 and 32. Batches 1 to 5
+  are built and reviewed. Decision 29 (a) is built and reviewed
+  (2026-11-23). The two pin tests of decision 30 are written and wait for
+  approval (decision 31). The T2 walkthrough is ready to run and waits for
+  the keyboard and mouse (decision 32).
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -364,11 +366,40 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     seed prints. The seed was built and run against a scratch vault. The
     script was parsed by Windows PowerShell with 0 errors and was never
     run. No release build was made.
-  - For the next session: act on decision 29, run every gate, then build
-    with `cargo tauri build --no-bundle`, seed `tools/walkthrough/run/t2/`,
-    and run `trash.ps1` in Dark and in Light (README). The script will
-    likely need fixes on its first run. Then wrap up: done criteria, the
-    list of not judged checks, push.
+  - Decision 29, answer (a), built 2026-11-23 (1d9bb59, then the review
+    fixes in the next commit). `guideMoved` in `ui/src/lib/trash.ts` asks
+    core for the guide a page loaded. The Tag editor, Vocabulary, and the
+    entry page call it on every change and load again when the guide went
+    into the Trash or came out. The board page asks for its guide on every
+    load. `TrashedGuide` lost its `onrestored` prop: Restore reaches the
+    page through the same check. No banner and no disabled controls: see
+    Decisions, 2026-11-23.
+  - Review of the decision 29 fix, 2026-11-23 (`reviewer`): approved, five
+    minor findings, all fixed the same day: a check that a newer change or
+    the page's end overtook no longer loads; the board page keeps its guide
+    object while nothing about the guide's place changed, so the panel does
+    not reload its lists on every board edit; Restore on the Trash message
+    loaded twice; one more guard on the board load; a read that fails for
+    another reason than "not found" no longer counts as moved. One concern
+    is an Inbox line: `EntryView.load` has no newest-request guard.
+  - Decision 30, answer (a): two pin tests are in the working tree in
+    `core/tests/behavior/trash.rs`, passing, not committed:
+    `a_typed_label_that_names_an_existing_one_is_an_edit_in_a_trashed_guide`
+    and
+    `a_string_to_an_image_counts_only_when_its_other_end_is_a_card_of_the_guide`.
+    They add 98 lines and change no existing test. Decision 31 asks for
+    approval.
+  - The walkthrough is ready and not run. `tools/walkthrough/run/t2/` holds
+    a release build made 2026-11-23 from the commit with the review fixes,
+    an empty `portable` file, and a vault from the seed. `trash.ps1` gained
+    step 7b for decision 29 (Undo of a restore, clicked on the Tag editor,
+    Vocabulary, an entry, and a board); parsed with 0 errors, never run.
+    Nothing was launched.
+  - For the next session: on a yes to decision 31, commit the pin tests. On
+    a yes to decision 32, check `tasklist`, run `trash.ps1` with `-Theme
+    dark`, fix what the first run shows, seed the vault again (remove
+    `run/t2/vault` first), run with `-Theme light`. Then wrap up: done
+    criteria, the T2 checklist lines, the list of not judged checks, push.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -484,6 +515,8 @@ decision to docs/design.md with its reason, or to Decisions below.
 28. T2: the Batch 5 tests (4 new tests: 3 in `core/tests/behavior/trash.rs`, 1 in `vocabulary.rs`; the stub layer is two new `GuideContents` fields at 0 and `guide_trash_contents` returning zeros; the approved test `guide_contents_counts_what_purge_removes` gains the two fields at 0 and nothing else; not committed). All 4 fail at their own assertions: (a) approved, commit them and build parts B, C, and D; (b) change them. **Answer:** (a)
 29. T2 review of Batch 5: a page inside a guide keeps its controls when the guide goes to the Trash while the page is open. Found path: restore a guide from the guides' Trash, open its Tag editor (or Vocabulary, an entry, a board), then click Undo in the "Restored the guide" notice. The guide is in the Trash again; the page and the guide's sidebar stay, so tag delete, tag merge, and vocabulary merge are reachable, which decision 24 was meant to stop. The Tag editor, Vocabulary, and the entry page do not reload on a change; the board page reloads but keeps its cached guide: (a) every page inside a guide checks its guide again whenever anything changes (`session.revision`), so any such path shows "This guide is in the Trash"; (b) Undo in the "Restored the guide" notice also goes to the guides' Trash page, which closes this one path only; (c) both. **Answer:** (a)
 30. T2 review of Batch 5: two rules have no core test. First, a qualifier whose "new" label text names a label the trashed guide already has is not refused (a guess I confirmed on 2026-11-13). Second, a string with an image end on another guide's board is not counted in `strings_on_other_boards` unless its other end is a card of the purged guide. The code does both today, so the tests would pass at once and act as pins: (a) I write both tests and show them to you before committing; (b) Inbox line only. **Answer:** (a)
+31. T2: the two pin tests of decision 30 (in `core/tests/behavior/trash.rs`, 98 new lines, no existing test changed, both pass; not committed): (a) approved, commit them; (b) change them. **Answer:**
+32. T2 walkthrough: `trash.ps1` takes the keyboard, the mouse focus, and the clipboard for several minutes per run, twice (Dark, then Light), and its first run will likely stop for script fixes: (a) take the wheel now; (b) wait until I say so. **Answer:**
 
 ## Inbox
 
@@ -515,6 +548,7 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-13] [agent] Problem: the Vocabulary page says "1 of them has an entry in Trash" for a relation into a guide that is in the Trash. The entry is not in the Trash; its guide is. The count is right since Batch 5; the words are not — T2 batch 5, part D
 - [2026-11-13] [agent] Problem: on an entry page or a board page of a guide in the Trash, the palette still lists "Rename entry", "Toggle Read and Edit", "Add a tag", "Add a relation", "New note", and "Add entries". They do nothing visible and show no notice. No entry data is written; "Add entries" and "Show or hide the right panel" write the panel preference — T2 batch 5 review
 - [2026-11-13] [agent] Suspected, not verified: after Restore on a "This guide is in the Trash" page the button is gone and nothing moves keyboard focus, so focus falls to the page body — T2 batch 5 review
+- [2026-11-23] [agent] Problem: `EntryView.load` has no newest-request guard, so two loads that overlap can finish in either order. It predates T2; the decision 29 fix added one more caller, which now skips a check that was overtaken — T2 decision 29 review
 - [2026-11-13] [agent] Wording: "2 qualifiers on relations in other guides" in the purge dialog also covers two qualifiers on one relation — T2 batch 5 review
 
 **Questions and unconfirmed guesses** (each needs my answer)

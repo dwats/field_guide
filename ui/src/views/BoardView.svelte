@@ -194,8 +194,10 @@
       // The guide is asked for on every load: it can go into the Trash or come out of it while
       // this page is open, such as by Undo in a notice.
       const owner = await api.getGuide(data.board.guide_id);
-      if (!alive || mine !== request) return;
-      guide = owner;
+      if (!alive || mine !== request || data.board.id !== boardId) return;
+      // The same object while nothing about its place changed: the panel loads its lists again
+      // whenever `guide` is replaced.
+      if (!guide || guide.id !== owner.id || guide.deleted_at !== owner.deleted_at) guide = owner;
       if (owner.deleted_at || data.board.deleted_at) {
         // A stale route, such as Back after Move to Trash: nothing is drawn and nothing is written.
         // The guide's message comes first: a board cannot be restored while its guide is in the Trash.

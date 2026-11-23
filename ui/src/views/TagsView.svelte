@@ -91,11 +91,16 @@
   // only, and loads again when the guide went into the Trash or came out of it.
   $effect(() => {
     void session.revision;
-    untrack(() => void followGuide());
+    let overtaken = false;
+    untrack(() => void followGuide(() => overtaken));
+    // A newer change asks again, and a page that is gone must not load.
+    return () => {
+      overtaken = true;
+    };
   });
 
-  async function followGuide() {
-    if (await guideMoved(guide, api.getGuide)) await load();
+  async function followGuide(overtaken: () => boolean) {
+    if ((await guideMoved(guide, api.getGuide)) && !overtaken()) await load();
   }
 
   // The name field follows the selection.
@@ -324,8 +329,7 @@
 
 <div class="page">
   {#if guide?.deleted_at}
-    <!-- This page follows the route only, so it reloads itself after Restore. -->
-    <TrashedGuide {guide} onrestored={() => void load()} />
+    <TrashedGuide {guide} />
   {:else if guide}
     <header class="page-header">
       <div class="page-titles"><h1>Tag editor</h1></div>
