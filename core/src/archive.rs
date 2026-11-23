@@ -241,6 +241,9 @@ pub struct BoardStringFile {
     #[serde(default)]
     pub label: String,
     pub color: String,
+    /// Whether the label is drawn in a pill. Written only when off; a file without it means on.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub label_background: bool,
     pub created_at: String,
 }
 
@@ -255,6 +258,10 @@ pub struct StringEndFile {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 /// The archive path of a media file.

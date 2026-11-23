@@ -373,6 +373,8 @@ export interface BoardString {
   to: StringEnd;
   label: string;
   color: string;
+  /** Whether the label is drawn in a pill. Off, it is drawn as text alone. */
+  label_background: boolean;
   created_at: string;
 }
 
@@ -380,6 +382,7 @@ export interface BoardString {
 export interface BoardStringUpdate {
   label?: string;
   color?: string;
+  label_background?: boolean;
 }
 
 /** A note as drawn: the row plus its rendered body; `tasks` counts its task markers. */

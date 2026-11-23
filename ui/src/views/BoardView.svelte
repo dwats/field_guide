@@ -50,6 +50,7 @@
     noteRect,
     placeFree,
     placeNear,
+    stringRestore,
     stringShown,
     toWorld,
     zoomAt,
@@ -443,7 +444,8 @@
     for (const s of lost) {
       try {
         const made = await api.createBoardString(target, end(s.from), end(s.to), s.label);
-        if (made.color !== s.color) await api.updateBoardString(made.id, { color: s.color });
+        const rest = stringRestore(made, s);
+        if (rest) await api.updateBoardString(made.id, rest);
       } catch {
         // The other end is no longer on the board.
       }
@@ -1047,6 +1049,7 @@
       onremovenote={(id) => void removeNote(id)}
       onstringlabel={(id, label) => void updateString(id, { label })}
       onstringcolor={(id, color) => void updateString(id, { color })}
+      onstringbackground={(id, on) => void updateString(id, { label_background: on })}
       onremovestring={(id) => void removeString(id)}
       {version}
     />

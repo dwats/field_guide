@@ -104,6 +104,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Drop an image file onto the board: it appears in a polaroid frame at the drop point, 200 wide; paste one: it lands at the middle; drag, corner-resize (proportions kept), tie a string to it, Delete with Undo; after a reload it is where it was; Settings, Media does not list its file as unused.
 - [ ] With a card or a note selected, dragging its pin onto another item ties a string drawn as a sagging curve above the relation lines; the panel's label and color apply to it; a click on the string selects it; Delete removes it with Undo; "Tie a string" in the panel does the same from the keyboard.
 - [ ] Removing a card or deleting a note takes its strings with it.
+- [ ] A selected string's panel has a "Label background" switch, on for a new string; off, that string's label is text with no box, outlined in the canvas color, and other strings keep their pills; the choice survives a reload and reopening the board; Delete string, then Undo, brings the string back with the switch as it was; the bare label reads on Dots, Grid, Cork, and Blank in both schemes, in all four string colors.
 - [ ] More, Background: Dots, Grid, Cork, and Blank change the canvas, follow light and dark, pan with the board, and come back after a reload.
 
 ## Guides

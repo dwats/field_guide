@@ -458,6 +458,7 @@ impl Vault {
                                 to: end_file(&s.to),
                                 label: s.label,
                                 color: s.color,
+                                label_background: s.label_background,
                                 created_at: s.created_at,
                             })
                             .collect(),

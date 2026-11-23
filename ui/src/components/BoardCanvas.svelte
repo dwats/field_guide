@@ -826,6 +826,7 @@
         {#if twine.string.label}
           <div
             class="pill string-pill string-{twine.string.color}"
+            class:bare={!twine.string.label_background}
             style:left="{twine.mid.x}px"
             style:top="{twine.mid.y}px"
           >
@@ -1019,6 +1020,8 @@
     /* The cork's grain sits under the world layer and over the background color. */
     isolation: isolate;
     background-color: var(--bg);
+    /* The color under the items, for a label that is outlined in it. */
+    --canvas: var(--bg);
     background-position: var(--pan-x) var(--pan-y);
     cursor: grab;
     touch-action: none;
@@ -1041,6 +1044,7 @@
      tile repeats visibly within 180 world units. The noise is the mask; the tokens are the color. */
   .bg-cork {
     background-color: var(--cork);
+    --canvas: var(--cork);
   }
   .bg-cork::before,
   .bg-cork::after {
@@ -1142,6 +1146,24 @@
   /* A string's label carries the string's color on its left edge. */
   .string-pill {
     border-left: 2px solid var(--string);
+  }
+  /* A string's label with its background off (design section 6): the text alone, outlined in
+     the canvas color, so the twine under it does not strike through the letters. Shadows, not a
+     text stroke: a webview that drew the stroke over the fill would eat the letters. */
+  .pill.bare {
+    padding: 0;
+    border: none;
+    background: none;
+    text-shadow:
+      -1.5px -1.5px 0 var(--canvas),
+      1.5px -1.5px 0 var(--canvas),
+      -1.5px 1.5px 0 var(--canvas),
+      1.5px 1.5px 0 var(--canvas),
+      0 -2px 0 var(--canvas),
+      0 2px 0 var(--canvas),
+      -2px 0 0 var(--canvas),
+      2px 0 0 var(--canvas),
+      0 0 3px var(--canvas);
   }
   .string,
   .string-pill {

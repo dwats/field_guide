@@ -31,6 +31,7 @@ import {
   resizeRect,
   searchLine,
   stringExits,
+  stringRestore,
   stringMidpoint,
   stringPath,
   stringPoint,
@@ -355,6 +356,7 @@ describe("strings", () => {
       to,
       label: "",
       color: "red",
+      label_background: true,
       created_at: "",
     });
     const cards = new Set(["a", "b"]);
@@ -385,10 +387,37 @@ describe("strings", () => {
       to: { kind: "entry", id: "a" },
       label: "",
       color: "red",
+      label_background: true,
       created_at: "",
     };
     expect(stringShown(tie, new Set(["a"]), new Set(), new Set(["i"]))).toBe(true);
     expect(stringShown(tie, new Set(["a"]), new Set(), new Set())).toBe(false);
+  });
+
+  it("gets its color and its label background back when it is tied again for an Undo", () => {
+    const made: BoardString = {
+      id: "new",
+      board_id: "b",
+      from: { kind: "entry", id: "a" },
+      to: { kind: "entry", id: "c" },
+      label: "clue",
+      color: "red",
+      label_background: true,
+      created_at: "",
+    };
+    const lost = (color: string, label_background: boolean): BoardString => ({
+      ...made,
+      id: "old",
+      color,
+      label_background,
+    });
+    expect(stringRestore(made, lost("red", true))).toBeNull();
+    expect(stringRestore(made, lost("blue", true))).toEqual({ color: "blue" });
+    expect(stringRestore(made, lost("red", false))).toEqual({ label_background: false });
+    expect(stringRestore(made, lost("green", false))).toEqual({
+      color: "green",
+      label_background: false,
+    });
   });
 });
 

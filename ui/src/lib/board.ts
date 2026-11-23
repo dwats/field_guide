@@ -9,6 +9,7 @@ import type {
   BoardEdge,
   BoardFilters,
   BoardString,
+  BoardStringUpdate,
   Media,
   StringEnd,
 } from "./api";
@@ -461,6 +462,20 @@ export function stringShown(
         ? notes.has(end.id)
         : images.has(end.id);
   return shown(string.from) && shown(string.to);
+}
+
+/**
+ * What a string tied again for an Undo still lacks: core makes a new string red, with its label
+ * background on, so the color and the label background of the lost one are written when they
+ * differ. Null when the new string already matches.
+ */
+export function stringRestore(made: BoardString, lost: BoardString): BoardStringUpdate | null {
+  const update: BoardStringUpdate = {};
+  if (made.color !== lost.color) update.color = lost.color;
+  if (made.label_background !== lost.label_background) {
+    update.label_background = lost.label_background;
+  }
+  return Object.keys(update).length > 0 ? update : null;
 }
 
 /**

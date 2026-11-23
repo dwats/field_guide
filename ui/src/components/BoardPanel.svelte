@@ -4,11 +4,11 @@
   // string, and Remove from board, then two tabs: "Entry" with the entry's rendered body, read
   // only, and "Relations" with the entry page's relation line and list, so a relation can be
   // recorded without leaving the board. A selected note shows its color, a selected image its
-  // actions, a selected string its label and color. Below: the picker, with the guide's search
-  // line, tag chips, and Stubs only, listing the entries to add one at a time or all at once. The
-  // name of an entry already on the board selects its card and brings it into view. The picker's
-  // fields are saved with the board and come back when it opens. It folds to a rail like the entry
-  // panel.
+  // actions, a selected string its label, its color, and the switch for its label's background.
+  // Below: the picker, with the guide's search line, tag chips, and Stubs only, listing the
+  // entries to add one at a time or all at once. The name of an entry already on the board
+  // selects its card and brings it into view. The picker's fields are saved with the board and
+  // come back when it opens. It folds to a rail like the entry panel.
   import { Check, PanelRightClose, PanelRightOpen, Plus, X } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
 
@@ -36,6 +36,7 @@
   import Preview from "./Preview.svelte";
   import RelationBuilder from "./RelationBuilder.svelte";
   import RelationList from "./RelationList.svelte";
+  import Switch from "./Switch.svelte";
 
   interface Props {
     open: boolean;
@@ -73,6 +74,8 @@
     onremovenote: (id: string) => void;
     onstringlabel: (id: string, label: string) => void;
     onstringcolor: (id: string, color: string) => void;
+    /** The selected string's label is drawn in its pill (on) or as text alone (off). */
+    onstringbackground: (id: string, on: boolean) => void;
     onremovestring: (id: string) => void;
     /** Bump to reload the list and the relations after a change. */
     version: number;
@@ -105,6 +108,7 @@
     onremovenote,
     onstringlabel,
     onstringcolor,
+    onstringbackground,
     onremovestring,
     version,
   }: Props = $props();
@@ -441,6 +445,13 @@
             ></button>
           {/each}
         </div>
+        <div class="switch-row">
+          <Switch
+            label="Label background"
+            checked={string.label_background}
+            onchange={(on) => onstringbackground(string.id, on)}
+          />
+        </div>
         <div class="row actions">
           <button class="danger" onclick={() => onremovestring(string.id)}>Delete string</button>
         </div>
@@ -568,6 +579,9 @@
   }
   .actions {
     gap: var(--space-2);
+  }
+  .switch-row {
+    padding: var(--space-1) var(--space-3);
   }
   .item-name {
     margin: 0;

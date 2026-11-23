@@ -96,7 +96,20 @@ UI: no new pure logic is planned, so no new Vitest test is planned. If the bare 
 - The archive gains a field. An older build ignores a field it does not know and draws the pill. No build has been released, so no older build exists outside this machine.
 - T7 (recipes in core) also needs a migration. T3 is built first and takes 0008.
 - `tools/walkthrough/seed/` builds against `core` outside the workspace. It calls `create_board_string` only, whose signature does not change.
-- A bare label on cork sits on the grain, which is darker and lighter in patches. The token contrast is high (about 7 to 1 in Light and about 9 to 1 in Dark, text on the flat cork color; figures by hand, to be computed again during the build). The grain cannot be computed; it is judged in a window.
+- A bare label on cork sits on the grain, which is darker and lighter in patches. Computed from the tokens on 2026-11-23 (WCAG contrast ratio, text color against what is behind it):
+
+  | Behind the text | Light | Dark |
+  |---|---|---|
+  | Page color (Dots, Grid, Blank) | 17.2 | 13.4 |
+  | Flat cork | 7.3 | 8.7 |
+  | Cork's dark grain at full strength | 4.4 | 12.8 |
+  | Cork's light flecks at full strength | 10.6 | 6.4 |
+  | Red twine | 3.1 | 2.4 |
+  | Blue twine | 3.0 | 1.9 |
+  | Green twine | 3.4 | 1.6 |
+  | Black twine | 1.0 | 1.2 |
+
+  The text reads on every background by these figures. It does not read against the twine itself: the outline in the canvas color is what separates the letters from the string under them. Whether a 2-pixel outline is enough, most of all for the black string, is judged in a window.
 
 ## Guesses
 
@@ -119,9 +132,9 @@ None. Decisions 33 to 36 were answered (a) on 2026-11-23.
 
 - [x] Plan approved (decision 36), 2026-11-23
 - [x] Core tests written, failing, shown, approved, committed. Written and failing as planned 2026-11-23 (6 fail at their own assertions, 182 older tests pass); approved by decision 37.
-- [ ] Core built; the approved tests pass unedited
-- [ ] UI built
-- [ ] Docs updated
+- [x] Core built; the approved tests pass unedited (2026-11-23: 188 behavior tests pass; `git diff c6742e0 -- core/tests` is empty)
+- [x] UI built (2026-11-23). Beyond the plan: the Undo rule is a pure function, `stringRestore` in `ui/src/lib/board.ts`, with one Vitest test; two `BoardString` fixtures in `board.test.ts` gained the new field. The outline is nine text shadows in `--canvas`, a new custom property that is `--bg`, or `--cork` on cork.
+- [x] Docs updated (2026-11-23): `docs/design.md` sections 6 and 7 (written with the tests), `docs/plan.md` Phase 7b, one new unchecked line in `docs/checklist.md`, Boards.
 - [ ] Gates run; `reviewer` called
 - [ ] Window check (walkthrough or owner)
 - [ ] `tasks.md` wrapped up

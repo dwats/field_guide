@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use crate::{Error, Result};
 
 /// Schema version this build writes, stored in `PRAGMA user_version`.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// Numbered SQL files from `core/migrations/`, applied in order.
 const MIGRATIONS: &[(u32, &str)] = &[
@@ -20,6 +20,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         7,
         include_str!("../migrations/0007_trash_boards_guides.sql"),
+    ),
+    (
+        8,
+        include_str!("../migrations/0008_string_label_background.sql"),
     ),
 ];
 

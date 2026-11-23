@@ -931,9 +931,12 @@ impl Vault {
         if let Some(color) = &update.color {
             string.color = check_color("string", color, &STRING_COLORS)?;
         }
+        if let Some(on) = update.label_background {
+            string.label_background = on;
+        }
         tx.execute(
-            "UPDATE board_string SET label = ?2, color = ?3 WHERE id = ?1",
-            params![id, string.label, string.color],
+            "UPDATE board_string SET label = ?2, color = ?3, label_background = ?4 WHERE id = ?1",
+            params![id, string.label, string.color, string.label_background],
         )?;
         touch_board(&tx, &string.board_id)?;
         tx.commit()?;
@@ -1197,7 +1200,7 @@ pub(crate) fn string_exists(conn: &Connection, id: &BoardStringId) -> Result<boo
 }
 
 const STRING_COLUMNS: &str =
-    "id, board_id, from_kind, from_id, to_kind, to_id, label, color, created_at";
+    "id, board_id, from_kind, from_id, to_kind, to_id, label, color, created_at, label_background";
 
 fn string_from_row(row: &Row<'_>) -> rusqlite::Result<BoardString> {
     let end = |kind_col: usize, id_col: usize| -> rusqlite::Result<StringEnd> {
@@ -1221,7 +1224,7 @@ fn string_from_row(row: &Row<'_>) -> rusqlite::Result<BoardString> {
         to: end(4, 5)?,
         label: row.get(6)?,
         color: row.get(7)?,
-        label_background: true,
+        label_background: row.get(9)?,
         created_at: row.get(8)?,
     })
 }
@@ -1249,7 +1252,7 @@ fn load_strings(conn: &Connection, board_id: &BoardId) -> Result<Vec<BoardString
 pub(crate) fn insert_string(conn: &Connection, string: &BoardString) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO board_string ({STRING_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+            "INSERT INTO board_string ({STRING_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
         ),
         params![
             string.id,
@@ -1260,7 +1263,8 @@ pub(crate) fn insert_string(conn: &Connection, string: &BoardString) -> Result<(
             string.to.id,
             string.label,
             string.color,
-            string.created_at
+            string.created_at,
+            string.label_background
         ],
     )?;
     Ok(())
