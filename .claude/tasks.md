@@ -490,6 +490,155 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   it first". Effort if built: medium in the UI, large if core renders it for
   export. Nothing is built in this task.
 
+### T6: Recipes: design and mock-ups
+- **Status:** todo
+- **Goal:** Settle how a recipe is stored, exported, placed in a body, and
+  drawn, before any code. Show me mock-ups so I can choose. Nothing is built
+  in this task.
+- **Depends on:** none. It starts from my answers under Decisions,
+  2026-11-23, the three lines that begin "Recipes".
+- **Inputs:** `.claude/work/recipes/research.md`; the three Decisions lines
+  of 2026-11-23 that begin "Recipes"; docs/design.md section 3 (Trash,
+  Media), section 4, section 5 ("Markdown dialect"), sections 7 and 8; T5,
+  because a facts box may hold a recipe row, as the Factorio wiki's does.
+- **Done when:**
+  - [ ] `.claude/work/recipes/design.md` describes the recipe record: its
+        recipe type, an optional name, and slots. A slot has a role (input,
+        output, station, a tool that is kept), an amount (a number or a
+        range, with an optional unit), an optional grid position, and one or
+        more choices, each an entry or a tag.
+  - [ ] It describes the recipe type: defined per guide as data, none in a
+        new guide, with a name, a layout (grid with a width and a height,
+        list, row), and the extra fields its recipes carry (time, skill
+        level, and the like).
+  - [ ] It describes the marker that places recipes in a body, the rule for
+        an entry with recipes and no marker (they show at the end of the
+        body), and how "Used in" on an ingredient's page is generated.
+  - [ ] It states the rules for Trash, purge, rename, entries of other
+        guides, the export file, and the import mapping of recipe types,
+        each with the reason.
+  - [ ] It names the tests that would gate the core build, by behavior.
+  - [ ] It is checked against these cases, and says for each how it is
+        recorded or that it is not: a shaped 3 by 3 grid with "any Planks";
+        a shapeless recipe; a 9 by 9 grid; smelting with two stations; a
+        recipe with a profession, a skill level, and a kept tool; a recipe
+        with a time and a list of machines; an alternate recipe with a
+        byproduct; a recipe made by hand with no station; an alloy with
+        ratio ranges; a barrel recipe with liters and a sealing time; a
+        knapping pattern.
+  - [ ] Mock-ups in Light and in Dark, with the app's real tokens: a grid
+        recipe at 3 by 3 and at 9 by 9; a list recipe; a row recipe; one
+        table holding several recipes of one entry, one marked as the
+        alternate; "Used in" on an ingredient's page; a slot with a picture,
+        a slot without one, and a slot with several choices; the hover
+        popup; the editor for a recipe; the editor for a recipe type; the
+        pattern editor.
+  - [ ] Every layout and control has a generic name. None names a game. I
+        have chosen the names, and `CLAUDE.md`, Names, has them.
+  - [ ] Each open question under Notes is answered by me.
+  - [ ] I have approved the design. It is a new section of docs/design.md
+        with its reasons, and docs/plan.md has a section for recipes, placed
+        before Phase 9, with the tests that gate it.
+  - [ ] T7 and T8 are checked against the approved design, and changes to
+        them are proposed to me.
+- **Out of scope:** any change in `core`, `app`, or `ui`. The tree, the
+  totals, the bill of materials, and recipes on boards (Later; each has its
+  own interview). The design must not block them: it says how amounts
+  multiply down a chain and where an item's default recipe is kept.
+- **Notes:**
+  - Decided so far: native, no plugin; a recipe is its own record in core;
+    recipes show where a marker sits in the body, or at the end of the body
+    without one; layouts are grid, list, and row, and several recipes of one
+    entry form one table; a slot shows the entry's picture as an icon, a
+    hover popup with details, and a click opens the entry; the first guide
+    to serve is Minecraft with modded grid sizes, and Vintage Story is the
+    wildcard; a pattern editor is designed here and built after grid and
+    list.
+  - Open questions the interview did not reach: the marker's syntax; whether
+    "Used in" on an entry lists recipes that accept it through a tag; what
+    the hover popup shows; where recipe types are managed (a page beside
+    Vocabulary is one option); whether a slot may hold an entry of another
+    guide; what a recipe shows while one of its entries is in the Trash;
+    whether core renders the recipe for the preview and the export, as it
+    renders bodies; whether recipes appear in the Relations tab or on
+    boards.
+  - My pictures of the Satisfactory, Wowhead, and Factorio pages are
+    described under Decisions; the files are not in the repository.
+
+### T7: Recipes in core
+- **Status:** todo
+- **Depends on:** T6, approved.
+- **Goal:** Core stores recipe types and recipes, answers "which recipes
+  make this entry" and "which recipes use this entry", and carries both
+  through export and import without loss. No screen changes.
+- **Inputs:** the recipes section of docs/design.md that T6 adds, and its
+  named tests; docs/plan.md, the recipes section; `AGENTS.md`, "For changes
+  in `core/`" (tests first with stubs, my approval, then the build).
+- **Done when:**
+  - [ ] The next free migration adds the recipe tables, and an existing
+        vault migrates with no recipes and nothing else changed.
+  - [ ] A new guide has no recipe types. A recipe type is created, renamed,
+        and deleted; a name is unique in its guide without regard to case;
+        deleting one in use is refused.
+  - [ ] A recipe keeps its type, its name, and its slots: role, amount or
+        range, unit, grid position, and the choices in order. Reading it
+        back returns the same record.
+  - [ ] Several recipes may make one entry, and each keeps its own identity.
+  - [ ] "Used in" for an entry comes from the stored recipes, by the rule
+        the design sets for choices that are tags.
+  - [ ] Renaming an entry or a tag changes no recipe; recipes hold ids.
+  - [ ] Trash, restore, and purge of an entry, a guide, and a recipe follow
+        the design, with a test for each rule. A new cross-guide
+        query is added to the test that reads every list of a live guide.
+  - [ ] Export and import round-trip at every scope: recipe types, recipes,
+        slot order, amounts, ranges, units, positions, and choices compare
+        equal. Recipe types map on import the way verbs do.
+  - [ ] Every gate passes, and the `reviewer` has read the diff.
+- **Out of scope:** commands in `app`, anything in `ui`, the marker's
+  rendering if the design puts it in T8, the tree, the totals, the bill of
+  materials.
+- **Notes:** T3 also needs a migration. Whichever task is built first takes
+  the next number. The archive gains files, so `format_version` follows
+  whatever the design decides.
+
+### T8: Recipes on the entry page
+- **Status:** todo
+- **Depends on:** T7; the mock-ups I chose in T6.
+- **Goal:** I can define a recipe type, record a recipe on an entry, and
+  read it on the output's page and on each ingredient's page, as a grid, a
+  list, or a row.
+- **Inputs:** the mock-ups and names chosen in T6; the recipes section of
+  docs/design.md; docs/design.md section 5, "Interface principles"
+  (recovery, focus, controls, empty states); `RelationBuilder.svelte`, for
+  the suggestion and stub pattern.
+- **Done when:**
+  - [ ] A recipe type can be created, renamed, and deleted where the design
+        says, with its layout and, for a grid, its width and height.
+  - [ ] A recipe can be added to an entry, edited, and deleted. Delete shows
+        a notice with Undo and no dialog.
+  - [ ] A slot's field suggests entries and tags. A name that matches
+        nothing follows the design's rule (a stub, as the relation line
+        makes, or text).
+  - [ ] The grid, list, and row layouts match the chosen mock-ups in Light
+        and in Dark. Several recipes of one entry form one table.
+  - [ ] A slot shows the entry's primary image with the amount, or the title
+        when the entry has no image. Hover or keyboard focus shows the
+        popup. A click or Enter opens the entry.
+  - [ ] Recipes show at the marker in the body, or at the end of the body
+        without one. "Used in" shows on each ingredient's page.
+  - [ ] These can be entered and read on every page involved: a pickaxe on a
+        3 by 3 grid with "any Planks" and sticks; a recipe on a 9 by 9 grid;
+        a smelting recipe with two stations; a list recipe with a
+        profession, a skill level, and a kept tool.
+  - [ ] docs/checklist.md has lines for all of it. Checks that cannot be
+        proven are listed as not judged for me.
+  - [ ] Every gate passes, and the `reviewer` has read the diff.
+- **Out of scope:** the pattern editor, the tree, the totals, the bill of
+  materials, recipes on boards, the import mapping screen (Phase 9).
+- **Notes:** This is large. T6 may propose splitting it, for example showing
+  recipes first and the editors second. No layout or control is named after
+  a game.
+
 ## Later
 
 - Phase 9: import and export screens (after T1).
@@ -514,6 +663,24 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   (10), a print stylesheet (11), a small-size app icon (12).
 - The Later list in docs/plan.md: markdown extensions, video, lossy WebP,
   push pins, a drawing tool.
+- Recipes are built after T2 and before Phase 9, so the import mapping
+  screen is built once with recipe types in it (my answer, 2026-11-23).
+  Phase 9 follows T8.
+- Recipes, after T8, each with its own interview first:
+  - The pattern editor (shapes in place of slots), designed in T6.
+  - The recipe tree: indented and expandable, each ingredient opening to its
+    own recipe; one default recipe per item, switched on the node; where the
+    tree stops; loops.
+  - Raw material totals for one output, as a row and under the tree.
+  - The bill of materials: several crafts planned together; one list of raw
+    materials and crafts to perform, with check boxes, rounded up to whole
+    crafts; several saved; a "have" count per line.
+  - A bill of materials placed on a board.
+  - Calculator features: a target quantity, rates per minute, machine
+    counts.
+  - A list of recipes by recipe type or by station on any entry.
+  - Whether recipes draw as lines on boards or show in the Relations tab.
+  - Recipe types in the Phase 9 import mapping screen.
 
 ## Decisions waiting on me
 
@@ -654,3 +821,28 @@ Format: `- [date] decision — reason`
 - [2026-11-23] T2: the keyboard and mouse are handed over for the T2 walkthrough runs (decision 32) - my answer (a). It covers the T2 runs of `trash.ps1` in this session only.
 - [2026-11-23] T2 validated by me: New guide's vocabulary list does not offer a trashed guide (pass); the board picker remembers its search line, tag chip, and Stubs only after the board is reopened (pass); Rename works from the board page and from the Boards list (pass). The four guesses in the T2 closing report have no answer from me yet.
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
+- [2026-11-23] Recipes, planning interview round 1 (a separate planning session; no task yet; "recipe" is the working word, the name is not decided). My answers:
+  - Native, not a plugin: each guide defines its recipe types as data (name, layout, grid size), the way it defines verbs; no code is loaded — "(a) sounds good". The agent's reason: an archive must round-trip without carrying code.
+  - "A tiered list" means an indented tree in which each ingredient opens to its own recipe; I meant World of Warcraft, not Minecraft.
+  - Amounts: display with raw material totals, and a planner (a + c). My words: "As a user I would like to be able to plan out multiple, complex crafts and receive a complete bill of material as a check list. As a user I would also like to be able to save multiple BoMs. As a user I would like to be able to add a bill of material to a board."
+  - The first build serves Minecraft, with modded grid sizes. Vintage Story is the wildcard to test the model against.
+  - A recipe may show an item's icon in place of its text; hovering shows a popup with more details; a click on an input's image opens that item's entry.
+  - The three layout sketches (grid with station and output, list with profession and skill, expandable tree) were well received.
+  - Where a recipe is stored is open: I asked for research first on how wikis handle a recipe (Minecraft, Vintage Story, Factorio, Satisfactory, Grounded; Wowhead, Icy Veins, and other World of Warcraft wikis).
+- [2026-11-23] Recipes, planning interview round 2. The research is in `.claude/work/recipes/research.md` (my "check" on the agent writing it). The agent numbered the questions 1, 6, 7, 8, 9, 10 and I answered 1 to 6; the agent reads my answers by position. My answers:
+  - A recipe is its own record in core. It appears on the output's page and, generated, on each ingredient's page — (a).
+  - Recipes show where I place a marker in the entry body — (c): "this seems to make the most sense looking at minecraft.wiki".
+  - One slot holds one or more choices, each an entry or a tag ("any Planks") — (a).
+  - In the tree, each item has one default recipe that I can switch on the node — (a).
+  - A bill of materials lists raw materials and the crafts to perform, both with check boxes, rounded up to whole crafts — (a).
+  - Vintage Story: my "6: (b)" is read as "also a pattern editor". Not confirmed; the agent asked.
+  - I attached three pictures: the Satisfactory wiki's recipe table (a row per recipe; ingredients, produced in, products, unlocked by; rates per minute; an "Alternate" badge), Wowhead's tooltip and reagent list, and the Factorio wiki's infobox (a recipe row and a "Total raw" row). My words: "These are more a table. Factorio gives you a total raw BOM but isn't a tree either."
+- [2026-11-23] Recipes, planning interview round 3, my answers (a) to all six. T6, T7, and T8 were written from the three rounds.
+  - Vintage Story: a pattern editor is designed now and built after grid and list. My "6: (b)" in round 2 meant this.
+  - An entry with recipes and no marker shows them at the end of its body; a marker moves them — so nothing recorded is hidden by a forgotten marker (the agent's reason).
+  - Layouts in the first build: grid, list, and row (icons in one line, as on the Factorio wiki). Several recipes of one entry form one table, a row per recipe.
+  - Names for now: "recipe", "recipe type", "bill of materials".
+  - Recipes are built after T2 and before Phase 9, so the import mapping screen is built once with recipe types in it.
+  - The first task is design and mock-ups with nothing built, as T4 and T5 are.
+  - Generic names only. My words: "I don't want them to be presented as "minecraft recipe", "vintage story recipe", etc. I'd like to use generic names for what we're offering. Grid recipe, tree recipe, etc. We can workshop names as we move into UX."
+  - These answers are not in docs/design.md yet. T6 moves them there with the approved design.
