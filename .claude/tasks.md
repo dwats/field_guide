@@ -437,7 +437,9 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     run of `trash.ps1`.
 
 ### T3: Pill toggle on lines
-- **Status:** todo (decision 3 answered (a) on 2026-11-12)
+- **Status:** in progress (plan approved 2026-11-23, decisions 33 to 36
+  all (a); the core tests are approved by decision 37 and committed with
+  their stub layer; the build is next)
 - **Goal:** Let me turn the pill background behind a line's label off for
   one line, so a busy board stays readable. Today every line has the pill.
 - **Done when:**
@@ -453,6 +455,26 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   so. Under (b) relation and mention lines need new storage per board,
   because those lines are derived and have no row. Asked in my words:
   "(a) optional pill with background, toggle per line".
+  - Plan: `.claude/work/t3-pill-toggle/plan.md`, written 2026-11-23 at
+    6840717. It has the readings, the six core tests by name, the stub
+    layer, the guesses, and a Progress list. Migration 0008, schema
+    version 8.
+  - Found while planning: Undo of a deleted string ties it again with its
+    label and color only (`retie` in `ui/src/views/BoardView.svelte`). The
+    plan makes it restore the new value too.
+  - Core tests written 2026-11-23, approved and committed the same day: 3
+    in `core/tests/behavior/boards.rs`, 1 in `schema.rs`, 2 in
+    `export_import.rs`. With the stub layer all 6 fail at their own
+    assertions and the 182 older behavior tests pass; clippy and format
+    are clean. The stub layer: `BoardString.label_background` (always
+    read as `true`) and `BoardStringUpdate.label_background` (ignored) in
+    `core/src/board.rs`, one line in `core/src/import.rs`. No migration
+    yet; the schema version is still 7.
+  - The two edits of decision 35 are made. In `schema.rs` the two version
+    lines became one, `schema_version() == SCHEMA_VERSION`, because
+    comparing `SCHEMA_VERSION` with itself asserts nothing. The new
+    version 7 test does not pin the number 8, so T7's migration will not
+    need to edit it.
 
 ### T4: Narrow windows
 - **Status:** todo (decision 4 answered (a) on 2026-11-12)
@@ -719,6 +741,11 @@ decision to docs/design.md with its reason, or to Decisions below.
 30. T2 review of Batch 5: two rules have no core test. First, a qualifier whose "new" label text names a label the trashed guide already has is not refused (a guess I confirmed on 2026-11-13). Second, a string with an image end on another guide's board is not counted in `strings_on_other_boards` unless its other end is a card of the purged guide. The code does both today, so the tests would pass at once and act as pins: (a) I write both tests and show them to you before committing; (b) Inbox line only. **Answer:** (a)
 31. T2: the two pin tests of decision 30 (in `core/tests/behavior/trash.rs`, 98 new lines, no existing test changed, both pass; not committed): (a) approved, commit them; (b) change them. **Answer:** (a)
 32. T2 walkthrough: `trash.ps1` takes the keyboard, the mouse focus, and the clipboard for several minutes per run, twice (Dark, then Light), and its first run will likely stop for script fixes: (a) take the wheel now; (b) wait until I say so. **Answer:** (a)
+33. T3: how a string's label is drawn when its label background is off: (a) text only, with a thin outline in the canvas color around the letters, so the string does not strike through them, the way map labels are drawn; (b) text only, no outline, and the string runs through the letters; (c) text only, moved above the string, no outline. **Answer:** (a)
+34. T3: the archive. A string in a board file gains the field `label_background`: (a) written only when it is off, as `"label_background": false`; absent means on; `format_version` stays 1, as it did when a note's height was added; (b) always written; `format_version` stays 1; (c) `format_version` becomes 2, and a build that knows only 1 refuses the archive. **Answer:** (a)
+35. T3: two approved tests must change. `core/tests/behavior/boards.rs` has a `BoardStringUpdate` literal that names every field, so a new field stops it compiling. `a_version_6_vault_migrates_to_7_with_nothing_trashed` in `schema.rs` asserts that the schema version is 7, and T3 makes it 8: (a) the literal gains `..BoardStringUpdate::default()`, and the two version lines compare with `SCHEMA_VERSION`; both edits are shown with the new tests before the commit; (b) change them another way, and I say how. **Answer:** (a)
+36. T3: the plan in `.claude/work/t3-pill-toggle/plan.md`: (a) approved; (b) change it. **Answer:** (a)
+37. T3: the six core tests and the two edits of decision 35 (in `core/tests/behavior/boards.rs`, `schema.rs`, and `export_import.rs`, with the stub layer; not committed). All 6 fail at their own assertions: (a) approved, commit them and build; (b) change them. **Answer:** (a)
 
 ## Inbox
 
@@ -846,3 +873,5 @@ Format: `- [date] decision — reason`
   - The first task is design and mock-ups with nothing built, as T4 and T5 are.
   - Generic names only. My words: "I don't want them to be presented as "minecraft recipe", "vintage story recipe", etc. I'd like to use generic names for what we're offering. Grid recipe, tree recipe, etc. We can workshop names as we move into UX."
   - These answers are not in docs/design.md yet. T6 moves them there with the approved design.
+- [2026-11-23] T3, my answers (a) to decisions 33 to 36, and to the report's two concerns. With its label background off, a string's label is text with a thin outline in the canvas color. The archive field `label_background` is written only when it is off, absent means on, and `format_version` stays 1. The two approved tests change as decision 35 (a) says, shown with the new tests before the commit. The plan is approved. Undo of a deleted string restoring the new value too: "accepted". Cork's grain judged only in a window: "understood". The rule and the field are in docs/design.md sections 6 and 7, written before the code; the code does not follow them yet.
+- [2026-11-23] T3: the six core tests and the two edits of decision 35 are approved as written (decision 37). They are not edited while T3 is built; if one looks wrong, the agent stops and asks - my answer (a).

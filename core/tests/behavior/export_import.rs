@@ -2157,3 +2157,110 @@ fn an_endpoint_in_a_trashed_guide_stays_unresolved() {
     by_name.restore_guide(&terraria).unwrap();
     assert!(by_name.relations_for_entry(&ore, &all).unwrap().is_empty());
 }
+
+/// A guide named Minecraft with one board, Puzzle: two cards and two labeled strings between
+/// them. "drops" has its label background off; "smelts into" has it on.
+fn vault_with_a_bare_label() -> (TempDir, Vault, GuideId) {
+    let dir = tempdir().unwrap();
+    let mut v = Vault::open(&dir.path().join("vault").join("vault.db")).unwrap();
+    let g = guide(&mut v, "Minecraft");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let cobble = entry(&mut v, &g, "Cobblestone", "");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    v.add_board_nodes(
+        &board,
+        &[
+            BoardNode {
+                entry_id: stone.clone(),
+                x: 0.0,
+                y: 0.0,
+            },
+            BoardNode {
+                entry_id: cobble.clone(),
+                x: 300.0,
+                y: 0.0,
+            },
+        ],
+    )
+    .unwrap();
+    let drops = v
+        .create_board_string(&board, &card(&stone), &card(&cobble), "drops")
+        .unwrap();
+    v.update_board_string(
+        &drops.id,
+        &fieldguide_core::board::BoardStringUpdate {
+            label_background: Some(false),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    v.create_board_string(&board, &card(&cobble), &card(&stone), "smelts into")
+        .unwrap();
+    (dir, v, g)
+}
+
+/// Every string on the guide's one board as label and label background, sorted by label.
+fn label_backgrounds(v: &Vault, guide_id: &GuideId) -> Vec<(String, bool)> {
+    let boards = v.list_boards(guide_id).unwrap();
+    assert_eq!(boards.len(), 1);
+    let mut found: Vec<(String, bool)> = v
+        .board_view(&boards[0].id)
+        .unwrap()
+        .strings
+        .into_iter()
+        .map(|s| (s.label, s.label_background))
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn a_strings_label_background_round_trips_through_export_and_import() {
+    let (dir, v, g) = vault_with_a_bare_label();
+    let expected = [
+        ("drops".to_owned(), false),
+        ("smelts into".to_owned(), true),
+    ];
+    assert_eq!(label_backgrounds(&v, &g), expected);
+
+    for (scope, name) in [
+        (ExportScope::Guide { id: g.clone() }, "guide.zip"),
+        (ExportScope::Vault, "vault.zip"),
+    ] {
+        let archive = export_to(&v, &scope, dir.path(), name);
+        let (_d, mut target) = empty_vault();
+        import_all(&mut target, &archive, &[], &ImportOptions::default());
+        let local = target.list_guides(&GuideFilter::default()).unwrap()[0]
+            .id
+            .clone();
+        assert_eq!(label_backgrounds(&target, &local), expected, "{name}");
+    }
+}
+
+#[test]
+fn a_board_file_names_the_label_background_only_when_it_is_off() {
+    let (dir, v, g) = vault_with_a_bare_label();
+    let archive = export_to(&v, &ExportScope::Guide { id: g }, dir.path(), "guide.zip");
+    let files = entries(&archive);
+    let board: serde_json::Value =
+        serde_json::from_slice(&files["guides/minecraft/boards/puzzle.json"]).unwrap();
+    let strings = board["strings"].as_array().unwrap();
+    let string = |label: &str| {
+        strings
+            .iter()
+            .find(|s| s["label"] == label)
+            .unwrap_or_else(|| panic!("no string labeled {label}"))
+    };
+    assert_eq!(
+        string("drops").get("label_background"),
+        Some(&serde_json::Value::Bool(false)),
+        "off is written"
+    );
+    assert_eq!(
+        string("smelts into").get("label_background"),
+        None,
+        "on is left out, so an archive without the field means on"
+    );
+    let manifest: serde_json::Value = serde_json::from_slice(&files["manifest.json"]).unwrap();
+    assert_eq!(manifest["format_version"], 1);
+}

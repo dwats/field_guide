@@ -650,6 +650,7 @@ fn strings_tie_cards_and_notes_of_one_board_and_check_their_ends() {
             &BoardStringUpdate {
                 label: Some(" opens ".to_owned()),
                 color: Some("blue".to_owned()),
+                ..BoardStringUpdate::default()
             },
         )
         .unwrap();
@@ -1364,5 +1365,176 @@ fn an_entry_in_a_trashed_guide_cannot_join_a_board() {
     assert_eq!(
         v.add_board_nodes(&board, &[node(&bar, 0.0, 0.0)]).unwrap(),
         1
+    );
+}
+
+/// A board with two cards and two strings between them: "mines" and one with no label.
+fn two_strings(v: &mut Vault) -> (BoardId, BoardStringId, BoardStringId) {
+    let g = guide(v, "Minecraft");
+    let board = v.create_board(&g, "Puzzle").unwrap().id;
+    let stone = entry(v, &g, "Stone", "");
+    let pickaxe = entry(v, &g, "Pickaxe", "");
+    v.add_board_nodes(
+        &board,
+        &[node(&stone, 0.0, 0.0), node(&pickaxe, 100.0, 0.0)],
+    )
+    .unwrap();
+    let mines = v
+        .create_board_string(&board, &card_end(&pickaxe), &card_end(&stone), "mines")
+        .unwrap();
+    let plain = v
+        .create_board_string(&board, &card_end(&stone), &card_end(&pickaxe), "")
+        .unwrap();
+    assert!(
+        mines.label_background,
+        "a new string has its label background"
+    );
+    assert!(
+        plain.label_background,
+        "a new string with no label has it too"
+    );
+    (board, mines.id, plain.id)
+}
+
+fn label_background(on: bool) -> BoardStringUpdate {
+    BoardStringUpdate {
+        label_background: Some(on),
+        ..BoardStringUpdate::default()
+    }
+}
+
+/// Each string's id and whether its label has the background, in the board's order.
+fn label_backgrounds(v: &Vault, board: &BoardId) -> Vec<(BoardStringId, bool)> {
+    v.board_view(board)
+        .unwrap()
+        .strings
+        .into_iter()
+        .map(|s| (s.id, s.label_background))
+        .collect()
+}
+
+#[test]
+fn a_new_string_has_its_label_background_and_the_choice_is_kept_per_string() {
+    let mut v = vault();
+    let (board, mines, plain) = two_strings(&mut v);
+    assert_eq!(
+        label_backgrounds(&v, &board),
+        [(mines.clone(), true), (plain.clone(), true)]
+    );
+
+    let bare = v
+        .update_board_string(&mines, &label_background(false))
+        .unwrap();
+    assert!(!bare.label_background, "the update returns the new value");
+    assert_eq!(
+        label_backgrounds(&v, &board),
+        [(mines.clone(), false), (plain.clone(), true)],
+        "turning it off on one string leaves the other alone"
+    );
+
+    let boxed = v
+        .update_board_string(&mines, &label_background(true))
+        .unwrap();
+    assert!(boxed.label_background);
+    assert_eq!(
+        label_backgrounds(&v, &board),
+        [(mines, true), (plain, true)],
+        "it can be turned on again"
+    );
+}
+
+#[test]
+fn a_change_to_a_strings_label_or_color_keeps_its_label_background() {
+    let mut v = vault();
+    let (board, mines, plain) = two_strings(&mut v);
+    v.update_board_string(&mines, &label_background(false))
+        .unwrap();
+
+    let relabeled = v
+        .update_board_string(
+            &mines,
+            &BoardStringUpdate {
+                label: Some("breaks".to_owned()),
+                ..BoardStringUpdate::default()
+            },
+        )
+        .unwrap();
+    assert!(!relabeled.label_background, "a new label keeps it off");
+    let recolored = v
+        .update_board_string(
+            &mines,
+            &BoardStringUpdate {
+                color: Some("green".to_owned()),
+                ..BoardStringUpdate::default()
+            },
+        )
+        .unwrap();
+    assert!(!recolored.label_background, "a new color keeps it off");
+    let emptied = v
+        .update_board_string(
+            &mines,
+            &BoardStringUpdate {
+                label: Some(String::new()),
+                ..BoardStringUpdate::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        !emptied.label_background,
+        "the choice is kept while the label is empty"
+    );
+
+    // And the other way: the switch changes neither the label nor the color.
+    v.update_board_string(
+        &mines,
+        &BoardStringUpdate {
+            label: Some("breaks".to_owned()),
+            ..BoardStringUpdate::default()
+        },
+    )
+    .unwrap();
+    let boxed = v
+        .update_board_string(&mines, &label_background(true))
+        .unwrap();
+    assert_eq!(
+        (
+            boxed.label.as_str(),
+            boxed.color.as_str(),
+            boxed.label_background
+        ),
+        ("breaks", "green", true)
+    );
+    let off_again = v
+        .update_board_string(&plain, &label_background(false))
+        .unwrap();
+    assert_eq!(
+        (
+            off_again.label.as_str(),
+            off_again.color.as_str(),
+            off_again.label_background
+        ),
+        ("", "red", false)
+    );
+    assert_eq!(
+        label_backgrounds(&v, &board),
+        [(mines, true), (plain, false)]
+    );
+}
+
+#[test]
+fn a_strings_label_background_survives_closing_and_reopening_the_vault() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    let (board, mines, plain) = {
+        let mut v = Vault::open(&db).unwrap();
+        let made = two_strings(&mut v);
+        v.update_board_string(&made.1, &label_background(false))
+            .unwrap();
+        made
+    };
+    let reopened = Vault::open(&db).unwrap();
+    assert_eq!(
+        label_backgrounds(&reopened, &board),
+        [(mines, false), (plain, true)]
     );
 }

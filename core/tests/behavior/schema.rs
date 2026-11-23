@@ -233,8 +233,7 @@ fn a_version_6_vault_migrates_to_7_with_nothing_trashed() {
     let db = dir.path().join("vault.db");
     version_6_vault(&db);
     let mut v = Vault::open(&db).unwrap();
-    assert_eq!(SCHEMA_VERSION, 7);
-    assert_eq!(v.schema_version().unwrap(), 7);
+    assert_eq!(v.schema_version().unwrap(), SCHEMA_VERSION);
 
     // Everything the vault held is still live.
     let g = GuideId::from("g");
@@ -251,4 +250,119 @@ fn a_version_6_vault_migrates_to_7_with_nothing_trashed() {
     assert_eq!(v.list_trashed_guides().unwrap().len(), 1);
     assert!(v.restore_guide(&g).unwrap().deleted_at.is_none());
     assert_eq!(v.list_guides(&GuideFilter::default()).unwrap().len(), 1);
+}
+
+/// Builds a vault file at schema version 7 with SQL alone: one board with two cards, a note, a
+/// labeled blue string between the cards, and an unlabeled red one from the note to a card.
+fn version_7_vault(db: &std::path::Path) {
+    let conn = rusqlite::Connection::open(db).unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    for sql in [
+        include_str!("../../migrations/0001_initial.sql"),
+        include_str!("../../migrations/0002_relations.sql"),
+        include_str!("../../migrations/0003_boards.sql"),
+        include_str!("../../migrations/0004_cover_crop.sql"),
+        include_str!("../../migrations/0005_board_notes.sql"),
+        include_str!("../../migrations/0006_board_images.sql"),
+        include_str!("../../migrations/0007_trash_boards_guides.sql"),
+    ] {
+        conn.execute_batch(sql).unwrap();
+    }
+    conn.pragma_update(None, "user_version", 7).unwrap();
+    let t = "2026-01-01T00:00:00Z";
+    conn.execute_batch(&format!(
+        "INSERT INTO guide (id, name, name_norm, created_at, updated_at)
+             VALUES ('g', 'Minecraft', 'minecraft', '{t}', '{t}');
+         INSERT INTO entry (id, guide_id, title, title_norm, created_at, updated_at)
+             VALUES ('stone', 'g', 'Stone', 'stone', '{t}', '{t}'),
+                    ('ore', 'g', 'Ore', 'ore', '{t}', '{t}');
+         INSERT INTO board (id, guide_id, name, name_norm, created_at, updated_at)
+             VALUES ('b', 'g', 'Puzzle', 'puzzle', '{t}', '{t}');
+         INSERT INTO board_node (board_id, entry_id, x, y)
+             VALUES ('b', 'stone', 0, 0), ('b', 'ore', 100, 0);
+         INSERT INTO board_note (id, board_id, body_md, x, y, w, h, color, created_at, updated_at)
+             VALUES ('n', 'b', 'clue', 5, 6, 220, 180, 'pink', '{t}', '{t}');
+         INSERT INTO board_string (id, board_id, from_kind, from_id, to_kind, to_id, label, color, created_at)
+             VALUES ('s1', 'b', 'entry', 'stone', 'entry', 'ore', 'drops', 'blue', '{t}'),
+                    ('s2', 'b', 'note', 'n', 'entry', 'stone', '', 'red', '{t}');"
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_version_7_vault_migrates_with_every_label_background_on() {
+    use fieldguide_core::board::BoardStringUpdate;
+    use fieldguide_core::{BoardId, BoardNoteId, BoardStringId};
+
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    version_7_vault(&db);
+    let mut v = Vault::open(&db).unwrap();
+    assert_eq!(v.schema_version().unwrap(), SCHEMA_VERSION);
+
+    // Id, from, to, label, color, label background.
+    type Row = (String, String, String, String, String, bool);
+    let board = BoardId::from("b");
+    let strings = |v: &Vault| -> Vec<Row> {
+        v.board_view(&board)
+            .unwrap()
+            .strings
+            .into_iter()
+            .map(|s| {
+                (
+                    s.id.0,
+                    s.from.id,
+                    s.to.id,
+                    s.label,
+                    s.color,
+                    s.label_background,
+                )
+            })
+            .collect()
+    };
+    let row = |id: &str, from: &str, to: &str, label: &str, color: &str, on: bool| -> Row {
+        (
+            id.to_owned(),
+            from.to_owned(),
+            to.to_owned(),
+            label.to_owned(),
+            color.to_owned(),
+            on,
+        )
+    };
+    assert_eq!(
+        strings(&v),
+        [
+            row("s1", "stone", "ore", "drops", "blue", true),
+            row("s2", "n", "stone", "", "red", true)
+        ],
+        "every string keeps its ends, label, and color, and has its label background"
+    );
+
+    // The migrated vault takes the new state and gives it back.
+    let bare = v
+        .update_board_string(
+            &BoardStringId::from("s1"),
+            &BoardStringUpdate {
+                label_background: Some(false),
+                ..BoardStringUpdate::default()
+            },
+        )
+        .unwrap();
+    assert!(!bare.label_background);
+    assert_eq!(
+        strings(&v),
+        [
+            row("s1", "stone", "ore", "drops", "blue", false),
+            row("s2", "n", "stone", "", "red", true)
+        ]
+    );
+
+    // A string still goes with its end.
+    v.delete_board_note(&BoardNoteId::from("n")).unwrap();
+    assert_eq!(
+        strings(&v),
+        [row("s1", "stone", "ore", "drops", "blue", false)],
+        "the note's string went with it"
+    );
 }

@@ -255,6 +255,8 @@ pub struct BoardString {
     pub label: String,
     /// One of `STRING_COLORS`.
     pub color: String,
+    /// Whether the label is drawn in a pill. Off, it is drawn as text alone.
+    pub label_background: bool,
     pub created_at: String,
 }
 
@@ -265,6 +267,8 @@ pub struct BoardStringUpdate {
     pub label: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    #[serde(default)]
+    pub label_background: Option<bool>,
 }
 
 /// A note as drawn: the row plus its rendered body. `tasks` is how many task markers the body has.
@@ -904,6 +908,7 @@ impl Vault {
             to: to.clone(),
             label: label.trim().to_owned(),
             color: STRING_COLORS[0].to_owned(),
+            label_background: true,
             created_at: clock::now(),
         };
         insert_string(&tx, &string)?;
@@ -1216,6 +1221,7 @@ fn string_from_row(row: &Row<'_>) -> rusqlite::Result<BoardString> {
         to: end(4, 5)?,
         label: row.get(6)?,
         color: row.get(7)?,
+        label_background: true,
         created_at: row.get(8)?,
     })
 }

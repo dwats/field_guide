@@ -1491,6 +1491,7 @@ impl Vault {
                         to,
                         label: string.label.trim().to_owned(),
                         color,
+                        label_background: true,
                         created_at: string.created_at.clone(),
                     },
                 )?;
