@@ -490,6 +490,54 @@ fn a_new_qualifier_label_cannot_be_created_through_a_relation_of_a_trashed_guide
     assert_eq!(lines(&v, &stone), ["DROPS Cobblestone · with a pickaxe"]);
 }
 
+/// The other side of the rule above: a qualifier whose label is typed as new, with a text that
+/// names a label the guide already has, creates nothing. It is an edit of the relation, and
+/// core leaves edits in a trashed guide alone (design section 3).
+#[test]
+fn a_typed_label_that_names_an_existing_one_is_an_edit_in_a_trashed_guide() {
+    let mut v = vault();
+    let g = guide(&mut v, "Minecraft");
+    let stone = entry(&mut v, &g, "Stone", "");
+    let cobble = entry(&mut v, &g, "Cobblestone", "");
+    let drops = verb(&mut v, &g, "drops", None);
+    let with = qualifier_label(&mut v, &g, "with", None);
+    let edge = relate_with(
+        &mut v,
+        &stone,
+        &drops,
+        &cobble,
+        vec![q_text(&with, "a pickaxe")],
+    );
+    v.trash_guide(&g).unwrap();
+
+    // Typed in another case, as the relation line would send it.
+    let typed = NewQualifier {
+        label: LabelSpec::New(NewQualifierLabel {
+            label: "With".to_owned(),
+            inverse_label: None,
+        }),
+        value: QualifierValue::Text("bare hands".to_owned()),
+    };
+    let edited = v.add_qualifier(&edge.id, typed).unwrap();
+    let used: Vec<_> = edited
+        .qualifiers
+        .iter()
+        .map(|q| q.label.id.clone())
+        .collect();
+    assert_eq!(used, [with.clone(), with.clone()]);
+
+    // No label was created: the guide comes back with its one label.
+    v.restore_guide(&g).unwrap();
+    let labels: Vec<String> = v
+        .list_qualifier_labels(&g)
+        .unwrap()
+        .into_iter()
+        .map(|l| l.label)
+        .collect();
+    assert_eq!(labels, ["with"]);
+    assert_eq!(v.get_relation(&edge.id).unwrap().qualifiers.len(), 2);
+}
+
 fn entry_end(id: &EntryId) -> StringEnd {
     StringEnd {
         kind: EndKind::Entry,
@@ -777,6 +825,56 @@ fn guide_contents_counts_what_purge_removes_from_other_guides() {
     );
     assert_eq!(v.board_view(&smelting).unwrap().strings.len(), 1);
     assert_eq!(card_titles(&v, &smelting), ["Copper Bar", "Copper Ore"]);
+}
+
+/// A string can end on an image or a note. Such a string on another guide's board goes with a
+/// purge only when its other end is a card of the purged guide, and it is counted only then.
+#[test]
+fn a_string_to_an_image_counts_only_when_its_other_end_is_a_card_of_the_guide() {
+    let mut v = vault();
+    let minecraft = guide(&mut v, "Minecraft");
+    let terraria = guide(&mut v, "Terraria");
+    let furnace = entry(&mut v, &minecraft, "Furnace", "");
+    let ore = entry(&mut v, &terraria, "Copper Ore", "");
+    let picture = media(&mut v, 7);
+
+    let smelting = v.create_board(&terraria, "Smelting").unwrap().id;
+    v.add_board_nodes(
+        &smelting,
+        &[node(&ore, 0.0, 0.0), node(&furnace, 300.0, 0.0)],
+    )
+    .unwrap();
+    let photo = v
+        .create_board_image(&smelting, &picture, 0.0, 300.0, 200.0, 150.0)
+        .unwrap();
+    let photo = StringEnd {
+        kind: EndKind::Image,
+        id: photo.id.0.clone(),
+    };
+    let recipe = note_end(&mut v, &smelting, "check the recipe");
+    // One string from the image to a Minecraft card. Two that touch no Minecraft card.
+    tie(&mut v, &smelting, &photo, &entry_end(&furnace));
+    tie(&mut v, &smelting, &photo, &entry_end(&ore));
+    tie(&mut v, &smelting, &recipe, &photo);
+
+    let holds = v.guide_contents(&minecraft).unwrap();
+    assert_eq!(
+        (holds.cards_on_other_boards, holds.strings_on_other_boards),
+        (1, 1)
+    );
+    // The image, the note, and their strings are Terraria's own and are not Minecraft's to count.
+    assert_eq!(
+        (holds.boards, holds.images, holds.notes, holds.strings),
+        (0, 0, 0, 0)
+    );
+
+    v.trash_guide(&minecraft).unwrap();
+    v.purge_guide(&minecraft).unwrap();
+    let after = v.board_view(&smelting).unwrap();
+    assert_eq!(after.strings.len(), 2);
+    assert_eq!(after.images.len(), 1);
+    assert_eq!(after.notes.len(), 1);
+    assert_eq!(card_titles(&v, &smelting), ["Copper Ore"]);
 }
 
 /// Empty trash on the guides list purges every guide in the Trash at once, so its dialog needs
