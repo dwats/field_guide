@@ -101,12 +101,14 @@ fn seed(v: &mut Vault) -> Result<()> {
     )?;
     v.trash_entry(&gone)?;
 
-    // Minecraft's board: a card from each other guide, a note, two strings.
+    // Minecraft's boards. Map: a card from each other guide, a note, two strings.
     let map = v.create_board(&minecraft, "Map")?.id;
     cards(v, &map, &[&stone, &ore, &flint])?;
     let start = note(v, &map, "start here", 0.0)?;
     tie(v, &map, &card(&stone), &start)?;
     tie(v, &map, &card(&stone), &card(&ore))?;
+    // An empty second board: the walkthrough moves it to the Trash before its guide.
+    v.create_board(&minecraft, "Scratch")?;
 
     // Terraria's board: two Minecraft cards with three strings tied to them.
     let smelting = v.create_board(&terraria, "Smelting")?.id;
@@ -130,6 +132,8 @@ fn seed(v: &mut Vault) -> Result<()> {
     let second = note(v, &plan, "build the raft", 300.0)?;
     tie(v, &plan, &first, &second)?;
     tie(v, &plan, &card(&flint), &first)?;
+    let picture = v.ingest_image(include_bytes!("picture.png"), Some("picture.png"))?;
+    v.create_board_image(&plan, &picture.id, 300.0, 0.0, 256.0, 192.0)?;
 
     for (name, id) in [
         ("Minecraft", &minecraft),

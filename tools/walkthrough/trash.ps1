@@ -412,7 +412,7 @@ if (-not (FindPrefix $win "Valheim" $CT::Hyperlink 3 -Optional)) {
 Shot "t00-guides"
 
 # 1. Every page inside Minecraft once, so Back can return to each: the guide page, the Tag
-# editor, Vocabulary, Boards, a board, an entry, the guide's Trash.
+# editor, Vocabulary, Boards, a board, a board that is in the Trash, an entry, the guide's Trash.
 OpenGuide "Minecraft"
 Shot "t01-guide"
 Click (Find $win "Tag editor" $CT::Hyperlink)
@@ -420,6 +420,20 @@ Click (Find $win "Vocabulary" $CT::Hyperlink)
 Click (Find $win "Boards" $CT::Hyperlink)
 Click (Find $win "Map" $CT::Hyperlink)
 Start-Sleep -Seconds 2
+# Scratch goes to the Trash before its guide, from the list: Move to Trash on a board's own
+# page takes that page out of the history. Back to its page says where the board is.
+Click (Find $win "Boards" $CT::Hyperlink)
+Start-Sleep -Seconds 1
+Click (Find $win "Scratch" $CT::Hyperlink)
+Start-Sleep -Seconds 2
+Click (Find $win "Boards" $CT::Hyperlink)
+Start-Sleep -Seconds 1
+OpenMenu "More for Scratch"
+Click (MenuItem "Move to Trash")
+Start-Sleep -Seconds 1
+Back
+Says "This board is in the Trash"
+Shot "t01b-board-in-trash-before-its-guide"
 Click (Find $win "Stone" $CT::Hyperlink)
 Start-Sleep -Seconds 1
 OpenTrash
@@ -452,20 +466,37 @@ Says "is in the Trash; restore it or purge it first"
 Shot "t06-guide-name-in-trash"
 Click (Find $win "Cancel" $CT::Button)
 
-# 4. Back, nine times: the guide page, the guides list, the guide page, the guide's Trash, the
-# entry, the board, Boards, Vocabulary, the Tag editor. Every page inside the guide says where
-# the guide is, and the guide's sidebar is not drawn.
+# 4. Back, eleven times: the guide page, the guides list, the guide page, the guide's Trash, the
+# entry, the board Scratch, Boards, the board Map, Boards, Vocabulary, the Tag editor. Every page
+# inside the guide says where the guide is, and the guide's sidebar is not drawn. Scratch is in
+# the Trash itself; the guide's message comes first.
 $said = 0
-foreach ($i in 1..9) {
+foreach ($i in 1..11) {
   Back
   if (Find $win "This guide is in the Trash" $null 2 -Optional) {
     $said++
     if (Find $win "Vocabulary" $CT::Hyperlink 1 -Optional) { Miss "no guide sidebar on a page of a trashed guide (back $i)" }
   }
-  Shot "t1$i-back"
+  if ($i -eq 6) { Unsaid "This board is in the Trash" }
+  Shot ("t10-back-{0:d2}" -f $i)
 }
-Write-Host "pages that said the guide is in the Trash: $said of 9 (the guides list is one of the 9)"
-if ($said -lt 8) { Miss "eight pages inside the trashed guide say so (found $said)" }
+Write-Host "pages that said the guide is in the Trash: $said of 11 (the guides list is one of the 11)"
+if ($said -lt 10) { Miss "ten pages inside the trashed guide say so (found $said)" }
+
+# 4b. New on a page of a trashed guide opens New guide. Its vocabulary list leaves the guide out.
+Keys "^n"
+$dialog = Region "New guide"
+$null = Find $dialog "Name" $CT::Edit
+$copy = FindPrefix $dialog "Copy verbs" $CT::ComboBox 3 -Optional
+if (-not $copy -or -not (Find $copy "Terraria" $CT::ListItem 2 -Optional)) {
+  Write-Host "NOT JUDGED: the options of New guide's vocabulary list are not open to UI Automation"
+} elseif (Find $copy "Minecraft" $CT::ListItem 1 -Optional) {
+  Miss "a trashed guide is not offered in New guide's vocabulary list"
+} else {
+  Write-Host "New guide's vocabulary list offers Terraria and not Minecraft"
+}
+Shot "t19-new-on-trashed-guide-page"
+Click (Find $win "Cancel" $CT::Button)
 
 # 5. Restore on such a page brings the page and the guide's sidebar back.
 Click (Find $win "Restore" $CT::Button)
@@ -473,8 +504,34 @@ Start-Sleep -Seconds 2
 Unsaid "This guide is in the Trash"
 $null = Find $win "Vocabulary" $CT::Hyperlink
 Shot "t20-restored-in-place"
-Click (Find $win "Minecraft" $CT::Hyperlink)
+
+# 5b. With Minecraft back, Valheim shows what is tied to it again: the verb's count has no
+# Trash words, the entry names Stone as a value, and the board shows the Stone card.
+OpenGuide "Valheim"
+Click (Find $win "Vocabulary" $CT::Hyperlink)
 Start-Sleep -Seconds 1
+Click (FindPrefix $win "found near" $CT::ListItem)
+Says "Used by 1 relation."
+Unsaid "an entry in Trash"
+Shot "t20b-vocabulary-guide-live"
+Click (Find $win "Flint" $CT::Hyperlink)
+Start-Sleep -Seconds 2
+$relations = Find $win "Relations" $CT::TabItem 2 -Optional
+if ($relations) { Click $relations }
+$null = Find $win "Stone" $CT::Hyperlink
+Shot "t20c-entry-other-guide-shown"
+Click (Find $win "Boards" $CT::Hyperlink)
+Start-Sleep -Seconds 1
+Click (Find $win "Camp" $CT::Hyperlink)
+Start-Sleep -Seconds 2
+OpenMenu "View"
+Click (MenuItem "Other guides")
+CloseMenu "View"
+Click (Find $win "Fit the board to the window" $CT::Button)
+Start-Sleep -Seconds 1
+$null = FindPrefix (Find $win "Board canvas" $null) "Stone" $CT::Button
+Shot "t20d-board-other-guide-shown"
+OpenGuide "Minecraft"
 GuideToTrash
 
 # 6. Valheim while Minecraft is in the Trash. The verb "found near" is used by one relation,
@@ -490,7 +547,7 @@ Start-Sleep -Milliseconds 600
 Says "That count includes 1 relation with an entry in Trash."
 Shot "t22-vocabulary-delete-refused"
 Keys "{ESC}"
-# The entry and the board: nothing of Minecraft shows, with Other guides on.
+# The entry and the board: nothing of Minecraft shows, with Other guides on since step 5b.
 Click (Find $win "Flint" $CT::Hyperlink)
 Start-Sleep -Seconds 2
 $relations = Find $win "Relations" $CT::TabItem 2 -Optional
@@ -500,12 +557,10 @@ Click (Find $win "Boards" $CT::Hyperlink)
 Start-Sleep -Seconds 1
 Click (Find $win "Camp" $CT::Hyperlink)
 Start-Sleep -Seconds 2
-OpenMenu "View"
-Click (MenuItem "Other guides")
-CloseMenu "View"
 Click (Find $win "Fit the board to the window" $CT::Button)
 Start-Sleep -Seconds 1
-if (Find (Find $win "Board canvas" $null) "Stone" $CT::Button 1 -Optional) { Miss "no card of a trashed guide on a board of another guide" }
+if (FindPrefix (Find $win "Board canvas" $null) "Stone" $CT::Button 1 -Optional) { Miss "no card of a trashed guide on a board of another guide" }
+$null = FindPrefix (Find $win "Board canvas" $null) "Copper Ore" $CT::Button
 Shot "t24-board-other-guide-hidden"
 
 # 7. The guides' Trash. Purge names what goes, what it takes from other guides included.
@@ -513,14 +568,15 @@ GuidesList
 Shot "t30-guides-trash-row"
 OpenTrash
 Shot "t31-guides-trash"
+# Delete on the selected row asks to purge.
 SelectFirst "Trashed guides"
-Click (Find $win "Purge..." $CT::Button)
+Keys "{DELETE}"
 Start-Sleep -Milliseconds 600
 Says "4 entries, 1 of them already in Trash, are removed for good."
 Says "1 tag, 1 verb, 1 qualifier label, and 6 relations go with them."
 Says "4 of those relations are with entries in other guides."
 Says "3 qualifiers on relations in other guides name these entries and are removed."
-Says "1 board with 1 note and 2 strings is removed."
+Says "2 boards with 1 note and 2 strings are removed."
 Says "3 cards come off boards in other guides."
 Says "5 strings tied to those cards go with them."
 Shot "t32-guide-purge-dialog"
@@ -558,7 +614,7 @@ Says "6 entries, 1 of them already in Trash, are removed for good."
 Says "1 tag, 2 verbs, 2 qualifier labels, and 7 relations go with them."
 Says "2 of those relations are with entries in other guides."
 Says "2 qualifiers on relations in other guides name these entries and are removed."
-Says "2 boards with 2 notes and 6 strings are removed."
+Says "3 boards with 2 notes and 6 strings are removed."
 Says "2 cards come off boards in other guides."
 Says "2 strings tied to those cards go with them."
 Shot "t35-guides-empty-trash-dialog"
@@ -585,7 +641,7 @@ Click (FindPrefix $win "found near" $CT::ListItem)
 Says "No relation uses this verb."
 Shot "t42-vocabulary-after-purge"
 
-# 10. A board to the Trash from the list: no dialog, Undo opens the board again.
+# 10. A board to the Trash from the list: no dialog, and Undo puts it back in the list.
 Click (Find $win "Boards" $CT::Hyperlink)
 Start-Sleep -Seconds 1
 Shot "t50-boards"
@@ -596,7 +652,12 @@ Says 'Moved the board "Old plan" to Trash.'
 Shot "t51-board-moved"
 Click (Find $win "Undo" $CT::Button)
 Start-Sleep -Seconds 2
+$null = Find $win "More for Old plan" $CT::Button
 Shot "t52-board-undo"
+# Open the board, so Back has its page to return to.
+Click (Find $win "Old plan" $CT::Hyperlink)
+Start-Sleep -Seconds 2
+Shot "t52b-board-open"
 Click (Find $win "Boards" $CT::Hyperlink)
 Start-Sleep -Seconds 1
 OpenMenu "More for Old plan"
@@ -618,11 +679,18 @@ Click (Find $win "Restore" $CT::Button)
 Start-Sleep -Seconds 2
 Unsaid "This board is in the Trash"
 Shot "t55-board-restored-in-place"
-# From More on the board page.
+# From More on the board page. Undo opens the board again.
 OpenMenu "More"
 Click (MenuItem "Move to Trash")
 Start-Sleep -Seconds 1
 Shot "t56-board-moved-from-page"
+Click (Find $win "Undo" $CT::Button)
+Start-Sleep -Seconds 2
+$null = Find $win "Board canvas" $null
+Shot "t56b-board-undo-from-page"
+OpenMenu "More"
+Click (MenuItem "Move to Trash")
+Start-Sleep -Seconds 1
 
 # 11. The guide's Trash with one entry and one board.
 NewEntry "Scrap $n"
@@ -631,19 +699,19 @@ Click (MenuItem "Move to Trash")
 Start-Sleep -Seconds 1
 Shot "t57-sidebar-trash-count"
 OpenTrash
-Says "2 notes, 2 strings, 1 card"
+Says "2 notes, 1 image, 2 strings, 1 card"
 Shot "t58-guide-trash"
 SelectFirst "Trashed boards"
 Click (Find $win "Purge..." $CT::Button)
 Start-Sleep -Milliseconds 600
-Says "2 notes and 2 strings are removed for good."
+Says "2 notes, 1 image, and 2 strings are removed for good."
 Says "1 card comes off the board. The entries stay in the guide."
 Shot "t59-board-purge-dialog"
 Click (Find $win "Cancel" $CT::Button)
 Click (Find $win "Empty trash" $CT::Button)
 Start-Sleep -Milliseconds 600
 Says "1 entry and 1 board are removed for good."
-Says "The board holds 2 notes and 2 strings."
+Says "The board holds 2 notes, 1 image, and 2 strings."
 Says "1 card comes off the board. Entries that are not in the Trash stay in the guide."
 Shot "t60-guide-empty-trash-dialog"
 Click (Find $win "Cancel" $CT::Button)
