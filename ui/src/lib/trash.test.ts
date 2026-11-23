@@ -85,7 +85,7 @@ describe("guideMoved", () => {
 
   it("does not count a read that failed for another reason as moved", async () => {
     const failing = async (): Promise<Guide> => {
-      throw { kind: "database", message: "the database is busy" };
+      throw { kind: "sqlite", message: "the database is busy" };
     };
     expect(await guideMoved(aGuide(null), failing)).toBe(false);
   });

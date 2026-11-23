@@ -42,12 +42,13 @@ ce8a1cc, so `tools/walkthrough/run/t1/` holds a build without the Trash for
 boards and guides. For the current head, run `git log --oneline -5`; this
 file cannot name the commit that holds it.
 
-Gates run again on 2026-11-23 after the decision 29 fix and its review
-fixes: 31 unit, 180 behavior, 183 UI tests, clippy clean, format clean,
-svelte-check clean. With the two pin tests of decision 30, which are in the
-working tree and not committed, 182 behavior tests pass.
+Gates last run on 2026-11-23 at the end of T2: 31 unit, 182 behavior, 183
+UI tests, clippy clean, format clean, svelte-check clean. The last release
+build is of 646332c, in `tools/walkthrough/run/t2/`; no code in `core`,
+`app`, or `ui` changed after it.
 
-T2 is in progress: see its Status and Notes.
+T2 is done except for two not judged checks that wait for me: see its
+Notes.
 
 ## Carry-over from the long session
 
@@ -77,10 +78,14 @@ Things that were only in the conversation.
 - To start in Dark without clicking: add `theme = "dark"` under `[ui]` in the
   run folder's `config.toml`.
 
-### The three walkthrough scripts
+### The walkthrough scripts
 
 - Where they are: `tools/walkthrough/` in the repository (`drive.ps1`,
-  `board.ps1`, `notes.ps1`), committed 2026-11-12.
+  `board.ps1`, `notes.ps1`), committed 2026-11-12. Since 2026-11-23 a
+  fourth, `trash.ps1`, covers the T2 screens. It needs the vault that
+  `tools/walkthrough/seed/` writes, a new one before every run (README).
+  Last clean run of `trash.ps1`: 2026-11-23 against the build of 646332c,
+  in Dark and in Light, 0 misses each.
 - What they are: PowerShell UI Automation. Each takes `-Exe`, `-OutDir`,
   and `-Theme dark|light`, drives the window, and saves numbered
   screenshots. Rewritten whole in T1; `tools/walkthrough/README.md` lists
@@ -280,11 +285,9 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     A script refuses to start while `fieldguide.exe` runs.
 
 ### T2: Trash for boards and guides
-- **Status:** in progress, waiting on decisions 31 and 32. Batches 1 to 5
-  are built and reviewed. Decision 29 (a) is built and reviewed
-  (2026-11-23). The two pin tests of decision 30 are written and wait for
-  approval (decision 31). The T2 walkthrough is ready to run and waits for
-  the keyboard and mouse (decision 32).
+- **Status:** done (built, reviewed, and walked through in Dark and Light
+  on 2026-11-23). Two not judged checks wait for me; they are listed at the
+  end of the Notes.
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -297,23 +300,24 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   core API, the rules, the tests by name, and four build batches; UX review
   failing item 9
 - **Done when:**
-  - [ ] Migration 0007 adds `deleted_at` to boards and guides; the schema
+  - [x] Migration 0007 adds `deleted_at` to boards and guides; the schema
         version is 7; existing vaults migrate with nothing trashed.
-  - [ ] A trashed guide hides its entries, relations, qualifier values, and
+  - [x] A trashed guide hides its entries, relations, qualifier values, and
         board cards from every other guide, and restore returns all of it,
         positions included.
-  - [ ] A trashed board keeps its notes, images, and strings; restore
+  - [x] A trashed board keeps its notes, images, and strings; restore
         returns them; media cleanup keeps its images while it is in Trash.
-  - [ ] Nothing can be created in a trashed guide, and writes to a trashed
+  - [x] Nothing can be created in a trashed guide, and writes to a trashed
         board are refused.
-  - [ ] Export, import, and name rules follow decisions 5 to 7, each with a
+  - [x] Export, import, and name rules follow decisions 5 to 7, each with a
         round-trip test.
-  - [ ] Delete board and Delete guide show a notice with Undo and no dialog.
-  - [ ] Trashed boards and guides are listed where decisions 8 and 9 say,
+  - [x] Delete board and Delete guide show a notice with Undo and no dialog.
+        (Seen in a window in both schemes, 2026-11-23.)
+  - [x] Trashed boards and guides are listed where decisions 8 and 9 say,
         with Restore and Delete for good; purge names the counts core
-        computed.
-  - [ ] Empty Trash and restore follow decisions 10 and 11.
-  - [ ] docs/design.md sections 3, 5, 6, 7, and 8 are updated.
+        computed. (Seen in a window in both schemes, 2026-11-23.)
+  - [x] Empty Trash and restore follow decisions 10 and 11.
+  - [x] docs/design.md sections 3, 5, 6, 7, and 8 are updated.
 - **Out of scope:** decision 12 (second import of a board); backups and
   media.
 - **Notes:** The design's named tests are the starting list for the tests
@@ -395,11 +399,43 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     step 7b for decision 29 (Undo of a restore, clicked on the Tag editor,
     Vocabulary, an entry, and a board); parsed with 0 errors, never run.
     Nothing was launched.
-  - For the next session: on a yes to decision 31, commit the pin tests. On
-    a yes to decision 32, check `tasklist`, run `trash.ps1` with `-Theme
-    dark`, fix what the first run shows, seed the vault again (remove
-    `run/t2/vault` first), run with `-Theme light`. Then wrap up: done
-    criteria, the T2 checklist lines, the list of not judged checks, push.
+  - Decisions 31 and 32 answered (a) on 2026-11-23. The pin tests are
+    committed (48639b7).
+  - Last review, 2026-11-23 (`reviewer`, the review fixes, the pin tests,
+    and the walkthrough tooling): `ui` and `core` approved. One major
+    finding in the tooling, fixed the same day: `trash.ps1` now refuses to
+    start without a file named `portable` beside `-Exe`, because it
+    confirms Purge and Empty trash. The other three scripts still have no
+    such check (decision 16, Inbox line).
+  - The T2 walkthrough, 2026-11-23: `trash.ps1` against the build of
+    646332c, Dark and Light, 0 misses each, 60 screenshots each in
+    `tools/walkthrough/run/shots-646332c/`. The script checks every dialog
+    line by its text against the counts the seed prints. No app defect was
+    found. Three earlier runs stopped on script errors; each was a wrong
+    guess of the agent's about the app, and the plan file's Progress list
+    names them. What the runs showed that the checklist did not say: Undo
+    from the Boards list puts the board back in the list and does not open
+    it; Move to Trash on a board's own page takes that page out of Back.
+    The Boards line of `docs/checklist.md` now says both.
+  - Checked in `docs/checklist.md` after the runs: the guide's Trash with
+    boards; the guides' Trash; what a guide purge takes from other guides
+    and the combined Empty trash count; Back to a page inside a trashed
+    guide; a page that is open when its guide goes to the Trash; the
+    Vocabulary count.
+  - Not judged, for me to validate:
+    1. New guide's "Copy verbs and qualifiers from" list does not offer a
+       guide that is in the Trash. UI Automation cannot read the options of
+       a closed list. It is the one open part of the Guides line "More,
+       Move guide to Trash"; every other part of that line was seen.
+    2. The Boards line with Rename, the picker, and Move to Trash: its T2
+       parts were seen (Move to Trash from the page and from the list, Undo,
+       the refused name, Back to a trashed board). Its other parts (the
+       picker's search line, chips, and Stubs only after reopening; Rename)
+       are `board.ps1`'s and were not run in this task, so the line stays
+       unchecked.
+  - For the next task: `run/t2/` holds the build of 646332c and the vault
+    as the last run left it (Valheim only). Seed a new vault before any
+    run of `trash.ps1`.
 
 ### T3: Pill toggle on lines
 - **Status:** todo (decision 3 answered (a) on 2026-11-12)
@@ -548,6 +584,8 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-13] [agent] Problem: the Vocabulary page says "1 of them has an entry in Trash" for a relation into a guide that is in the Trash. The entry is not in the Trash; its guide is. The count is right since Batch 5; the words are not — T2 batch 5, part D
 - [2026-11-13] [agent] Problem: on an entry page or a board page of a guide in the Trash, the palette still lists "Rename entry", "Toggle Read and Edit", "Add a tag", "Add a relation", "New note", and "Add entries". They do nothing visible and show no notice. No entry data is written; "Add entries" and "Show or hide the right panel" write the panel preference — T2 batch 5 review
 - [2026-11-13] [agent] Suspected, not verified: after Restore on a "This guide is in the Trash" page the button is gone and nothing moves keyboard focus, so focus falls to the page body — T2 batch 5 review
+- [2026-11-23] [agent] Problem: the page for a board in the Trash, and a board's page inside a guide in the Trash, show the breadcrumb "Guides / <guide>" without "Boards" and the board's name. An entry's page inside a trashed guide does name the entry — T2 walkthrough, `dark/trash/t01b`, `t34d`
+- [2026-11-23] [agent] Question: Undo in the "Moved the board to Trash" notice opens the board when the board was trashed from its own page, and only puts it back in the list when it was trashed from the Boards list. Keep the difference or open the board in both? — T2 walkthrough, `dark/trash/t52`, `t56b`
 - [2026-11-23] [agent] Problem: `EntryView.load` has no newest-request guard, so two loads that overlap can finish in either order. It predates T2; the decision 29 fix added one more caller, which now skips a check that was overtaken — T2 decision 29 review
 - [2026-11-13] [agent] Wording: "2 qualifiers on relations in other guides" in the purge dialog also covers two qualifiers on one relation — T2 batch 5 review
 

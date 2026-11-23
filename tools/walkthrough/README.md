@@ -8,7 +8,7 @@ Four PowerShell UI Automation scripts that drive a release build of Field Guide 
 | `board.ps1` | Relations on an entry, Vocabulary, the board list, a new board, the picker, Add and Add all, the View menu, the panel's Entry and Relations tabs, a relation typed in the panel, nudge and remove with Undo, the four backgrounds, rename, the delete confirm, reopening. |
 | `notes.ps1` | Board notes in five colors, a check box, a pasted image in its polaroid frame, strings in four colors tied by keyboard, the four backgrounds, an index card and a picture card, delete with Undo, Dim images on a board, reopening. |
 
-| `trash.ps1` | Move guide to Trash with Undo, the pages inside a trashed guide reached by Back, a taken name, the guides' Trash with its purge and Empty trash dialogs, a page that is open when its guide goes to the Trash, what a purge leaves in another guide, a board moved to Trash from the list and from its page, a guide's Trash with an entry and a board, the Vocabulary count for a relation into a trashed guide. Written 2026-11-13 and parsed; not run yet. |
+| `trash.ps1` | Move guide to Trash with Undo, the pages inside a trashed guide reached by Back, a taken name, the guides' Trash with its purge and Empty trash dialogs, a page that is open when its guide goes to the Trash, what a purge leaves in another guide, a board moved to Trash from the list and from its page, a guide's Trash with an entry and a board, a board trashed before its guide, New on a page of a trashed guide, the Vocabulary count for a relation into a trashed guide. It checks the dialog lines by their text. |
 
 The scripts take the keyboard, the mouse focus, and the clipboard while they run. If another window comes to the front, the script stops, sends no more keys, and closes the copy of the app it started.
 
@@ -27,6 +27,8 @@ cargo run --offline --manifest-path tools\walkthrough\seed\Cargo.toml --target-d
 The seed refuses a vault file that exists; remove the run folder's `vault` folder first. It prints the counts core gives for each guide. The dialog lines `trash.ps1` checks are those counts; change both together.
 
 - `run/t1/` is the folder for the T1 walkthrough of ce8a1cc.
+- `run/t2/` is the folder for the T2 walkthrough: a build of 646332c and the seeded vault as the last run of `trash.ps1` left it.
+- `run/shots-646332c/` holds the screenshots of the T2 runs of `trash.ps1`, 60 per scheme.
 - `run/` itself holds an older build and the vault that earlier runs left behind, one guide per run.
 - `run/shots-19b8dae/` holds the screenshots of the last clean runs at commit 19b8dae.
 
@@ -51,10 +53,11 @@ The seed refuses a vault file that exists; remove the run folder's `vault` folde
 
 ## Not scripted
 
+- The options of a closed drop-down list are not open to UI Automation. `trash.ps1` prints `NOT JUDGED` for New guide's vocabulary list and goes on.
 - A file drop, resizing a note, the browser launch after "Open in browser", and switching Windows between light and dark.
 - The two restart checks of the Theme section (Dark saved with no white frame at startup; an old `config.toml` without `theme`). T1 ran them from a one-off script that is not in the repository.
 - The scripts flip "Line numbers" and "Dim images in dark" by a click and do not read their state first. After a run that stopped early, check both in Settings before the next run.
-- The scripts do not check that a file named `portable` sits beside `-Exe`. Without it they would drive the real data directory.
+- `drive.ps1`, `board.ps1`, and `notes.ps1` do not check that a file named `portable` sits beside `-Exe`. Without it they would drive the real data directory. `trash.ps1` does check, and refuses to start without the file, because it confirms Purge and Empty trash.
 
 ## Fixture
 
@@ -63,7 +66,7 @@ The seed refuses a vault file that exists; remove the run folder's `vault` folde
 ## Rules for editing the scripts
 
 - The files are UTF-8 with a byte order mark and CRLF line endings; Windows PowerShell 5.1 misreads them otherwise. `.gitattributes` keeps the line endings. Keep the text ASCII.
-- The helper block at the top is the same in all four files. Change it in all four.
+- The helper block at the top is the same in all four files. Change it in all four. The one difference is the `portable` check in `trash.ps1`, just before the app is started.
 - A function must not share its name with a PowerShell alias (`move`, `type`, `select`); the alias wins.
 - Never call UI Automation `SetFocus` on a board note's editor. A blur saves the note and closes the editor.
 - A menu row with `role="menuitemradio"` is a RadioButton to UI Automation. `MenuItem` tries each kind.

@@ -325,6 +325,14 @@ if (Get-Process -Name fieldguide -ErrorAction SilentlyContinue) {
   exit 1
 }
 
+# trash.ps1 only; the other three scripts do not have this check. This script confirms Purge and
+# Empty trash, so it drives a portable copy and nothing else: with a file named portable beside
+# the executable, the app keeps every file in that folder.
+if (-not (Test-Path -LiteralPath (Join-Path (Split-Path $Exe) "portable") -PathType Leaf)) {
+  Write-Host "no file named portable beside [$Exe]; trash.ps1 purges guides and does not drive the real data directory"
+  exit 1
+}
+
 $script:proc = Start-Process -FilePath $Exe -WorkingDirectory (Split-Path $Exe) -PassThru
 $proc = $script:proc
 $win = $null
