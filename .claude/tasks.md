@@ -47,8 +47,7 @@ UI tests, clippy clean, format clean, svelte-check clean. The last release
 build is of 646332c, in `tools/walkthrough/run/t2/`; no code in `core`,
 `app`, or `ui` changed after it.
 
-T2 is done except for two not judged checks that wait for me: see its
-Notes.
+T2 is done. I validated its two not judged checks on 2026-11-23.
 
 ## Carry-over from the long session
 
@@ -286,8 +285,7 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
 
 ### T2: Trash for boards and guides
 - **Status:** done (built, reviewed, and walked through in Dark and Light
-  on 2026-11-23). Two not judged checks wait for me; they are listed at the
-  end of the Notes.
+  on 2026-11-23; I validated the two not judged checks the same day)
 - **Goal:** Deleting a board or a guide sends it to Trash with Undo in the
   notice, the way deleting an entry does. Purge is the one step that cannot
   be reversed; it asks, and it states what is lost with counts.
@@ -422,7 +420,8 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     and the combined Empty trash count; Back to a page inside a trashed
     guide; a page that is open when its guide goes to the Trash; the
     Vocabulary count.
-  - Not judged, for me to validate:
+  - Not judged by the agent, validated by me on 2026-11-23. Both passed,
+    and both lines are checked in `docs/checklist.md`:
     1. New guide's "Copy verbs and qualifiers from" list does not offer a
        guide that is in the Trash. UI Automation cannot read the options of
        a closed list. It is the one open part of the Guides line "More,
@@ -653,4 +652,5 @@ Format: `- [date] decision — reason`
 - [2026-11-23] The guesses in the Batch 5 parts B, C, and D report stand. The singular dialog lines, the order of the two new lines, and the Vocabulary wording are "good enough for now"; a UX design pass and a UI clean-up pass may revisit them. "this entry" for a guide with one entry, the fourth walkthrough script, and the seed program outside the workspace: "check".
 - [2026-11-23] T2: the two pin tests of decision 30 are approved as written (decision 31) - my answer (a).
 - [2026-11-23] T2: the keyboard and mouse are handed over for the T2 walkthrough runs (decision 32) - my answer (a). It covers the T2 runs of `trash.ps1` in this session only.
+- [2026-11-23] T2 validated by me: New guide's vocabulary list does not offer a trashed guide (pass); the board picker remembers its search line, tag chip, and Stubs only after the board is reopened (pass); Rename works from the board page and from the Boards list (pass). The four guesses in the T2 closing report have no answer from me yet.
 - [2026-11-12] The two 2026-11-10 reviews live in `docs/reviews/` and the Trash design in `.claude/work/trash-boards-guides/design.md`; the dark mode plan and the subagent briefs stay outside the repository — they are history.
