@@ -27,7 +27,8 @@
     type VerbUsage,
   } from "../lib/api";
   import { moveHighlight, pickExplicitIndex, stepIndex } from "../lib/combobox";
-  import { notify, setCurrent, touch } from "../lib/session.svelte";
+  import { notify, session, setCurrent, touch } from "../lib/session.svelte";
+  import { guideMoved } from "../lib/trash";
   import { flattenTags, type TagOption } from "../lib/tags";
   import {
     labelAside,
@@ -109,6 +110,18 @@
     void guideId;
     untrack(() => void load());
   });
+
+  // Anything can send this guide to the Trash while the page is open, such as Undo in a notice
+  // (design section 3). The page does not load again on every change, so it asks about the guide
+  // only, and loads again when the guide went into the Trash or came out of it.
+  $effect(() => {
+    void session.revision;
+    untrack(() => void followGuide());
+  });
+
+  async function followGuide() {
+    if (await guideMoved(guide, api.getGuide)) await load();
+  }
 
   $effect(() => {
     lastTab = tab;

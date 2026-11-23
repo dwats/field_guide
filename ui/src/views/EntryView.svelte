@@ -38,6 +38,7 @@
   import { altFromName, fileName, imageReference, isImagePath } from "../lib/media";
   import { navigate, replace, routeHash } from "../lib/router";
   import { notify, session, setCurrent, touch } from "../lib/session.svelte";
+  import { guideMoved } from "../lib/trash";
 
   interface Props {
     entryId: string;
@@ -83,6 +84,18 @@
     const id = entryId;
     untrack(() => void load(id));
   });
+
+  // Anything can send this guide to the Trash while the page is open, such as Undo in a notice
+  // (design section 3). The page does not load again on every change, so it asks about the guide
+  // only, and loads again when the guide went into the Trash or came out of it.
+  $effect(() => {
+    void session.revision;
+    untrack(() => void followGuide());
+  });
+
+  async function followGuide() {
+    if (await guideMoved(guide, api.getGuide)) await load(entryId);
+  }
 
   // The keyboard map and the palette reach this page through these.
   $effect(() => register("toggle-mode", () => void setMode(mode === "read" ? "edit" : "read")));

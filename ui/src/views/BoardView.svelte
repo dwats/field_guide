@@ -191,14 +191,11 @@
     try {
       const data = await api.boardView(boardId);
       if (!alive || mine !== request || data.board.id !== boardId) return;
-      // The guide is kept between loads; one seen in the Trash is asked for again, since Restore
-      // changes it.
-      let owner = guide;
-      if (!owner || owner.id !== data.board.guide_id || owner.deleted_at) {
-        owner = await api.getGuide(data.board.guide_id);
-        if (!alive || mine !== request) return;
-        guide = owner;
-      }
+      // The guide is asked for on every load: it can go into the Trash or come out of it while
+      // this page is open, such as by Undo in a notice.
+      const owner = await api.getGuide(data.board.guide_id);
+      if (!alive || mine !== request) return;
+      guide = owner;
       if (owner.deleted_at || data.board.deleted_at) {
         // A stale route, such as Back after Move to Trash: nothing is drawn and nothing is written.
         // The guide's message comes first: a board cannot be restored while its guide is in the Trash.

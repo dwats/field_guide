@@ -1,9 +1,25 @@
 // Words for the Trash of boards and guides (design section 3). A purge cannot be undone, so its
 // dialog states what is lost. Core counts it (`guide_contents`, `guide_trash_contents`,
-// `board_contents`); these functions only turn the counts into sentences. A count of zero drops its words, and a line whose counts
-// are all zero is left out.
+// `board_contents`); these functions only turn the counts into sentences. A count of zero drops
+// its words, and a line whose counts are all zero is left out.
 
-import type { BoardContents, GuideContents } from "./api";
+import type { BoardContents, Guide, GuideContents } from "./api";
+
+/**
+ * Whether the guide went into the Trash or came out of it since the page loaded it. Anything
+ * can move it while a page inside it is open, such as Undo in a notice, and such a page must
+ * then show the other state (design section 3). A guide that cannot be read any more, such as
+ * one purged meanwhile, counts as moved, so the page loads again and says what it finds.
+ */
+export async function guideMoved(guide: Guide | null, read: (id: string) => Promise<Guide>): Promise<boolean> {
+  if (!guide) return false;
+  try {
+    const now = await read(guide.id);
+    return (now.deleted_at === null) !== (guide.deleted_at === null);
+  } catch {
+    return true;
+  }
+}
 
 /** `3 notes`, `1 note`, `2 entries`. */
 export function countOf(n: number, singular: string, plural = `${singular}s`): string {

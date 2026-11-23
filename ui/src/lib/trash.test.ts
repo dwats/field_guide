@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { BoardContents, GuideContents } from "./api";
+import type { BoardContents, Guide, GuideContents } from "./api";
 import {
   boardPurgeLines,
   boardSummary,
   emptiedNotice,
   emptyGuideTrashLines,
   emptyTrashLines,
+  guideMoved,
   guidePurgeLines,
   listOf,
 } from "./trash";
@@ -36,6 +37,52 @@ function guide(c: Partial<GuideContents> = {}): GuideContents {
     ...c,
   };
 }
+
+function aGuide(deleted_at: string | null): Guide {
+  return {
+    id: "g1",
+    name: "Minecraft",
+    description: "",
+    cover_media_id: null,
+    cover_crop: null,
+    tag_ids: [],
+    deleted_at,
+    created_at: "2026-11-13T10:00:00Z",
+    updated_at: "2026-11-13T10:00:00Z",
+  };
+}
+
+describe("guideMoved", () => {
+  const TRASHED = "2026-11-13T12:00:00Z";
+
+  it("says so when an open guide went into the Trash or came out of it", async () => {
+    expect(await guideMoved(aGuide(null), async () => aGuide(TRASHED))).toBe(true);
+    expect(await guideMoved(aGuide(TRASHED), async () => aGuide(null))).toBe(true);
+  });
+
+  it("says nothing moved while the guide stays where it was", async () => {
+    expect(await guideMoved(aGuide(null), async () => aGuide(null))).toBe(false);
+    // Trashed, restored, and trashed again: the page already shows the Trash message.
+    expect(await guideMoved(aGuide(TRASHED), async () => aGuide("2026-11-13T13:00:00Z"))).toBe(false);
+  });
+
+  it("asks about the guide the page loaded", async () => {
+    const asked: string[] = [];
+    await guideMoved(aGuide(null), async (id) => {
+      asked.push(id);
+      return aGuide(null);
+    });
+    expect(asked).toEqual(["g1"]);
+  });
+
+  it("counts a guide that cannot be read any more as moved, and no guide as not moved", async () => {
+    const purged = async (): Promise<Guide> => {
+      throw new Error("not found");
+    };
+    expect(await guideMoved(aGuide(TRASHED), purged)).toBe(true);
+    expect(await guideMoved(null, purged)).toBe(false);
+  });
+});
 
 describe("listOf", () => {
   it("joins one, two, and three or more items", () => {
