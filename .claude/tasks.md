@@ -56,8 +56,7 @@ in `tools/walkthrough/run/t3/`; no code in `core`, `app`, or `ui` changed
 after it.
 
 T3 is done. I validated its not judged check on 2026-11-24 (Tab reaches
-the switch, Space and Enter flip it). The focus ring on the switch is one
-unchecked line in `docs/checklist.md`; I did not mention it.
+the switch, the focus ring shows, Space and Enter flip it).
 
 ## Carry-over from the long session
 
@@ -550,9 +549,9 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
   - Not judged by the agent, validated by me on 2026-11-24: the switch
     from the keyboard. I selected a string, clicked a color in the panel,
     pressed Tab, and focus went to the switch; Space and Enter flip it.
-    Passed, and the line is checked in `docs/checklist.md`. I did not
-    mention the focus ring, so the agent split it into its own unchecked
-    line. With a string selected and no click in the panel, Tab moves to
+    Passed, and the line is checked in `docs/checklist.md`. The focus
+    ring was present; the agent had split it into its own line, and that
+    line is checked too. With a string selected and no click in the panel, Tab moves to
     other board items and not into the panel (Inbox line).
   - For the next task: `run/t3/` holds the build of cce45e0 and a vault
     with four guides. The next migration is 0009.
@@ -969,3 +968,4 @@ Format: `- [date] decision — reason`
 - [2026-11-23] T3: the six core tests and the two edits of decision 35 are approved as written (decision 37). They are not edited while T3 is built; if one looks wrong, the agent stops and asks - my answer (a).
 - [2026-11-24] T3, my answers (a) to decisions 38 and 39. The agent makes a release build, adds steps to `tools/walkthrough/notes.ps1`, and takes the keyboard, the mouse, and the clipboard for a run in Dark and a run in Light. It covers the T3 runs of `notes.ps1` in this session only. The second-import test gap is an Inbox line only.
 - [2026-11-24] T3 validated by me: with focus on a color swatch in the panel, Tab reaches the "Label background" switch, and Space and Enter flip it (pass). My three observations are in the Inbox: two were there already and are marked as seen again; the Tab path from a selected string into the panel is a new line.
+- [2026-11-24] T3: the focus ring on the "Label background" switch was present - my answer (a). Both keyboard lines for the switch are checked in `docs/checklist.md`.

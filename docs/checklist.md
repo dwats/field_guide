@@ -106,7 +106,7 @@ Run before calling a UI phase done. Core behavior is covered by `cargo test`; th
 - [ ] Removing a card or deleting a note takes its strings with it.
 - [x] A selected string's panel has a "Label background" switch, on for a new string; off, that string's label is text with no box, outlined in the canvas color, and other strings keep their pills; the choice survives reopening the board; Delete string, then Undo, brings the string back with the switch as it was; the bare label reads on Dots, Grid, Cork, and Blank in both schemes, in all four string colors. Seen 2026-11-24 in both schemes at 100 percent and at 63 percent zoom. At 63 percent the string shows between the letters and a pill reads better; at 37 percent no label reads, with or without a pill.
 - [x] The "Label background" switch from the keyboard: with focus on a color swatch, Tab reaches it, and Space or Enter flips it. Checked by the owner 2026-11-24.
-- [ ] The "Label background" switch shows the focus ring when Tab reaches it. Not judged: the walkthrough flips it through UI Automation, and the owner's check did not mention the ring.
+- [x] The "Label background" switch shows the focus ring when Tab reaches it. Checked by the owner 2026-11-24.
 - [ ] More, Background: Dots, Grid, Cork, and Blank change the canvas, follow light and dark, pan with the board, and come back after a reload.
 
 ## Guides
