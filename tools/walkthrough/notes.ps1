@@ -357,7 +357,7 @@ $n = Get-Date -Format HHmmss
 
 # notes.ps1: board notes in five colors, check boxes, a pasted image in its polaroid frame,
 # strings in four colors, the four backgrounds, an index card and a picture card, delete with
-# Undo, Dim images, and reopening.
+# Undo, Dim images, reopening, and a string's label with its background off.
 
 function Panel() { return Region "Board panel" }
 function Canvas() { return Find $win "Board canvas" $null }
@@ -528,5 +528,110 @@ Start-Sleep -Seconds 1
 Click (Find $win "Clues" $CT::Hyperlink)
 Start-Sleep -Seconds 2
 Shot "n25-reopened"
+
+# The T3 steps: a string's label with its background off.
+
+# A string on the canvas. Its name starts with "String from" and the name of its first end.
+function Twine($from) { return FindPrefix (Canvas) "String from $from" $CT::Button }
+
+# Whether a switch is on; $null when UI Automation cannot read it.
+function IsOn($el) {
+  if (-not $el) { return $null }
+  try {
+    $state = $el.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
+    return ($state -eq [System.Windows.Automation.ToggleState]::On)
+  } catch { return $null }
+}
+
+# The selected string's "Label background" switch must be in this state. A miss when it is not.
+function ExpectBackground([bool]$on, $what) {
+  $state = IsOn (FindControl (Panel) "Label background")
+  if ($null -eq $state) { Miss "$what`: the Label background switch cannot be read" }
+  elseif ($state -ne $on) { Miss "$what`: Label background is $state, wanted $on" }
+  else { Write-Host "$what`: Label background is $state" }
+}
+
+# Puts the selected string's "Label background" switch in this state and checks that it got there.
+function LabelBackground([bool]$on, $what) {
+  $switch = FindControl (Panel) "Label background"
+  $state = IsOn $switch
+  if ($null -ne $state -and $state -ne $on) { Click $switch; Start-Sleep -Milliseconds 600 }
+  ExpectBackground $on $what
+}
+
+# 13. The image moves left, so the green string's label no longer sits on the red one's: two
+# labels without pills at one place cover each other. The black string gets a label, so each
+# of the four colors has one. A string starts with its label background on.
+Focus (Find (Canvas) "Image" $CT::Button)
+Nudge -5 0
+Fit
+Focus (Twine 'note "Green"')
+TypeText (Find (Panel) "String label" $CT::Edit) "ends"
+Keys "{TAB}"
+ExpectBackground $true "13 black, new label"
+Shot "n30-four-pills"
+
+# 14. Three labels lose their background; the blue one keeps its pill. The black string stays
+# selected, so the panel shows the switch off.
+Focus (Twine "Stone Block")
+LabelBackground $false "14 red"
+Focus (Twine 'note "Blue"')
+LabelBackground $false "14 green"
+Focus (Twine 'note "Green"')
+LabelBackground $false "14 black"
+Fit
+Shot "n31-three-bare-one-pill"
+
+# 15. All four bare, on each background with nothing selected, ending on Cork.
+Focus (Twine "Oak Log")
+LabelBackground $false "15 blue"
+foreach ($background in @("Dots", "Grid", "Blank", "Cork")) {
+  Background $background
+  Focus (Canvas)
+  Keys "{ESC}"
+  Shot ("n32-bare-" + $background.ToLower())
+}
+
+# 16. Zoomed out three steps, on Cork and on Dots; then at 100 percent on both.
+Focus (Canvas)
+Keys "---"
+Shot "n33-bare-cork-small"
+Background "Dots"
+Focus (Canvas)
+Keys "{ESC}"
+Shot "n34-bare-dots-small"
+Click (FindPrefix $win "reset to 100%" $CT::Button -Contains)
+Shot "n35-bare-dots-100"
+Background "Cork"
+Focus (Canvas)
+Keys "{ESC}"
+Shot "n36-bare-cork-100"
+Fit
+
+# 17. Leave and come back: the choice is kept.
+Click (Find $win "Boards" $CT::Hyperlink)
+Start-Sleep -Seconds 1
+Click (Find $win "Clues" $CT::Hyperlink)
+Start-Sleep -Seconds 2
+Focus (Twine "Oak Log")
+ExpectBackground $false "17 blue, reopened"
+Shot "n37-bare-reopened"
+
+# 18. Delete the blue string and Undo: it comes back blue, labeled, and without its pill.
+Focus (Twine "Oak Log")
+Keys "{DELETE}"
+Start-Sleep -Seconds 1
+Shot "n38-string-deleted"
+Click (Find $win "Undo" $CT::Button)
+Start-Sleep -Seconds 2
+Focus (Twine "Oak Log")
+ExpectBackground $false "18 blue, after Undo"
+Shot "n39-string-restored"
+
+# 19. On again for that one string: its pill is back, and the other three stay bare.
+LabelBackground $true "19 blue"
+Focus (Canvas)
+Keys "{ESC}"
+Shot "n40-one-pill-again"
 
 Finish

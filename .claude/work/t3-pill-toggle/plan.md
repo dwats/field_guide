@@ -136,5 +136,5 @@ None. Decisions 33 to 36 were answered (a) on 2026-11-23.
 - [x] UI built (2026-11-23). Beyond the plan: the Undo rule is a pure function, `stringRestore` in `ui/src/lib/board.ts`, with one Vitest test; two `BoardString` fixtures in `board.test.ts` gained the new field. The outline is nine text shadows in `--canvas`, a new custom property that is `--bg`, or `--cork` on cork.
 - [x] Docs updated (2026-11-23): `docs/design.md` sections 6 and 7 (written with the tests), `docs/plan.md` Phase 7b, one new unchecked line in `docs/checklist.md`, Boards.
 - [x] Gates run; `reviewer` called (2026-11-23 at cce45e0: 31 unit, 188 behavior, 184 UI tests, clippy, format, and svelte-check clean; the review approved with four minor findings, none fixed; see T3's Notes and decisions 38 and 39)
-- [ ] Window check (walkthrough or owner)
-- [ ] `tasks.md` wrapped up
+- [x] Window check (decision 38 (a)): `notes.ps1` gained steps 13 to 19; run 2026-11-24 against a release build of cce45e0 in `tools/walkthrough/run/t3/`, Dark and Light, 0 misses each, 30 screenshots each in `tools/walkthrough/run/shots-cce45e0/`. Two earlier Dark runs did not count: the first launch of the new folder was slower than the script's 15 seconds; then one run lost the Enter that ties the first string in step 7, an older step, and the repeat was clean. A third Dark run was made after the image was moved in step 13, because two bare labels sat on one spot.
+- [x] `tasks.md` wrapped up (2026-11-24). One not judged check waits on the owner: the switch from the keyboard.

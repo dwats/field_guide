@@ -6,7 +6,7 @@ Four PowerShell UI Automation scripts that drive a release build of Field Guide 
 |---|---|
 | `drive.ps1` | The guides list, the guide page, a new entry, an entry with every markdown feature in Edit and Read, `[[` suggestions, pasted images, the album and the image viewer, a web link dialog, a long title, the sidebar folded, Trash and a confirm dialog, the Tag editor, the palette, the cover and its crop box, Settings (Appearance, Editor, Data, Media cleanup), Dim images, a second launch. |
 | `board.ps1` | Relations on an entry, Vocabulary, the board list, a new board, the picker, Add and Add all, the View menu, the panel's Entry and Relations tabs, a relation typed in the panel, nudge and remove with Undo, the four backgrounds, rename, the delete confirm, reopening. |
-| `notes.ps1` | Board notes in five colors, a check box, a pasted image in its polaroid frame, strings in four colors tied by keyboard, the four backgrounds, an index card and a picture card, delete with Undo, Dim images on a board, reopening. |
+| `notes.ps1` | Board notes in five colors, a check box, a pasted image in its polaroid frame, strings in four colors tied by keyboard, the four backgrounds, an index card and a picture card, delete with Undo, Dim images on a board, reopening; then the "Label background" switch of a string: four labels without their pills on the four backgrounds, zoomed out and at 100 percent, after reopening, and after Delete and Undo. It reads the switch and counts a wrong state as a miss. |
 
 | `trash.ps1` | Move guide to Trash with Undo, the pages inside a trashed guide reached by Back, a taken name, the guides' Trash with its purge and Empty trash dialogs, a page that is open when its guide goes to the Trash, what a purge leaves in another guide, a board moved to Trash from the list and from its page, a guide's Trash with an entry and a board, a board trashed before its guide, New on a page of a trashed guide, the Vocabulary count for a relation into a trashed guide. It checks the dialog lines by their text. |
 
@@ -29,6 +29,8 @@ The seed refuses a vault file that exists; remove the run folder's `vault` folde
 - `run/t1/` is the folder for the T1 walkthrough of ce8a1cc.
 - `run/t2/` is the folder for the T2 walkthrough: a build of 646332c and the seeded vault as the last run of `trash.ps1` left it.
 - `run/shots-646332c/` holds the screenshots of the T2 runs of `trash.ps1`, 60 per scheme.
+- `run/t3/` is the folder for the T3 walkthrough: a build of cce45e0 and the vault three runs of `notes.ps1` left (four guides).
+- `run/shots-cce45e0/` holds the screenshots of the T3 runs of `notes.ps1`, 30 per scheme.
 - `run/` itself holds an older build and the vault that earlier runs left behind, one guide per run.
 - `run/shots-19b8dae/` holds the screenshots of the last clean runs at commit 19b8dae.
 
@@ -72,4 +74,4 @@ The seed refuses a vault file that exists; remove the run folder's `vault` folde
 - A menu row with `role="menuitemradio"` is a RadioButton to UI Automation. `MenuItem` tries each kind.
 - Confirm a dialog by its button, never with Enter. Confirm dialogs start with focus on Cancel.
 - Long text goes in through the clipboard (`PasteText`). The editor pairs brackets and indents typed keys.
-- Wait for the first screen in a retry loop. The helper block waits up to 15 seconds.
+- Wait for the first screen in a retry loop. The helper block waits up to 15 seconds. The first launch in a new run folder makes the webview profile and can take longer; the script then stops with "the guides list did not appear". Run it again.

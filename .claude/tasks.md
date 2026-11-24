@@ -51,7 +51,12 @@ T2 is done. I validated its two not judged checks on 2026-11-23.
 
 Gates last run on 2026-11-23 at cce45e0 (T3, built): 31 unit, 188 behavior,
 184 UI tests, clippy clean, format clean, svelte-check clean. The schema
-version is 8. No release build holds T3; the last one is still of 646332c.
+version is 8. The last release build is of cce45e0's code, made 2026-11-24,
+in `tools/walkthrough/run/t3/`; no code in `core`, `app`, or `ui` changed
+after it.
+
+T3 is built, reviewed, and walked through. One not judged check waits on
+me (the switch from the keyboard; see T3's Notes).
 
 ## Carry-over from the long session
 
@@ -88,7 +93,9 @@ Things that were only in the conversation.
   fourth, `trash.ps1`, covers the T2 screens. It needs the vault that
   `tools/walkthrough/seed/` writes, a new one before every run (README).
   Last clean run of `trash.ps1`: 2026-11-23 against the build of 646332c,
-  in Dark and in Light, 0 misses each.
+  in Dark and in Light, 0 misses each. Last clean run of `notes.ps1`:
+  2026-11-24 against the build of cce45e0, in Dark and in Light, 0 misses
+  each; it has steps 13 to 19 for T3 since then.
 - What they are: PowerShell UI Automation. Each takes `-Exe`, `-OutDir`,
   and `-Theme dark|light`, drives the window, and saves numbered
   screenshots. Rewritten whole in T1; `tools/walkthrough/README.md` lists
@@ -441,19 +448,19 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     run of `trash.ps1`.
 
 ### T3: Pill toggle on lines
-- **Status:** in progress (built 2026-11-23 at cce45e0, all gates pass,
-  the `reviewer` approved; not seen in a window, waiting on decisions 38
-  and 39)
+- **Status:** done (built and reviewed 2026-11-23, walked through in
+  Dark and Light on 2026-11-24; one not judged check waits on me)
 - **Goal:** Let me turn the pill background behind a line's label off for
   one line, so a busy board stays readable. Today every line has the pill.
 - **Done when:**
-  - [ ] The selected line's section in the board panel has a "Label
-        background" switch, on by default. (Built; core test 1 covers the
-        default. Not seen in a window.)
+  - [x] The selected line's section in the board panel has a "Label
+        background" switch, on by default. (Seen in a window in both
+        schemes, 2026-11-24.)
   - [x] The choice survives a reload and an export and import. (Core
         tests 2 to 6.)
-  - [ ] With the pill off, the label still reads on all four backgrounds in
-        both schemes, or the task says where it does not.
+  - [x] With the pill off, the label still reads on all four backgrounds in
+        both schemes, or the task says where it does not. (Seen
+        2026-11-24; the Notes say where it reads less well.)
   - [x] docs/design.md section 6 records the rule. (Section 7 records
         the archive field.)
 - **Notes:** Under (a) the choice is a new column on `board_string` and a
@@ -508,9 +515,42 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     window; High Contrast mode drops the outline). For the window check it
     asks for: the black string in Light at the smallest zoom, and whether
     the outline shows as a halo on cork's grain.
-  - Not built or checked: no release build, no walkthrough step, and
-    `tools/walkthrough/seed/` was not compiled against the new core (it
-    calls `create_board_string` only, whose signature did not change).
+  - Not checked: `tools/walkthrough/seed/` was not compiled against the
+    new core (it calls `create_board_string` only, whose signature did
+    not change).
+  - The T3 walkthrough, 2026-11-24 (decision 38 (a)): `notes.ps1` gained
+    steps 13 to 19 and ran against a release build of cce45e0 in
+    `tools/walkthrough/run/t3/`, Dark and Light, 0 misses each, 30
+    screenshots each in `tools/walkthrough/run/shots-cce45e0/`. The script
+    reads the switch through UI Automation and counts a wrong state as a
+    miss: on for a new label; off after a click; still off after the
+    board is reopened; still off, blue, and labeled after Delete and
+    Undo; on again after a second click.
+  - Where the bare label reads, judged from the screenshots and from
+    crops enlarged four times. At 100 percent zoom all four colors read
+    on Dots, Grid, Blank, and Cork in both schemes; the outline cuts the
+    string beside the letters, the black string in Light included, and on
+    cork it does not show as a halo. At 63 percent (Fit for the test
+    board) the labels still read, but the outline is about 1 pixel, the
+    string shows between the letters, and a pill reads better; the
+    weakest case is Cork in Light. At 37 percent no label reads, with or
+    without a pill.
+  - Found in the runs, both Inbox lines: two labels without pills at one
+    place are drawn over each other and neither reads (a pill covers the
+    one under it); the outline gets thinner as the board zooms out.
+  - Runs that did not count: the first launch in the new folder took
+    longer than the script's 15 seconds for the guides list; then one
+    Dark run lost the Enter that ties the first string in step 7, an
+    older step, and every later step that needed that string missed. The
+    next run was clean and the cause was not found (Inbox line). A third
+    Dark run followed a script change: step 13 now moves the image so no
+    two labels share a spot.
+  - Not judged by the agent, for me to validate: the switch from the
+    keyboard (Tab reaches it after the swatches, the focus ring shows,
+    Space or Enter flips it). It is one new unchecked line in
+    `docs/checklist.md`, Boards.
+  - For the next task: `run/t3/` holds the build of cce45e0 and a vault
+    with four guides. The next migration is 0009.
 
 ### T4: Narrow windows
 - **Status:** todo (decision 4 answered (a) on 2026-11-12)
@@ -782,8 +822,8 @@ decision to docs/design.md with its reason, or to Decisions below.
 35. T3: two approved tests must change. `core/tests/behavior/boards.rs` has a `BoardStringUpdate` literal that names every field, so a new field stops it compiling. `a_version_6_vault_migrates_to_7_with_nothing_trashed` in `schema.rs` asserts that the schema version is 7, and T3 makes it 8: (a) the literal gains `..BoardStringUpdate::default()`, and the two version lines compare with `SCHEMA_VERSION`; both edits are shown with the new tests before the commit; (b) change them another way, and I say how. **Answer:** (a)
 36. T3: the plan in `.claude/work/t3-pill-toggle/plan.md`: (a) approved; (b) change it. **Answer:** (a)
 37. T3: the six core tests and the two edits of decision 35 (in `core/tests/behavior/boards.rs`, `schema.rs`, and `export_import.rs`, with the stub layer; not committed). All 6 fail at their own assertions: (a) approved, commit them and build; (b) change them. **Answer:** (a)
-38. T3: the window check for done criteria 1 and 3 (the switch, and the bare label on four backgrounds in both schemes). No release build holds T3 yet: (a) the agent makes a release build, adds steps to `tools/walkthrough/notes.ps1`, and takes the keyboard, the mouse, and the clipboard for a run in Dark and a run in Light; (b) the agent makes the release build without opening a window, and I check the new line of `docs/checklist.md` by eye; (c) leave it not judged for now and close the task with the line unchecked. **Answer:**
-39. T3 review: no test turns a string's label background off and then imports the same archive a second time into the same guide (the "second import replaces the board" path). It shares its one insert with the tested path, so the test would pass at once and act as a pin: (a) Inbox line only; (b) I write the pin test and show it to you before committing. **Answer:**
+38. T3: the window check for done criteria 1 and 3 (the switch, and the bare label on four backgrounds in both schemes). No release build holds T3 yet: (a) the agent makes a release build, adds steps to `tools/walkthrough/notes.ps1`, and takes the keyboard, the mouse, and the clipboard for a run in Dark and a run in Light; (b) the agent makes the release build without opening a window, and I check the new line of `docs/checklist.md` by eye; (c) leave it not judged for now and close the task with the line unchecked. **Answer:** (a)
+39. T3 review: no test turns a string's label background off and then imports the same archive a second time into the same guide (the "second import replaces the board" path). It shares its one insert with the tested path, so the test would pass at once and act as a pin: (a) Inbox line only; (b) I write the pin test and show it to you before committing. **Answer:** (a)
 
 ## Inbox
 
@@ -821,6 +861,9 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-13] [agent] Wording: "2 qualifiers on relations in other guides" in the purge dialog also covers two qualifiers on one relation — T2 batch 5 review
 - [2026-11-23] [agent] Problem: Undo ties a deleted string again in two calls, create and then update (color, and since T3 the label background). If the second call fails, the string comes back red with its pill and no notice. It predates T3. One core call that ties a string with all its attributes would make Undo one step — T3 review, `retie` in `ui/src/views/BoardView.svelte`
 - [2026-11-23] [agent] Suspected, not verified: at the minimum window height of 400 pixels the board panel's upper half may be shorter than the selected string's section, which is one row taller since T3, so "Delete string" may overlap the picker's heading. Estimated from the CSS. It belongs with T4 — T3 review, `ui/src/components/BoardPanel.svelte`
+- [2026-11-23] [agent] Test gap: no core test turns a string's label background off and then imports the same archive a second time into the same guide. That path shares its one insert with the tested import — T3 review; I answered "Inbox line only" (decision 39)
+- [2026-11-24] [agent] Question: two string labels with their background off at one place are drawn over each other, and neither reads. With pills the upper one covers the lower. Seen where two strings cross at their middles. Leave it, or move one label along its string? — T3 walkthrough, first Dark run, `n31`
+- [2026-11-24] [agent] Idea: the outline of a string's bare label scales with the zoom, so at 63 percent it is about 1 pixel and the string shows between the letters. An outline that keeps its width on screen would read better zoomed out. It belongs with the board level of detail line — T3 walkthrough, `light/notes/n32-bare-cork`
 - [2026-11-23] [agent] Problem: Windows High Contrast mode (forced colors) removes text shadows, so a string's label with its background off loses its outline there. Nothing in the app is checked in that mode — T3 review
 
 **Questions and unconfirmed guesses** (each needs my answer)
@@ -848,6 +891,8 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-12] [agent] Problem: the walkthrough scripts flip "Line numbers" and "Dim images in dark" by a click without reading their state. A run that stops between the two clicks leaves the setting on, and the next run's screenshots show the opposite state with 0 misses — T1 review
 - [2026-11-12] [agent] Problem: the two restart checks (Dark saved at startup; old `config.toml` without `theme`) have no committed script, so two checked Theme lines cannot be repeated from the repository — T1 review
 - [2026-11-12] [agent] Problem: a board note's text goes out in one SendKeys call after one foreground check. If focus changes during that call, the rest of the text goes to the other window. Suspected, not seen — T1 review
+- [2026-11-24] [agent] Problem: in one run of `notes.ps1`, step 7, the Enter that ties the first string (card to note, focus set by UI Automation) did nothing; the tying hint stayed, and 16 misses followed. T1's runs of the same step and the next three runs were clean. Cause not found; no app defect was shown — T3 walkthrough
+- [2026-11-24] [agent] Problem: the first launch in a new run folder makes the webview profile and took longer than the 15 seconds the scripts wait for the guides list. The README now says to run again; a longer first wait would remove the step — T3 walkthrough
 - [2026-11-13] [agent] Idea: the walkthrough scripts refuse to start when no file named `portable` sits beside `-Exe`. Without it they would drive the real data directory — T1 review; I answered "Inbox line only" (decision 16)
 
 ## Decisions
@@ -916,3 +961,4 @@ Format: `- [date] decision — reason`
   - These answers are not in docs/design.md yet. T6 moves them there with the approved design.
 - [2026-11-23] T3, my answers (a) to decisions 33 to 36, and to the report's two concerns. With its label background off, a string's label is text with a thin outline in the canvas color. The archive field `label_background` is written only when it is off, absent means on, and `format_version` stays 1. The two approved tests change as decision 35 (a) says, shown with the new tests before the commit. The plan is approved. Undo of a deleted string restoring the new value too: "accepted". Cork's grain judged only in a window: "understood". The rule and the field are in docs/design.md sections 6 and 7, written before the code; the code does not follow them yet.
 - [2026-11-23] T3: the six core tests and the two edits of decision 35 are approved as written (decision 37). They are not edited while T3 is built; if one looks wrong, the agent stops and asks - my answer (a).
+- [2026-11-24] T3, my answers (a) to decisions 38 and 39. The agent makes a release build, adds steps to `tools/walkthrough/notes.ps1`, and takes the keyboard, the mouse, and the clipboard for a run in Dark and a run in Light. It covers the T3 runs of `notes.ps1` in this session only. The second-import test gap is an Inbox line only.
