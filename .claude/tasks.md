@@ -55,8 +55,9 @@ version is 8. The last release build is of cce45e0's code, made 2026-11-24,
 in `tools/walkthrough/run/t3/`; no code in `core`, `app`, or `ui` changed
 after it.
 
-T3 is built, reviewed, and walked through. One not judged check waits on
-me (the switch from the keyboard; see T3's Notes).
+T3 is done. I validated its not judged check on 2026-11-24 (Tab reaches
+the switch, Space and Enter flip it). The focus ring on the switch is one
+unchecked line in `docs/checklist.md`; I did not mention it.
 
 ## Carry-over from the long session
 
@@ -449,7 +450,8 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
 
 ### T3: Pill toggle on lines
 - **Status:** done (built and reviewed 2026-11-23, walked through in
-  Dark and Light on 2026-11-24; one not judged check waits on me)
+  Dark and Light on 2026-11-24; I validated the not judged check the same
+  day)
 - **Goal:** Let me turn the pill background behind a line's label off for
   one line, so a busy board stays readable. Today every line has the pill.
 - **Done when:**
@@ -545,10 +547,13 @@ Status values: `todo` | `in progress` | `blocked` | `done` | `dropped`
     next run was clean and the cause was not found (Inbox line). A third
     Dark run followed a script change: step 13 now moves the image so no
     two labels share a spot.
-  - Not judged by the agent, for me to validate: the switch from the
-    keyboard (Tab reaches it after the swatches, the focus ring shows,
-    Space or Enter flips it). It is one new unchecked line in
-    `docs/checklist.md`, Boards.
+  - Not judged by the agent, validated by me on 2026-11-24: the switch
+    from the keyboard. I selected a string, clicked a color in the panel,
+    pressed Tab, and focus went to the switch; Space and Enter flip it.
+    Passed, and the line is checked in `docs/checklist.md`. I did not
+    mention the focus ring, so the agent split it into its own unchecked
+    line. With a string selected and no click in the panel, Tab moves to
+    other board items and not into the panel (Inbox line).
   - For the next task: `run/t3/` holds the build of cce45e0 and a vault
     with four guides. The next migration is 0009.
 
@@ -840,11 +845,11 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 
 - [2026-11-12] [agent] Defect: the Images album does not open on an entry whose body shows the same picture twice; after that, the album on the next entry shows its backdrop and no dialog. Reproduced with a real mouse click. Suspected, not verified: the album list is keyed by the picture's address in `ui/src/components/ImageAlbum.svelte` — T1 walkthrough
 - [2026-11-12] [agent] Defect: all three theme pictures in Settings follow the current scheme (three dark windows in Dark, three light in Light). Fails Theme line 1 — T1, `drive/40-settings-appearance` in both schemes
-- [2026-11-12] [agent] Defect: on a board in Dark, a picture card's caption is pale text (about #E5E1D6) on the off-white frame (#D6D2C8). Fails Theme line 11 — T1, `dark/board/b13`
+- [2026-11-12] [agent] Defect: on a board in Dark, a picture card's caption is pale text (about #E5E1D6) on the off-white frame (#D6D2C8). Fails Theme line 11 — T1, `dark/board/b13`. Seen again by me on 2026-11-24: "entries with images have a label that is white and very difficult to read" — my T3 check
 - [2026-11-12] [agent] Defect: the sidebar's entry list keeps the "stub" chip after an entry's body is first written, until something else reloads the sidebar — T1, `dark/board/b00`, `dark/drive/05`
 - [2026-11-12] [agent] Defect: the entry header's Read or Edit toggle, Images, and More move right when Edit folds the right panel (toggle at x 710 in Read, x 1001 in Edit). The Entries checklist says they do not move — T1, `dark/drive/20` and `21`
 - [2026-11-12] [agent] Defect: with the sidebar folded, the breadcrumbs start 56 px right of the content column — T1, `dark/drive/22`
-- [2026-11-12] [agent] Defect: the board panel's title for a selected string reads "Stringfrom Stone Block to note ..."; a space is missing — T1, `dark/notes/n06`
+- [2026-11-12] [agent] Defect: the board panel's title for a selected string reads "Stringfrom Stone Block to note ..."; a space is missing — T1, `dark/notes/n06`. Seen again by me on 2026-11-24 — my T3 check
 - [2026-11-12] [agent] Defect: Settings, Data: a long path breaks in the middle of a word ("va" / "ult") — T1, `dark/drive/41`
 - [2026-11-13] [me] Web links: only a fully qualified address is recognized, such as `http://google.com`; a bare `google.com` is not a link. "Open in browser" itself works. Defect or enhancement: for triage — my check of T1's not judged list
 - [2026-11-13] [me] Defect: a double click on a board note does not open it for editing, whether I click as fast as possible or slowly. docs/design.md section 6 says it should, and `BoardCanvas.svelte` has code for it (two presses on the same note within 400 ms, or Enter). Cause not investigated. The walkthrough scripts open notes by keyboard only, so they did not catch it — after T1
@@ -862,6 +867,7 @@ Format: `- [date] [agent|me] idea or problem — where it came up`
 - [2026-11-23] [agent] Problem: Undo ties a deleted string again in two calls, create and then update (color, and since T3 the label background). If the second call fails, the string comes back red with its pill and no notice. It predates T3. One core call that ties a string with all its attributes would make Undo one step — T3 review, `retie` in `ui/src/views/BoardView.svelte`
 - [2026-11-23] [agent] Suspected, not verified: at the minimum window height of 400 pixels the board panel's upper half may be shorter than the selected string's section, which is one row taller since T3, so "Delete string" may overlap the picker's heading. Estimated from the CSS. It belongs with T4 — T3 review, `ui/src/components/BoardPanel.svelte`
 - [2026-11-23] [agent] Test gap: no core test turns a string's label background off and then imports the same archive a second time into the same guide. That path shares its one insert with the tested import — T3 review; I answered "Inbox line only" (decision 39)
+- [2026-11-24] [me] Observation: with a string selected on the board and no click in the panel, Tab does not move through the selected string's options (label, colors, Label background, Delete string); it jumps between other board items. From a control inside the panel, Tab does reach the next option. Defect or enhancement: for triage — my T3 check
 - [2026-11-24] [agent] Question: two string labels with their background off at one place are drawn over each other, and neither reads. With pills the upper one covers the lower. Seen where two strings cross at their middles. Leave it, or move one label along its string? — T3 walkthrough, first Dark run, `n31`
 - [2026-11-24] [agent] Idea: the outline of a string's bare label scales with the zoom, so at 63 percent it is about 1 pixel and the string shows between the letters. An outline that keeps its width on screen would read better zoomed out. It belongs with the board level of detail line — T3 walkthrough, `light/notes/n32-bare-cork`
 - [2026-11-23] [agent] Problem: Windows High Contrast mode (forced colors) removes text shadows, so a string's label with its background off loses its outline there. Nothing in the app is checked in that mode — T3 review
@@ -962,3 +968,4 @@ Format: `- [date] decision — reason`
 - [2026-11-23] T3, my answers (a) to decisions 33 to 36, and to the report's two concerns. With its label background off, a string's label is text with a thin outline in the canvas color. The archive field `label_background` is written only when it is off, absent means on, and `format_version` stays 1. The two approved tests change as decision 35 (a) says, shown with the new tests before the commit. The plan is approved. Undo of a deleted string restoring the new value too: "accepted". Cork's grain judged only in a window: "understood". The rule and the field are in docs/design.md sections 6 and 7, written before the code; the code does not follow them yet.
 - [2026-11-23] T3: the six core tests and the two edits of decision 35 are approved as written (decision 37). They are not edited while T3 is built; if one looks wrong, the agent stops and asks - my answer (a).
 - [2026-11-24] T3, my answers (a) to decisions 38 and 39. The agent makes a release build, adds steps to `tools/walkthrough/notes.ps1`, and takes the keyboard, the mouse, and the clipboard for a run in Dark and a run in Light. It covers the T3 runs of `notes.ps1` in this session only. The second-import test gap is an Inbox line only.
+- [2026-11-24] T3 validated by me: with focus on a color swatch in the panel, Tab reaches the "Label background" switch, and Space and Enter flip it (pass). My three observations are in the Inbox: two were there already and are marked as seen again; the Tab path from a selected string into the panel is a new line.
